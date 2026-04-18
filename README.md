@@ -212,6 +212,12 @@ so one install gets you both binaries. What you'll find here:
 
 - `packages/` — the official standard-library hatches (`std`,
   `http`, `json`, `test`, …) as they land.
+- `index.toml` — a git-readable mirror of the live hatch catalog.
+  Regenerated automatically from the Supabase-backed `packages`
+  table every few hours via
+  [`.github/workflows/sync-index.yml`](.github/workflows/sync-index.yml).
+  Don't edit by hand; publish your package with `hatch publish`
+  instead.
 - The future home of the registry service, ecosystem docs, and
   any dev tools that outgrow the single-binary CLI.
 

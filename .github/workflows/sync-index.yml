@@ -1,0 +1,66 @@
+name: Sync catalog to index.toml
+
+# Mirrors the Supabase-backed `packages` catalog into a plain TOML
+# file checked into this repo. Consumers who want a git-native view
+# of the ecosystem (or a backup if the hosted service ever goes
+# away) get it here, automatically refreshed.
+#
+# The catalog's anon key is public by design — Supabase gates every
+# request through row-level security. Reads of the `packages` table
+# are intentionally world-readable, so hard-coding the key in a
+# scheduled workflow is fine.
+
+on:
+  schedule:
+    # Every 6 hours at :00. Catalog updates land within that window;
+    # `hatch publish` already commits immediately, so this is purely
+    # for the offline / transparency mirror.
+    - cron: '0 */6 * * *'
+  # Manual trigger for maintainers who want to force a refresh.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  # Overlapping runs would fight each other on the push step. Cancel
+  # any in-progress sync when a new one starts.
+  group: sync-index
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch catalog from Supabase
+        env:
+          SUPABASE_URL: https://bncbgsfttafynyalrrbb.supabase.co
+          SUPABASE_ANON_KEY: sb_publishable_uTNCHuGnN5mzsWbuJI8CQg_0qFEBQRz
+        run: |
+          set -euo pipefail
+          curl -sSL --fail \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            "$SUPABASE_URL/rest/v1/packages?select=*" \
+            > /tmp/packages.json
+          # Sanity: must be a JSON array. Empty `[]` is valid and
+          # produces an index.toml with no package tables.
+          python -c "import json,sys; d=json.load(open('/tmp/packages.json')); assert isinstance(d,list), 'not a list'"
+
+      - name: Generate index.toml
+        run: python .github/scripts/gen-index.py < /tmp/packages.json > index.toml
+
+      - name: Commit if changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- index.toml; then
+            echo "index.toml is up to date"
+            exit 0
+          fi
+          git config user.name "hatch-bot"
+          git config user.email "hatch-bot@users.noreply.github.com"
+          git add index.toml
+          git commit -m "chore: sync index.toml from catalog"
+          git push
