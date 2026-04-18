@@ -1,0 +1,20 @@
+[package]
+name = "hatch-cli"
+version = "0.1.0"
+edition = "2021"
+authors = ["Damilare Akinlaja <damilare@zenturi.co>"]
+description = "Packaging, dependency resolution, and registry tooling for wrenlift .hatch packages"
+repository = "https://github.com/wrenlift/hatch"
+license = "MIT"
+
+[[bin]]
+name = "hatch"
+path = "src/main.rs"
+
+[dependencies]
+# Depends on the wrenlift library for the .hatch format + VM loader.
+# A path dep for now while both projects co-evolve locally; switch to
+# a git/crates.io dep once wrenlift publishes.
+wren_lift = { path = "../../", default-features = false, features = ["cranelift"] }
+clap = { version = "4", features = ["derive"] }
+toml = "0.8"
