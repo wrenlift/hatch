@@ -19,10 +19,16 @@ Build, run, and ship <a href="https://wren.io">Wren</a> programs as standalone p
 
 ---
 
-Standard [Wren](https://wren.io) is designed to be embedded inside
-a C or C++ host. **Hatch** is for the other direction: writing a
-Wren program on its own, packaging it, and running it — no host
-application, no FFI glue.
+[Wren](https://wren.io) shines as an embedded scripting language —
+small, fast to integrate, designed to slot into games, editors,
+and tools written in C or C++. That's the use case Wren is
+built for, and it's a good one.
+
+**Hatch** offers a complementary path. When your project *is*
+Wren — a CLI, a service, a library shared between Wren programs —
+Hatch plus [WrenLift](https://github.com/wrenlift/WrenLift) is the
+toolchain that lets you write it, package it, and run it on its
+own. Same language, same idioms, different deployment story.
 
 If you know Wren, you already know how to use this. What you need
 is a place to put your code and a way to ship it.
