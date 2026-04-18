@@ -35,16 +35,21 @@ is a place to put your code and a way to ship it.
 
 ## Install
 
-Build the `hatch` binary from source (a hosted installer will land
-with the registry):
+The `hatch` binary ships alongside the WrenLift runtime — installing
+WrenLift gives you both `wlift` (the runtime) and `hatch` (this CLI)
+on your `$PATH` in one step:
 
 ```sh
-git clone https://github.com/wrenlift/hatch
-cd hatch
-cargo install --path cli
+# From source:
+git clone https://github.com/wrenlift/WrenLift
+cd WrenLift
+cargo install --path .
+
+# Or, once we publish:
+cargo install wren_lift
 ```
 
-`hatch --version` should now print `hatch 0.1.0`.
+`wlift --version` and `hatch --version` should both print `0.1.0`.
 
 ## Your first Wren project
 
@@ -199,17 +204,16 @@ modules = ["counter", "main"]         # install order; auto-filled if empty
 print a roadmap message — the resolver and registry client are
 where they live.
 
-## Dev setup
+## What lives in this repo
 
-`cli` depends on WrenLift directly from its git repository, so a
-fresh clone of this repo builds on its own:
+This is the ecosystem repo — not a Rust project. The `hatch` CLI
+source lives in [WrenLift](https://github.com/wrenlift/WrenLift)
+so one install gets you both binaries. What you'll find here:
 
-```toml
-wren_lift = { git = "https://github.com/wrenlift/WrenLift.git", default-features = false, features = ["cranelift"] }
-```
-
-Pin to a commit or tag for reproducible builds once WrenLift
-starts cutting releases.
+- `packages/` — the official standard-library hatches (`std`,
+  `http`, `json`, `test`, …) as they land.
+- The future home of the registry service, ecosystem docs, and
+  any dev tools that outgrow the single-binary CLI.
 
 ## License
 
