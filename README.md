@@ -5,7 +5,7 @@
 <h1 align="center">Hatch</h1>
 
 <p align="center">
-The ecosystem for the <a href="https://wren.io">Wren</a> scripting language, powered by the <a href="https://github.com/wrenlift/WrenLift">WrenLift</a> runtime.
+Build, run, and ship <a href="https://wren.io">Wren</a> programs as standalone projects. Powered by the <a href="https://github.com/wrenlift/WrenLift">WrenLift</a> runtime.
 </p>
 
 <p align="center">
@@ -19,79 +19,167 @@ The ecosystem for the <a href="https://wren.io">Wren</a> scripting language, pow
 
 ---
 
-## Wren, without a host
+Standard [Wren](https://wren.io) is designed to be embedded inside
+a C or C++ host. **Hatch** is for the other direction: writing a
+Wren program on its own, packaging it, and running it — no host
+application, no FFI glue.
 
-Standard Wren is **embedding-first**. You link `libwren` into a C
-or C++ application — a game, a level editor, a plugin host — and
-run scripts from inside it. The canonical Wren project looks like
-a chunk of C that loads a `.wren` file and calls into it. The
-host owns the binary; Wren owns the fragments the host chooses
-to expose.
+If you know Wren, you already know how to use this. What you need
+is a place to put your code and a way to ship it.
 
-**Hatch flips that.** With Hatch + WrenLift, the Wren code is
-the program. You scaffold a project, you build it, you run it —
-no host, no FFI glue, no C++ bindings. A `.hatch` file is the
-thing you distribute, the way a `.jar` or `.pex` or `.exe` is. If
-you've been writing Wren by embedding it into someone else's
-application, Hatch is the permission to stop.
+## Install
 
-## What Hatch gives you
-
-- **Package format.** A `.hatch` is a single, zstd-compressed,
-  self-describing artifact that bundles compiled bytecode, a
-  manifest, resources, and (soon) platform-native libraries. One
-  file per library, one file per application, reproducible
-  between machines.
-- **Workflow.** `hatch init → hatch build → hatch run` is the
-  full local loop: scaffold a project, compile it, execute it.
-  No configuration beyond a `hatchfile` at the project root.
-- **Dependencies.** Libraries declare their peers in
-  `[dependencies]`; `hatch tidy` will resolve the graph, pin
-  exact versions in a `hatchfile.lock`, and cache the resolved
-  artifacts. Shape matches `go mod` / `cargo`.
-- **Registry.** `hatch publish` / `hatch install` will push and
-  fetch hatches from a shared index, with content hashes and
-  (later) signatures verified on download.
-- **Standard library.** The `packages/` tree in this repo is the
-  canonical source of the official hatches (`std`, `http`, `json`,
-  `test`, …) that every Wren workspace can lean on.
-
-## Quickstart
+Build the `hatch` binary from source (a hosted installer will land
+with the registry):
 
 ```sh
-hatch init my-app
-cd my-app
-hatch run
+git clone https://github.com/wrenlift/hatch
+cd hatch
+cargo install --path cli
 ```
 
-That's a real standalone Wren program, running on WrenLift. No C
-project, no build system, no host harness.
+`hatch --version` should now print `hatch 0.1.0`.
 
-The rest of the `hatch` surface — `add`, `remove`, `tidy`, `get`,
-`publish` — is stubbed today with a roadmap message so the
-planned ergonomics are visible while the resolver and registry
-client ship.
+## Your first Wren project
 
-## Workspace concept
+Create an empty directory and let `hatch` scaffold it:
 
-A **wrenlift workspace** is any directory with a `hatchfile` at
-its root:
+```sh
+hatch init hello-wren
+cd hello-wren
+```
+
+You'll find two files:
+
+```
+hello-wren/
+├── hatchfile      # project manifest (TOML)
+└── main.wren      # entry point
+```
+
+`main.wren` is a regular Wren program. Open it:
+
+```wren
+// Entry point for package 'hello-wren'. `hatch run` executes this file.
+System.print("hello from hello-wren")
+```
+
+Run it:
+
+```sh
+$ hatch run
+hello from hello-wren
+```
+
+That's your full local loop — write Wren, run Wren.
+
+## Add more Wren to the project
+
+Drop another `.wren` file next to `main.wren`:
+
+```wren
+// counter.wren
+class Counter {
+  construct new() { _n = 0 }
+  tick() { _n = _n + 1 }
+  count { _n }
+}
+```
+
+Import it from `main.wren`:
+
+```wren
+// main.wren
+import "counter" for Counter
+
+var c = Counter.new()
+for (i in 0..4) c.tick()
+System.print("count: %(c.count)")
+```
+
+`hatch` discovers every `.wren` file in the workspace on its own.
+If you want explicit control over module order, list them in the
+`hatchfile`:
 
 ```toml
-name = "my-app"
+name    = "hello-wren"
 version = "0.1.0"
-entry = "main"
+entry   = "main"
+modules = ["counter", "main"]
+```
 
-modules = ["util", "main"]
+Run again:
 
-# [dependencies]
+```sh
+$ hatch run
+count: 5
+```
+
+## Package it
+
+When you're ready to ship:
+
+```sh
+$ hatch build
+built 1241 bytes from . → ./hello-wren.hatch
+```
+
+The resulting `hello-wren.hatch` is a single file that carries the
+compiled bytecode for every module in the project. Hand it to
+someone else and they can run it without the source tree:
+
+```sh
+$ hatch run ./hello-wren.hatch
+count: 5
+```
+
+Curious what's inside?
+
+```sh
+$ hatch inspect hello-wren.hatch
+hatch: hello-wren 0.1.0
+  entry:   main
+  modules: counter, main
+  sections:
+       Wlbc        861 bytes  counter
+       Wlbc        412 bytes  main
+```
+
+## Depend on other hatches
+
+A `.hatch` file is a reusable library. Once you have a library
+hatch somewhere on disk, you can preload it before running your
+app:
+
+```sh
+hatch run --with ../some-lib/some-lib.hatch
+```
+
+Declarative dependencies in the `hatchfile` (and a `hatch tidy`
+resolver that fetches them from a registry) are next. The CLI
+already shows the planned surface:
+
+```sh
+$ hatch add some-lib 0.2
+hatch: not yet implemented: add some-lib@0.2 — resolver + registry
+       lookups are planned; see the README roadmap
+```
+
+## `hatchfile`
+
+Every Wren project has one. Today's fields:
+
+```toml
+name    = "hello-wren"
+version = "0.1.0"
+entry   = "main"                      # module to run
+
+modules = ["counter", "main"]         # install order; auto-filled if empty
+
+# [dependencies]                      # not yet wired
 # std  = "0.3"
 # http = { version = "0.1", features = ["tls"] }
 ```
-
-Every `hatch` verb reads from that file. The workflow is the
-same whether you're writing a one-file script, a multi-module
-library, or an application that pulls in published hatches.
 
 ## Commands today
 
@@ -100,6 +188,10 @@ library, or an application that pulls in published hatches.
 - `hatch run [TARGET] [--with PKG]` — build + run, or run a
   pre-built `.hatch`. `--with` preloads dependency hatches.
 - `hatch inspect PACKAGE` — print manifest + section listing.
+
+`add` / `remove` / `tidy` / `get` / `publish` are stubbed and
+print a roadmap message — the resolver and registry client are
+where they live.
 
 ## Dev setup
 
