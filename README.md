@@ -19,30 +19,42 @@ The ecosystem for the <a href="https://wren.io">Wren</a> scripting language, pow
 
 ---
 
-**Hatch** is what Wren developers reach for every day. It's the
-package format, the workflow tool, and the official library set
-that turn WrenLift from a runtime into a language you can ship
-with. If you write Wren, you work through Hatch:
+## Wren, without a host
+
+Standard Wren is **embedding-first**. You link `libwren` into a C
+or C++ application — a game, a level editor, a plugin host — and
+run scripts from inside it. The canonical Wren project looks like
+a chunk of C that loads a `.wren` file and calls into it. The
+host owns the binary; Wren owns the fragments the host chooses
+to expose.
+
+**Hatch flips that.** With Hatch + WrenLift, the Wren code is
+the program. You scaffold a project, you build it, you run it —
+no host, no FFI glue, no C++ bindings. A `.hatch` file is the
+thing you distribute, the way a `.jar` or `.pex` or `.exe` is. If
+you've been writing Wren by embedding it into someone else's
+application, Hatch is the permission to stop.
+
+## What Hatch gives you
 
 - **Package format.** A `.hatch` is a single, zstd-compressed,
   self-describing artifact that bundles compiled bytecode, a
-  manifest, resources, and (eventually) platform-native libraries.
-  One file per library, one file per application, reproducible
+  manifest, resources, and (soon) platform-native libraries. One
+  file per library, one file per application, reproducible
   between machines.
-- **Workflow.** `hatch init → hatch build → hatch run` is the full
-  local loop: scaffold a project, compile it, execute it. No
-  configuration beyond a `hatchfile` at the project root.
+- **Workflow.** `hatch init → hatch build → hatch run` is the
+  full local loop: scaffold a project, compile it, execute it.
+  No configuration beyond a `hatchfile` at the project root.
 - **Dependencies.** Libraries declare their peers in
-  `[dependencies]`; `hatch tidy` will resolve the graph, pin exact
-  versions in a `hatchfile.lock`, and cache the resolved artifacts.
-  Think `go mod` or `cargo` — the shape will be familiar.
+  `[dependencies]`; `hatch tidy` will resolve the graph, pin
+  exact versions in a `hatchfile.lock`, and cache the resolved
+  artifacts. Shape matches `go mod` / `cargo`.
 - **Registry.** `hatch publish` / `hatch install` will push and
-  fetch hatches from a shared index, with content hashes and (later)
-  signatures verified on download.
+  fetch hatches from a shared index, with content hashes and
+  (later) signatures verified on download.
 - **Standard library.** The `packages/` tree in this repo is the
   canonical source of the official hatches (`std`, `http`, `json`,
-  `test`, …) that every Wren workspace can lean on. They build,
-  version, and ship like any other hatch.
+  `test`, …) that every Wren workspace can lean on.
 
 ## Quickstart
 
@@ -52,10 +64,13 @@ cd my-app
 hatch run
 ```
 
-This works today. The rest of the `hatch` surface — `add`,
-`remove`, `tidy`, `get`, `publish` — is stubbed with a roadmap
-message so the planned ergonomics are visible while the resolver
-and registry client ship.
+That's a real standalone Wren program, running on WrenLift. No C
+project, no build system, no host harness.
+
+The rest of the `hatch` surface — `add`, `remove`, `tidy`, `get`,
+`publish` — is stubbed today with a roadmap message so the
+planned ergonomics are visible while the resolver and registry
+client ship.
 
 ## Workspace concept
 
@@ -74,10 +89,9 @@ modules = ["util", "main"]
 # http = { version = "0.1", features = ["tls"] }
 ```
 
-Every `hatch` verb reads from that file. Projects can be a single
-`main.wren`, a library with a dozen modules, or an application
-that depends on both local and published hatches — the workflow
-doesn't change.
+Every `hatch` verb reads from that file. The workflow is the
+same whether you're writing a one-file script, a multi-module
+library, or an application that pulls in published hatches.
 
 ## Commands today
 
@@ -96,8 +110,8 @@ fresh clone of this repo builds on its own:
 wren_lift = { git = "https://github.com/wrenlift/WrenLift.git", default-features = false, features = ["cranelift"] }
 ```
 
-Pin to a commit or tag for reproducible builds once WrenLift starts
-cutting releases.
+Pin to a commit or tag for reproducible builds once WrenLift
+starts cutting releases.
 
 ## License
 
