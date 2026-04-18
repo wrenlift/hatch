@@ -13,8 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 # Depends on the wrenlift library for the .hatch format + VM loader.
-# A path dep for now while both projects co-evolve locally; switch to
-# a git/crates.io dep once wrenlift publishes.
-wren_lift = { path = "../../", default-features = false, features = ["cranelift"] }
+# Git dep so this repo is self-contained — no sibling checkout
+# required. Pin to a commit or tag once we start cutting releases.
+wren_lift = { git = "https://github.com/wrenlift/WrenLift.git", default-features = false, features = ["cranelift"] }
 clap = { version = "4", features = ["derive"] }
 toml = "0.8"
