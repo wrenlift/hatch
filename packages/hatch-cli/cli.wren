@@ -141,6 +141,9 @@ class Cli {
     _about = null
     _version = null
     _args = []
+    _positionals = []
+    _longIndex = {}
+    _shortIndex = {}
     _subcommands = {}
   }
 
@@ -154,8 +157,16 @@ class Cli {
     return this
   }
 
+  // Store each arg once, plus build side-indexes so the parse path
+  // never has to scan `_args` from inside the loop. Iterating a
+  // list of class instances during hot execution tripped an
+  // open register-allocator quirk (see QUIRKS.md) — the indexes
+  // let us do constant-time lookups instead.
   arg(a) {
     _args.add(a)
+    if (a.isPositional) _positionals.add(a)
+    if (a.longFlag != null) _longIndex[a.longFlag] = a
+    if (a.shortFlag != null) _shortIndex[a.shortFlag] = a
     return this
   }
 
@@ -175,9 +186,15 @@ class Cli {
   // callers can inspect whatever was parsed before the failure.
   parse(argv) {
     var matches = Matches.new()
+    var argvCount = argv.count
 
     // --help / --version short-circuit before any other parsing.
-    for (t in argv) {
+    // Index-based scan avoids a `for..in` before the main parse
+    // loops — the same open iterator quirk that bit @hatch:test
+    // showed up here too when both patterns mixed.
+    var h = 0
+    while (h < argvCount) {
+      var t = argv[h]
       if (t == "--help" || t == "-h") {
         matches.error_ = renderHelp_()
         matches.helpRequested_ = true
@@ -188,22 +205,21 @@ class Cli {
         matches.versionRequested_ = true
         return matches
       }
+      h = h + 1
     }
 
     // Subcommand dispatch: if the first non-flag token matches a
     // registered subcommand name, hand the rest off to it.
-    var rootEnd = argv.count
+    var rootEnd = argvCount
     if (_subcommands.count > 0) {
       var i = 0
-      while (i < argv.count) {
+      while (i < argvCount) {
         var t = argv[i]
-        if (!t.startsWith("-") && _subcommands.containsKey(t)) {
+        if (t.count > 0 && t[0] != "-" && _subcommands.containsKey(t)) {
           rootEnd = i
           break
         }
-        // Skip the value that follows a value-taking flag so we
-        // don't mistake it for a subcommand name.
-        if (t.startsWith("-")) {
+        if (t.count > 0 && t[0] == "-") {
           if (consumesNext_(t)) i = i + 1
         }
         i = i + 1
@@ -214,9 +230,9 @@ class Cli {
     parseInto_(matches, rootArgv)
     if (matches.error_ != null) return matches
 
-    if (rootEnd < argv.count) {
+    if (rootEnd < argvCount) {
       var subName = argv[rootEnd]
-      var subArgv = argv[(rootEnd + 1)...argv.count]
+      var subArgv = argv[(rootEnd + 1)...argvCount]
       var subMatches = _subcommands[subName].parse(subArgv)
       matches.sub_ = [subName, subMatches]
     }
@@ -241,17 +257,9 @@ class Cli {
   }
 
   parseInto_(matches, argv) {
-    // Index-based collection of positional slots. `for..in` inside
-    // a method that runs multiple times in the same process hit an
-    // iterator-state quirk (see QUIRKS.md); explicit `while` loops
-    // sidestep it entirely.
-    var positional = []
-    var k = 0
-    while (k < _args.count) {
-      var arg = _args[k]
-      if (arg.isPositional) positional.add(arg)
-      k = k + 1
-    }
+    // `_positionals` was built at `arg()` time, so the parse loop
+    // can consume it directly instead of scanning `_args` here.
+    var positional = _positionals
     var positionalIdx = 0
 
     var i = 0
@@ -378,23 +386,11 @@ class Cli {
   }
 
   findLong_(name) {
-    var i = 0
-    while (i < _args.count) {
-      var a = _args[i]
-      if (a.longFlag == name) return a
-      i = i + 1
-    }
-    return null
+    return _longIndex.containsKey(name) ? _longIndex[name] : null
   }
 
   findShort_(name) {
-    var i = 0
-    while (i < _args.count) {
-      var a = _args[i]
-      if (a.shortFlag == name) return a
-      i = i + 1
-    }
-    return null
+    return _shortIndex.containsKey(name) ? _shortIndex[name] : null
   }
 
   // --- Help / version ---------------------------------------------------
