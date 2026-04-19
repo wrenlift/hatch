@@ -1,77 +1,88 @@
-// Self-spec for @hatch:assert. Runs via `hatch test` once that
-// lands; meanwhile, the smoke-test script in the package dir
-// concatenates this with `assert.wren` so it runs under `wlift`.
-//
-// Each failing assertion aborts the fiber. If execution reaches
-// the final `System.print`, every check passed.
+// Self-spec for @hatch:assert, driven by the @hatch:test runner.
 
 import "./assert" for Expect
+import "../hatch-test/test" for Test
 
-// -- Equality --------------------------------------------------------------
+Test.describe("equality") {
+  Test.it("toBe on primitives") {
+    Expect.that(1 + 1).toBe(2)
+    Expect.that("hello").toBe("hello")
+    Expect.that(null).toBe(null)
+    Expect.that(3).not.toBe(4)
+  }
+  Test.it("toEqual compares lists structurally") {
+    Expect.that([1, 2, 3]).toEqual([1, 2, 3])
+    Expect.that([1, 2]).not.toEqual([1, 2, 3])
+  }
+  Test.it("toEqual compares maps structurally") {
+    Expect.that({"a": 1}).toEqual({"a": 1})
+    Expect.that({"a": 1}).not.toEqual({"a": 2})
+  }
+  Test.it("toEqual recurses into nested lists") {
+    Expect.that([[1, 2], [3, 4]]).toEqual([[1, 2], [3, 4]])
+  }
+}
 
-Expect.that(1 + 1).toBe(2)
-Expect.that("hello").toBe("hello")
-Expect.that(null).toBe(null)
-Expect.that(3).not.toBe(4)
+Test.describe("nullability and truthiness") {
+  Test.it("toBeNull") {
+    Expect.that(null).toBeNull()
+    Expect.that(42).not.toBeNull()
+  }
+  Test.it("toBeTruthy treats only null + false as falsy") {
+    Expect.that(1).toBeTruthy()
+    Expect.that("anything").toBeTruthy()
+    Expect.that(0).toBeTruthy()
+    Expect.that("").toBeTruthy()
+  }
+  Test.it("toBeFalsy") {
+    Expect.that(false).toBeFalsy()
+    Expect.that(null).toBeFalsy()
+    Expect.that(0).not.toBeFalsy()
+  }
+}
 
-// -- Structural equality (lists + maps) ------------------------------------
+Test.describe("ordering") {
+  Test.it("toBeGreaterThan / OrEqual") {
+    Expect.that(5).toBeGreaterThan(3)
+    Expect.that(5).toBeGreaterThanOrEqual(5)
+    Expect.that(3).not.toBeGreaterThan(5)
+  }
+  Test.it("toBeLessThan / OrEqual") {
+    Expect.that(3).toBeLessThan(5)
+    Expect.that(3).toBeLessThanOrEqual(3)
+  }
+}
 
-Expect.that([1, 2, 3]).toEqual([1, 2, 3])
-Expect.that([1, 2]).not.toEqual([1, 2, 3])
-Expect.that({"a": 1}).toEqual({"a": 1})
-Expect.that({"a": 1}).not.toEqual({"a": 2})
-Expect.that([[1, 2], [3, 4]]).toEqual([[1, 2], [3, 4]])
+Test.describe("containment") {
+  Test.it("toContain on a list") {
+    Expect.that([1, 2, 3]).toContain(2)
+    Expect.that([1, 2, 3]).not.toContain(99)
+  }
+  Test.it("toContain on a string does substring search") {
+    Expect.that("hello world").toContain("world")
+  }
+  Test.it("toContain on a map checks keys") {
+    Expect.that({"a": 1, "b": 2}).toContain("a")
+    Expect.that({"a": 1}).not.toContain("nope")
+  }
+}
 
-// -- Nullability + truthiness ----------------------------------------------
+Test.describe("type checks") {
+  Test.it("toBeInstanceOf") {
+    Expect.that([1, 2]).toBeInstanceOf(List)
+    Expect.that("x").toBeInstanceOf(String)
+    Expect.that(42).not.toBeInstanceOf(String)
+  }
+}
 
-Expect.that(null).toBeNull()
-Expect.that(42).not.toBeNull()
-Expect.that(1).toBeTruthy()
-Expect.that("anything").toBeTruthy()
-Expect.that(0).toBeTruthy()            // Wren: only false/null are falsy
-Expect.that("").toBeTruthy()
-Expect.that(false).toBeFalsy()
-Expect.that(null).toBeFalsy()
-Expect.that(0).not.toBeFalsy()
+Test.describe("abort matchers") {
+  Test.it("toAbort catches Fiber.abort") {
+    Expect.that(Fn.new { Fiber.abort("nope") }).toAbort()
+    Expect.that(Fn.new { 42 }).not.toAbort()
+  }
+  Test.it("toAbortWith pins the abort message") {
+    Expect.that(Fn.new { Fiber.abort("specific") }).toAbortWith("specific")
+  }
+}
 
-// -- Ordering ---------------------------------------------------------------
-
-Expect.that(5).toBeGreaterThan(3)
-Expect.that(5).toBeGreaterThanOrEqual(5)
-Expect.that(3).toBeLessThan(5)
-Expect.that(3).toBeLessThanOrEqual(3)
-Expect.that(3).not.toBeGreaterThan(5)
-
-// -- Containment ------------------------------------------------------------
-
-Expect.that([1, 2, 3]).toContain(2)
-Expect.that([1, 2, 3]).not.toContain(99)
-Expect.that("hello world").toContain("world")
-Expect.that({"a": 1, "b": 2}).toContain("a")
-Expect.that({"a": 1}).not.toContain("nope")
-
-// -- Type checks -----------------------------------------------------------
-
-Expect.that([1, 2]).toBeInstanceOf(List)
-Expect.that("x").toBeInstanceOf(String)
-Expect.that(42).not.toBeInstanceOf(String)
-
-// -- Failure mode ----------------------------------------------------------
-//
-// Failing assertions abort the enclosing fiber; matcher internals are
-// covered by running assertions inside a fiber and inspecting the result.
-
-var failed = Fiber.new { Expect.that(1).toBe(2) }.try()
-Expect.that(failed).not.toBeNull()
-Expect.that(failed).toContain("toBe")
-
-var passed = Fiber.new { Expect.that(42).not.toBeNull() }.try()
-Expect.that(passed).toBeNull()
-
-// -- toAbort / toAbortWith --------------------------------------------------
-
-Expect.that(Fn.new { Fiber.abort("nope") }).toAbort()
-Expect.that(Fn.new { Fiber.abort("specific") }).toAbortWith("specific")
-Expect.that(Fn.new { 42 }).not.toAbort()
-
-System.print("@hatch:assert - all specs passed")
+Test.run()
