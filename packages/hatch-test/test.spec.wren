@@ -5,7 +5,7 @@
 // the final pass exercises the runner normally.
 
 import "./test" for Test
-import "../hatch-assert/assert" for Expect
+import "@hatch:assert" for Expect
 
 // --- Bootstrap: exercise registration + run() without feeding
 // them back into themselves --------------------------------------

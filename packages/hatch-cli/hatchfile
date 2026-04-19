@@ -2,3 +2,7 @@ name        = "@hatch:cli"
 version     = "0.1.0"
 entry       = "cli"
 description = "Clap-style argument parser for Wren command-line tools."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }

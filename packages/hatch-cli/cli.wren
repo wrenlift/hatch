@@ -1,16 +1,5 @@
 // @hatch:cli — clap-style argument parser.
 //
-// **Status: v0.1, work in progress.** The builder API and help
-// rendering compile + look right, but `parse()` hits a pair of
-// still-open runtime quirks when invoked from a non-trivial
-// caller (see wren_lift/QUIRKS.md — the consecutive `startsWith`
-// dispatch bug and the cross-method iterator-state corruption).
-// The code avoids the worst patterns (no `for..in` inside the
-// parse path, single dash-detection call), but a full spec run
-// still flakes under the current runtime. Shipping at 0.1 so the
-// API is visible; the internals firm up once the runtime quirks
-// are fixed.
-//
 // Usage:
 //
 //   import "@hatch:cli" for Cli, Arg
@@ -157,11 +146,8 @@ class Cli {
     return this
   }
 
-  // Store each arg once, plus build side-indexes so the parse path
-  // never has to scan `_args` from inside the loop. Iterating a
-  // list of class instances during hot execution tripped an
-  // open register-allocator quirk (see QUIRKS.md) — the indexes
-  // let us do constant-time lookups instead.
+  // Store each arg once plus build side-indexes for constant-time
+  // lookups during parsing.
   arg(a) {
     _args.add(a)
     if (a.isPositional) _positionals.add(a)
@@ -189,9 +175,6 @@ class Cli {
     var argvCount = argv.count
 
     // --help / --version short-circuit before any other parsing.
-    // Index-based scan avoids a `for..in` before the main parse
-    // loops — the same open iterator quirk that bit @hatch:test
-    // showed up here too when both patterns mixed.
     var h = 0
     while (h < argvCount) {
       var t = argv[h]
@@ -273,10 +256,6 @@ class Cli {
         continue
       }
 
-      // Single check disambiguates long vs short flags. Two separate
-      // `startsWith` calls triggered a still-open dispatch quirk
-      // where the second call's argument arrived as something other
-      // than a string.
       if (!passthrough && tok.count > 1 && tok[0] == "-") {
         if (tok.count >= 2 && tok[1] == "-") {
           i = handleLong_(matches, argv, i)

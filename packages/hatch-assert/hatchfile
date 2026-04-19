@@ -1,4 +1,7 @@
 name        = "@hatch:assert"
-version     = "0.1.0"
+version     = "0.2.0"
 entry       = "assert"
 description = "Fluent assertion primitives for Wren test specs."
+
+[spec-dependencies]
+"@hatch:test" = { path = "../hatch-test" }

@@ -1,7 +1,7 @@
 // Self-spec for @hatch:assert, driven by the @hatch:test runner.
 
 import "./assert" for Expect
-import "../hatch-test/test" for Test
+import "@hatch:test" for Test
 
 Test.describe("equality") {
   Test.it("toBe on primitives") {

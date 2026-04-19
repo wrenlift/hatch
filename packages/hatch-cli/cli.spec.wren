@@ -1,6 +1,6 @@
 import "./cli" for Cli, Arg
-import "../hatch-test/test" for Test
-import "../hatch-assert/assert" for Expect
+import "@hatch:test" for Test
+import "@hatch:assert" for Expect
 
 // Helper: build a small app we reuse across tests.
 var newApp = Fn.new {

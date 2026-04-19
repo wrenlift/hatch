@@ -1,6 +1,6 @@
 import "./fmt" for Fmt
-import "../hatch-test/test" for Test
-import "../hatch-assert/assert" for Expect
+import "@hatch:test" for Test
+import "@hatch:assert" for Expect
 
 // Colors write escape codes when enabled, pass through when not.
 // Most tests below run with `Fmt.enabled = false` so assertions
