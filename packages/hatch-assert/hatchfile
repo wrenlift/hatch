@@ -1,0 +1,4 @@
+name        = "@hatch:assert"
+version     = "0.1.0"
+entry       = "assert"
+description = "Fluent assertion primitives for Wren test specs."
