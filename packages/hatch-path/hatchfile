@@ -1,0 +1,8 @@
+name        = "@hatch:path"
+version     = "0.1.0"
+entry       = "path"
+description = "Filesystem path manipulation: join, split, parent, ext, normalize."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
