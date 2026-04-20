@@ -1,0 +1,8 @@
+name        = "@hatch:json"
+version     = "0.1.0"
+entry       = "json"
+description = "JSON parser and serializer. Pure Wren, no native deps."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
