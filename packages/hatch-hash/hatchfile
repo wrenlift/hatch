@@ -1,0 +1,8 @@
+name        = "@hatch:hash"
+version     = "0.1.0"
+entry       = "hash"
+description = "Hashes (MD5/SHA-1/SHA-256/SHA-512), HMAC, base64."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
