@@ -1,0 +1,8 @@
+name        = "@hatch:time"
+version     = "0.1.0"
+entry       = "time"
+description = "Clocks, sleep, and UTC timestamp formatting."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
