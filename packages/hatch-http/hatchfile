@@ -1,0 +1,12 @@
+name        = "@hatch:http"
+version     = "0.1.0"
+entry       = "http"
+description = "Synchronous HTTP/1.1 client with TLS."
+
+[dependencies]
+"@hatch:json" = { path = "../hatch-json" }
+"@hatch:url"  = { path = "../hatch-url" }
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
