@@ -1,0 +1,8 @@
+name        = "@hatch:events"
+version     = "0.1.0"
+entry       = "events"
+description = "Signals and Node-style EventEmitter for in-process pub/sub."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
