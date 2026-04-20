@@ -1,0 +1,8 @@
+name        = "@hatch:proc"
+version     = "0.1.0"
+entry       = "proc"
+description = "Subprocess spawn and capture with cwd / env / stdin / timeout."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
