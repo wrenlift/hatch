@@ -1,0 +1,8 @@
+name        = "@hatch:regex"
+version     = "0.1.0"
+entry       = "regex"
+description = "Compiled regular expressions with capture groups, replace, and split."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }

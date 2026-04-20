@@ -1,0 +1,8 @@
+name        = "@hatch:uuid"
+version     = "0.1.0"
+entry       = "uuid"
+description = "UUID v4/v5/v7 generation, parsing, and byte conversion."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
