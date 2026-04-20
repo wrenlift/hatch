@@ -6,18 +6,23 @@ import "@hatch:assert" for Expect
 
 Test.describe("Response") {
   Test.it("ok() true for 2xx") {
-    var r = Response.new_(200, {"content-type": "text/plain"}, "hi")
+    var r = Response.new_(200, {"content-type": ["text/plain"]}, "hi")
     Expect.that(r.ok).toBe(true)
   }
   Test.it("ok() false for 4xx / 5xx") {
     Expect.that(Response.new_(404, {}, "").ok).toBe(false)
     Expect.that(Response.new_(500, {}, "").ok).toBe(false)
   }
-  Test.it("header() lookups are case-insensitive") {
-    var r = Response.new_(200, {"content-type": "text/plain"}, "")
+  Test.it("header() returns first value, case-insensitive") {
+    var r = Response.new_(200, {"content-type": ["text/plain"]}, "")
     Expect.that(r.header("Content-Type")).toBe("text/plain")
     Expect.that(r.header("CONTENT-TYPE")).toBe("text/plain")
     Expect.that(r.header("missing")).toBe(null)
+  }
+  Test.it("headers() returns the full list, case-insensitive") {
+    var r = Response.new_(200, {"set-cookie": ["a=1", "b=2"]}, "")
+    Expect.that(r.headers("Set-Cookie")).toEqual(["a=1", "b=2"])
+    Expect.that(r.headers("Missing")).toEqual([])
   }
   Test.it("json parses the body") {
     var r = Response.new_(200, {}, "{\"a\":1}")
@@ -25,8 +30,37 @@ Test.describe("Response") {
   }
 }
 
-// --- Online: hits httpbin.org. Skipped if env var HATCH_OFFLINE
-// is set (lets CI run without network). ----------------------
+// --- Offline: header validation --------------------------------
+
+Test.describe("header validation") {
+  Test.it("invalid header name aborts with a clean message") {
+    var e = Fiber.new {
+      Http.get("https://example.com", {"headers": {"bad name": "x"}})
+    }.try()
+    Expect.that(e).toContain("invalid header name")
+    Expect.that(e).toContain("bad name")
+  }
+  Test.it("CRLF in header value aborts") {
+    var e = Fiber.new {
+      Http.get("https://example.com", {"headers": {"X-Bad": "x\r\ny"}})
+    }.try()
+    Expect.that(e).toContain("invalid header value")
+  }
+  Test.it("non-list, non-string value aborts") {
+    var e = Fiber.new {
+      Http.get("https://example.com", {"headers": {"X-N": 42}})
+    }.try()
+    Expect.that(e).toContain("string or list")
+  }
+  Test.it("body + json raises a usage error") {
+    var e = Fiber.new {
+      Http.post("https://example.com", {"body": "x", "json": {}})
+    }.try()
+    Expect.that(e).toContain("at most one")
+  }
+}
+
+// --- Online: hits httpbin.org. Skipped if HATCH_OFFLINE is set.
 
 import "os" for OS
 
@@ -52,10 +86,18 @@ if (online) {
       Expect.that(r.status).toBe(200)
       Expect.that(r.json["headers"]["X-Hatch"]).toBe("yes")
     }
+    Test.it("multi-value header comma-joins on the wire") {
+      var r = Http.get("https://httpbin.org/headers", {
+        "headers": {"Accept": ["application/json", "text/plain"]},
+        "timeout": 15
+      })
+      Expect.that(r.json["headers"]["Accept"])
+        .toBe("application/json, text/plain")
+    }
   }
 
-  Test.describe("POST json body") {
-    Test.it("serialises and echoes a JSON payload") {
+  Test.describe("POST bodies") {
+    Test.it("json body: serialises and echoes") {
       var r = Http.post("https://httpbin.org/post", {
         "json": {"name": "alice", "n": 3},
         "timeout": 15
@@ -65,21 +107,82 @@ if (online) {
       Expect.that(echoed["name"]).toBe("alice")
       Expect.that(echoed["n"]).toBe(3)
     }
-    Test.it("sets Content-Type: application/json automatically") {
+    Test.it("json body sets Content-Type automatically") {
       var r = Http.post("https://httpbin.org/post", {
         "json": {},
         "timeout": 15
       })
-      var got = r.json["headers"]["Content-Type"]
-      Expect.that(got).toContain("application/json")
+      Expect.that(r.json["headers"]["Content-Type"]).toContain("application/json")
+    }
+    Test.it("form body urlencodes and sets Content-Type") {
+      var r = Http.post("https://httpbin.org/post", {
+        "form": {"name": "alice", "age": "30"},
+        "timeout": 15
+      })
+      var form = r.json["form"]
+      Expect.that(form["name"]).toBe("alice")
+      Expect.that(form["age"]).toBe("30")
+      Expect.that(r.json["headers"]["Content-Type"])
+        .toContain("application/x-www-form-urlencoded")
+    }
+    Test.it("raw body passes through verbatim") {
+      var r = Http.post("https://httpbin.org/post", {
+        "body": "raw text!",
+        "headers": {"Content-Type": "text/plain"},
+        "timeout": 15
+      })
+      Expect.that(r.json["data"]).toContain("raw text!")
     }
   }
 
-  Test.describe("status codes") {
-    Test.it("exposes 404 without aborting") {
+  Test.describe("auth shortcuts") {
+    Test.it("bearer adds Authorization: Bearer") {
+      var r = Http.get("https://httpbin.org/bearer", {
+        "bearer": "abc123",
+        "timeout": 15
+      })
+      Expect.that(r.status).toBe(200)
+      Expect.that(r.json["token"]).toBe("abc123")
+    }
+    Test.it("basicAuth base64s user:pass") {
+      var r = Http.get("https://httpbin.org/basic-auth/alice/secret", {
+        "basicAuth": ["alice", "secret"],
+        "timeout": 15
+      })
+      Expect.that(r.status).toBe(200)
+      Expect.that(r.json["authenticated"]).toBe(true)
+    }
+  }
+
+  Test.describe("user-agent + accept") {
+    Test.it("userAgent overrides the default") {
+      var r = Http.get("https://httpbin.org/user-agent", {
+        "userAgent": "hatch-http-test/1.0",
+        "timeout": 15
+      })
+      Expect.that(r.json["user-agent"]).toBe("hatch-http-test/1.0")
+    }
+    Test.it("accept shortcut sets Accept header") {
+      var r = Http.get("https://httpbin.org/headers", {
+        "accept": "application/xml",
+        "timeout": 15
+      })
+      Expect.that(r.json["headers"]["Accept"]).toBe("application/xml")
+    }
+  }
+
+  Test.describe("response") {
+    Test.it("404 non-error: status exposed, ok false") {
       var r = Http.get("https://httpbin.org/status/404", {"timeout": 15})
       Expect.that(r.status).toBe(404)
       Expect.that(r.ok).toBe(false)
+    }
+    Test.it("multi-value response header preserves every value") {
+      var r = Http.get(
+        "https://httpbin.org/response-headers?X-Custom=one&X-Custom=two",
+        {"timeout": 15}
+      )
+      Expect.that(r.headers("X-Custom")).toEqual(["one", "two"])
     }
   }
 }
