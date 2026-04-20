@@ -162,6 +162,37 @@ Test.describe("encode: errors") {
     var e = Fiber.new { JSON.encode({1: "a"}) }.try()
     Expect.that(e).toContain("map keys must be strings")
   }
+  // Note: "unknown type without toJson" would abort cleanly in
+  // principle, but wren_lift currently propagates
+  // "does-not-implement" errors past `Fiber.try`. Re-enable this
+  // case once that's fixed.
+}
+
+class Greeting_ {
+  construct new(who) {
+    _who = who
+  }
+  toJson() { "hi, %(_who)" }
+}
+
+class Box_ {
+  construct new(x) {
+    _x = x
+  }
+  toJson() { {"boxed": _x} }
+}
+
+Test.describe("encode: toJson hook") {
+  Test.it("string-returning toJson becomes a JSON string") {
+    Expect.that(JSON.encode(Greeting_.new("world"))).toBe("\"hi, world\"")
+  }
+  Test.it("map-returning toJson becomes a JSON object") {
+    Expect.that(JSON.encode(Box_.new(42))).toBe("{\"boxed\":42}")
+  }
+  Test.it("nested custom values recurse through toJson") {
+    Expect.that(JSON.encode([Greeting_.new("a"), Greeting_.new("b")]))
+      .toBe("[\"hi, a\",\"hi, b\"]")
+  }
 }
 
 Test.describe("roundtrip") {

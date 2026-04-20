@@ -17,9 +17,27 @@
 //   array      List
 //   object     Map (string keys)
 //
+// Custom types: define `toJson()` on your class and it becomes
+// encodable. The method returns any JSON-encodable value —
+// typically a Map of fields. Nested custom objects work too; the
+// encoder recurses on the returned value.
+//
+//   class Point {
+//     construct new(x, y) {
+//       _x = x
+//       _y = y
+//     }
+//     toJson() { {"x": _x, "y": _y} }
+//   }
+//   JSON.encode(Point.new(1, 2))      // {"x":1,"y":2}
+//
 // Malformed input aborts the fiber with a message pointing at the
 // offending byte offset. Callers that want fallible parsing can
 // wrap the call in `Fiber.new { JSON.parse(text) }.try()`.
+//
+// (An attribute-driven `#json`-on-getters approach was prototyped
+// but runs into a separate dispatch quirk — see QUIRKS.md — and
+// will land once that's unblocked.)
 
 class JSON {
   static parse(text) {
@@ -333,7 +351,23 @@ class Encoder_ {
       writeMap_(out, value, indent, depth)
       return
     }
-    Fiber.abort("JSON.encode: cannot encode value of class %(value.type)")
+    // Custom type: try `toJson()` and recurse on its return value.
+    var cls = value.type
+    var probed = Fiber.new { value.toJson() }
+    var ret = probed.try()
+    if (probed.error == null) {
+      if (ret == value) {
+        Fiber.abort(
+          "JSON.encode: %(cls.name).toJson() returned itself"
+        )
+      }
+      write(out, ret, indent, depth)
+      return
+    }
+    Fiber.abort(
+      "JSON.encode: don't know how to encode %(cls.name) " +
+      "(define toJson() on the class)"
+    )
   }
 
   static writeNum_(out, n) {
