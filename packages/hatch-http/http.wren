@@ -45,6 +45,7 @@ import "http"        for HttpCore
 import "hash"        for HashCore
 import "@hatch:json" for JSON
 import "@hatch:url"  for Url
+import "@hatch:io"   for Reader
 
 class Response {
   construct new_(status, headers, body) {
@@ -106,6 +107,61 @@ class Response {
   }
 }
 
+// Streaming response: status + headers are known up front, body is
+// a `Reader` you drain at your own pace. Use for big downloads,
+// SSE feeds, chunked endpoints — anything where pulling the whole
+// body into memory is wrong.
+//
+//   var r = Http.stream("GET", "https://…/big-file")
+//   r.status               // 200
+//   r.header("content-type")
+//   var line = r.body.readLine
+//   while (line != null) {
+//     // ...
+//     line = r.body.readLine
+//   }
+//   r.close                // frees the underlying connection; idempotent
+class StreamingResponse {
+  construct new_(id, status, headers) {
+    _id      = id
+    _status  = status
+    _headers = headers
+    _closed  = false
+    var sid = id
+    _body = Reader.withFn {|max| HttpCore.streamReadBytes(sid, max) }
+    _body.setCloseFn_ { HttpCore.streamClose(sid) }
+  }
+
+  status    { _status }
+  headerMap { _headers }
+  body      { _body }
+
+  ok { _status >= 200 && _status < 300 }
+
+  header(name) {
+    var key = Response.lower_(name)
+    if (!_headers.containsKey(key)) return null
+    var list = _headers[key]
+    return list.count == 0 ? null : list[0]
+  }
+
+  headers(name) {
+    var key = Response.lower_(name)
+    return _headers.containsKey(key) ? _headers[key] : []
+  }
+
+  // Release the underlying connection if the caller bails before
+  // EOF. Safe to call twice; draining the reader naturally will
+  // also free the stream on the runtime side.
+  close {
+    if (_closed) return
+    _closed = true
+    _body.close
+  }
+
+  toString { "StreamingResponse(%(_status))" }
+}
+
 class Http {
   // --- Verb helpers -----------------------------------------------------
 
@@ -118,62 +174,85 @@ class Http {
   static delete(url, options)   { request("DELETE", url, options) }
   static head(url)              { request("HEAD",   url, {}) }
 
-  // --- Generic request --------------------------------------------------
+  // --- Generic request (buffered body) ---------------------------------
 
   static request(method, url, options) {
-    if (!(method is String)) Fiber.abort("Http.request: method must be a string")
-    if (!(url is String)) Fiber.abort("Http.request: url must be a string")
+    var prep = Http.prepare_(method, url, options, "Http.request")
+    var raw = HttpCore.request(prep[0], prep[1], prep[2], prep[3], prep[4])
+    return Response.new_(raw["status"], raw["headers"], raw["body"])
+  }
+
+  // --- Streaming request (lazy body) -----------------------------------
+  //
+  // Same option shape as `request`. Returns a `StreamingResponse`
+  // whose `.body` is an `@hatch:io` Reader — callers drain it line
+  // by line, chunk by chunk, or pipe it into a file / process.
+  //
+  // Close the response (`sr.close`) if you bail before EOF;
+  // otherwise reaching EOF frees the connection automatically.
+
+  static stream(method, url)          { stream(method, url, {}) }
+  static stream(method, url, options) {
+    var prep = Http.prepare_(method, url, options, "Http.stream")
+    var raw = HttpCore.stream(prep[0], prep[1], prep[2], prep[3], prep[4])
+    return StreamingResponse.new_(raw["id"], raw["status"], raw["headers"])
+  }
+
+  // Convenience: `Http.getStream(url)` / `Http.getStream(url, opts)`.
+  static getStream(url)          { stream("GET", url, {}) }
+  static getStream(url, options) { stream("GET", url, options) }
+
+  // Internal — normalise (method, url, options) into the tuple the
+  // runtime layer expects.  Returns [method, finalUrl, headers,
+  // body, timeout].  The same logic used to be inlined in
+  // `request`; factored out so `stream` can share it without
+  // copy-paste drift.
+  static prepare_(method, url, options, label) {
+    if (!(method is String)) Fiber.abort("%(label): method must be a string")
+    if (!(url is String))    Fiber.abort("%(label): url must be a string")
     if (options != null && !(options is Map)) {
-      Fiber.abort("Http.request: options must be a Map")
+      Fiber.abort("%(label): options must be a Map")
     }
     if (options == null) options = {}
 
-    // --- URL with query string ----------------------------------------
     var finalUrl = url
     if (options.containsKey("query")) {
       var q = options["query"]
-      if (!(q is Map)) Fiber.abort("Http.request: query must be a Map")
+      if (!(q is Map)) Fiber.abort("%(label): query must be a Map")
       var encoded = Url.encodeQuery(q)
       if (encoded != "") {
         finalUrl = url.contains("?") ? url + "&" + encoded : url + "?" + encoded
       }
     }
 
-    // --- Headers (seeded from caller's, then conveniences layered on) ---
     var headers = {}
     if (options.containsKey("headers")) {
       var h = options["headers"]
-      if (!(h is Map)) Fiber.abort("Http.request: headers must be a Map")
+      if (!(h is Map)) Fiber.abort("%(label): headers must be a Map")
       for (entry in h) headers[entry.key] = entry.value
     }
 
-    if (options.containsKey("userAgent")) {
-      headers["User-Agent"] = options["userAgent"]
-    }
-    if (options.containsKey("accept")) {
-      headers["Accept"] = options["accept"]
-    }
+    if (options.containsKey("userAgent")) headers["User-Agent"] = options["userAgent"]
+    if (options.containsKey("accept"))    headers["Accept"]     = options["accept"]
     if (options.containsKey("bearer")) {
       headers["Authorization"] = "Bearer " + options["bearer"]
     }
     if (options.containsKey("basicAuth")) {
       var auth = options["basicAuth"]
       if (!(auth is List) || auth.count != 2) {
-        Fiber.abort("Http.request: basicAuth must be [username, password]")
+        Fiber.abort("%(label): basicAuth must be [username, password]")
       }
       var pair = auth[0] + ":" + auth[1]
       headers["Authorization"] = "Basic " + HashCore.base64Encode(pair)
     }
 
-    // --- Body (json / form / raw) -------------------------------------
     var body = null
-
     var payloads = 0
     if (options.containsKey("json")) payloads = payloads + 1
     if (options.containsKey("form")) payloads = payloads + 1
     if (options.containsKey("body")) payloads = payloads + 1
     if (payloads > 1) {
-      Fiber.abort("Http.request: use at most one of body / json / form")
+      Fiber.abort("%(label): use at most one of body / json / form")
     }
 
     if (options.containsKey("json")) {
@@ -181,19 +260,17 @@ class Http {
       Http.setIfAbsent_(headers, "Content-Type", "application/json")
     } else if (options.containsKey("form")) {
       var f = options["form"]
-      if (!(f is Map)) Fiber.abort("Http.request: form must be a Map")
+      if (!(f is Map)) Fiber.abort("%(label): form must be a Map")
       body = Url.encodeQuery(f)
       Http.setIfAbsent_(headers, "Content-Type", "application/x-www-form-urlencoded")
     } else if (options.containsKey("body")) {
       var raw = options["body"]
-      if (!(raw is String)) Fiber.abort("Http.request: body must be a string")
+      if (!(raw is String)) Fiber.abort("%(label): body must be a string")
       body = raw
     }
 
     var timeout = options.containsKey("timeout") ? options["timeout"] : null
-
-    var raw = HttpCore.request(method, finalUrl, headers, body, timeout)
-    return Response.new_(raw["status"], raw["headers"], raw["body"])
+    return [method, finalUrl, headers, body, timeout]
   }
 
   // Case-insensitive "set only if not already present".  Lets the

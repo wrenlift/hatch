@@ -1,6 +1,7 @@
 import "./http"        for Http, Response
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
+import "@hatch:json"   for JSON
 
 // --- Offline: Response shape ----------------------------------
 
@@ -185,6 +186,41 @@ if (online) {
       Expect.that(r.headers("X-Custom")).toEqual(["one", "two"])
     }
   }
+
+  Test.describe("streaming") {
+    Test.it("stream exposes status + headers immediately; body reads lazily") {
+      var sr = Http.getStream("https://httpbin.org/get", {"timeout": 15})
+      Expect.that(sr.status).toBe(200)
+      // Headers are populated before we touch the body.
+      Expect.that(sr.header("content-type")).toContain("application/json")
+      // Drain the body via the Reader. Full payload should
+      // round-trip back into a parseable JSON string.
+      var body = sr.body.readAll.toString
+      var parsed = JSON.parse(body)
+      Expect.that(parsed["url"]).toContain("/get")
+    }
+    Test.it("close before EOF is safe") {
+      var sr = Http.getStream("https://httpbin.org/get", {"timeout": 15})
+      Expect.that(sr.status).toBe(200)
+      // Read a tiny slice and close without draining.
+      var chunk = sr.body.read(4)
+      Expect.that(chunk.count > 0).toBe(true)
+      sr.close
+      sr.close   // idempotent
+    }
+    Test.it("chunked SSE-ish endpoint yields lines as they arrive") {
+      // httpbin /stream/N sends N JSON objects, one per line.
+      var sr = Http.getStream("https://httpbin.org/stream/3", {"timeout": 15})
+      var lines = []
+      var line = sr.body.readLine
+      while (line != null) {
+        lines.add(line)
+        line = sr.body.readLine
+      }
+      Expect.that(lines.count).toBe(3)
+    }
+  }
+
 }
 
 Test.run()
