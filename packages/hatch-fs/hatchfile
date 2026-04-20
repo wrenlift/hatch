@@ -1,0 +1,9 @@
+name        = "@hatch:fs"
+version     = "0.1.0"
+entry       = "fs"
+description = "Filesystem I/O — read, write, stat, list, walk."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:path"   = { path = "../hatch-path" }
