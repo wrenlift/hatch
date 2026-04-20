@@ -32,11 +32,11 @@ Expect.that(Test.cases_[2][0]).toBe("inner")
 // restored the previous group
 Expect.that(Test.cases_[3][0]).toBe("outer")
 
-// Non-Fn arguments abort cleanly. The abort happens directly from
-// `Test.it` — nesting it inside a `describe` body triggers a known
-// runtime bug (see QUIRKS.md: "fiber abort through an intermediate
-// closure call corrupts caller state"), so exercise it bare.
-var aborted = Fiber.new { Test.it("x", "not a fn") }.try()
+// Non-Fn arguments abort cleanly, even when the abort propagates
+// back through a `describe` body.
+var aborted = Fiber.new {
+  Test.describe("outer") { Test.it("x", "not a fn") }
+}.try()
 Expect.that(aborted).not.toBeNull()
 
 // run() on an all-passing set succeeds and clears state.

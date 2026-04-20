@@ -256,8 +256,8 @@ class Cli {
         continue
       }
 
-      if (!passthrough && tok.count > 1 && tok[0] == "-") {
-        if (tok.count >= 2 && tok[1] == "-") {
+      if (!passthrough && tok.startsWith("-") && tok.count > 1) {
+        if (tok.startsWith("--")) {
           i = handleLong_(matches, argv, i)
         } else {
           i = handleShort_(matches, argv, i)
