@@ -18,6 +18,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-19T01:03:42.125747+00:00"
 updated_at = "2026-04-19T01:03:42.125747+00:00"
 
+[packages."@hatch:cli-0.1.0"]
+name = "@hatch:cli"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Clap-style argument parser for Wren command-line tools."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T16:29:03.289781+00:00"
+updated_at = "2026-04-20T16:29:03.289781+00:00"
+
 [packages."@hatch:fmt-0.1.0"]
 name = "@hatch:fmt"
 version = "0.1.0"
@@ -26,6 +35,87 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-19T01:21:37.977631+00:00"
 updated_at = "2026-04-19T01:21:37.977631+00:00"
 
+[packages."@hatch:fs-0.1.0"]
+name = "@hatch:fs"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Filesystem I/O \u2014 read, write, stat, list, walk."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T16:29:03.569318+00:00"
+updated_at = "2026-04-20T16:29:03.569318+00:00"
+
+[packages."@hatch:hash-0.1.0"]
+name = "@hatch:hash"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Hashes (MD5/SHA-1/SHA-256/SHA-512), HMAC, base64."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T16:29:03.749537+00:00"
+updated_at = "2026-04-20T16:29:03.749537+00:00"
+
+[packages."@hatch:http-0.1.0"]
+name = "@hatch:http"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Synchronous HTTP/1.1 client with TLS."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T16:29:03.93575+00:00"
+updated_at = "2026-04-20T16:29:03.93575+00:00"
+
+[packages."@hatch:json-0.1.0"]
+name = "@hatch:json"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "JSON parser and serializer. Pure Wren, no native deps."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T16:29:04.119101+00:00"
+updated_at = "2026-04-20T16:29:04.119101+00:00"
+
+[packages."@hatch:log-0.1.0"]
+name = "@hatch:log"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Level-filtered structured logger with ANSI colors."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T16:29:04.47264+00:00"
+updated_at = "2026-04-20T16:29:04.47264+00:00"
+
+[packages."@hatch:os-0.1.0"]
+name = "@hatch:os"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Process-level primitives: platform, env vars, argv, exit, tty."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T16:29:04.654436+00:00"
+updated_at = "2026-04-20T16:29:04.654436+00:00"
+
+[packages."@hatch:path-0.1.0"]
+name = "@hatch:path"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Filesystem path manipulation: join, split, parent, ext, normalize."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T16:29:04.839683+00:00"
+updated_at = "2026-04-20T16:29:04.839683+00:00"
+
+[packages."@hatch:proc-0.1.0"]
+name = "@hatch:proc"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Subprocess spawn and capture with cwd / env / stdin / timeout."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T16:29:05.321799+00:00"
+updated_at = "2026-04-20T16:29:05.321799+00:00"
+
+[packages."@hatch:regex-0.1.0"]
+name = "@hatch:regex"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Compiled regular expressions with capture groups, replace, and split."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T16:27:05.125073+00:00"
+updated_at = "2026-04-20T16:27:05.125073+00:00"
+
 [packages."@hatch:test-0.1.0"]
 name = "@hatch:test"
 version = "0.1.0"
@@ -33,3 +123,30 @@ git = "https://github.com/wrenlift/hatch.git"
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-19T01:14:29.494179+00:00"
 updated_at = "2026-04-19T01:14:29.494179+00:00"
+
+[packages."@hatch:time-0.1.0"]
+name = "@hatch:time"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Clocks, sleep, and UTC timestamp formatting."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T16:29:05.631148+00:00"
+updated_at = "2026-04-20T16:29:05.631148+00:00"
+
+[packages."@hatch:url-0.1.0"]
+name = "@hatch:url"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "URL parser, builder, and percent-encoder."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T16:29:05.816411+00:00"
+updated_at = "2026-04-20T16:29:05.816411+00:00"
+
+[packages."@hatch:uuid-0.1.0"]
+name = "@hatch:uuid"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "UUID v4/v5/v7 generation, parsing, and byte conversion."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T16:27:14.724314+00:00"
+updated_at = "2026-04-20T16:27:14.724314+00:00"
