@@ -1,0 +1,11 @@
+name        = "@hatch:log"
+version     = "0.1.0"
+entry       = "log"
+description = "Level-filtered structured logger with ANSI colors."
+
+[dependencies]
+"@hatch:fmt" = { path = "../hatch-fmt" }
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
