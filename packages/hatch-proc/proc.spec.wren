@@ -1,4 +1,5 @@
 import "./proc"        for Proc, Process, Pipeline, Result
+import "@hatch:io"     for Buffer
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -200,6 +201,54 @@ Test.describe("validation") {
       Proc.run(["cat"], {"stdinFrom": "not a process"})
     }.try()
     Expect.that(e).toContain("must be a Process")
+  }
+}
+
+// --- Streaming (Reader / Writer via @hatch:io) ----------------
+
+Test.describe("streaming stdout") {
+  Test.it("stdoutReader yields lines as they're produced") {
+    var p = Proc.run(["printf", "a\nb\nc\n"])
+    var r = p.stdoutReader
+    var lines = []
+    var line = r.readLine
+    while (line != null) {
+      lines.add(line)
+      line = r.readLine
+    }
+    p.wait
+    Expect.that(lines.count).toBe(3)
+    Expect.that(lines[0]).toBe("a")
+    Expect.that(lines[1]).toBe("b")
+    Expect.that(lines[2]).toBe("c")
+  }
+  Test.it("streamed bytes still show up in the final Result") {
+    var p = Proc.run(["printf", "hello world"])
+    var r = p.stdoutReader
+    var buf = r.readAll
+    Expect.that(buf.toString).toBe("hello world")
+    var res = p.wait
+    Expect.that(res.stdout).toBe("hello world")
+  }
+  Test.it("stderrReader drains stderr") {
+    var p = Proc.run(["sh", "-c", "echo boom >&2"])
+    var r = p.stderrReader
+    var buf = r.readAll
+    p.wait
+    Expect.that(buf.toString).toContain("boom")
+  }
+}
+
+Test.describe("streaming stdin") {
+  Test.it("stdinWriter feeds bytes into a live process") {
+    var p = Proc.run(["cat"])
+    var w = p.stdinWriter
+    w.write("hello")
+    w.write(" ")
+    w.write(Buffer.fromBytes([0x77, 0x6f, 0x72, 0x6c, 0x64]))  // "world"
+    w.close
+    var r = p.wait
+    Expect.that(r.stdout).toBe("hello world")
   }
 }
 

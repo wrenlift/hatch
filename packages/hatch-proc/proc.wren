@@ -50,7 +50,8 @@
 //     return p.tryWait
 //   }
 
-import "proc" for ProcCore
+import "proc"     for ProcCore
+import "@hatch:io" for Reader, Writer
 
 class Result {
   construct new_(code, stdout, stderr, timedOut) {
@@ -120,6 +121,50 @@ class Process {
   }
 
   closeStdin { ProcCore.closeStdin(_id) }
+
+  // --- Streaming (via @hatch:io) ---------------------------------------
+
+  // A `Reader` that pulls stdout bytes as they arrive. Use for
+  // long-running processes whose output you want to consume
+  // incrementally (line by line, chunk by chunk).
+  //
+  //   var p = Proc.run(["tail", "-f", "/var/log/app.log"])
+  //   var r = p.stdoutReader
+  //   var line = r.readLine
+  //   while (line != null) {
+  //     System.print(line)
+  //     line = r.readLine
+  //   }
+  //
+  // Calling `wait` on the process while a reader is active is
+  // safe — the remaining bytes will be drained and the final
+  // `Result.stdout` reflects everything that passed through.
+  stdoutReader {
+    var pid = _id
+    return Reader.withFn {|max| ProcCore.readStdoutBytes(pid, max) }
+  }
+
+  stderrReader {
+    var pid = _id
+    return Reader.withFn {|max| ProcCore.readStderrBytes(pid, max) }
+  }
+
+  // A `Writer` that feeds stdin. Accepts Buffer / String / List<Num>.
+  // `close` (or `flush` if that's all you want) sends EOF via
+  // `closeStdin`.
+  //
+  //   var p = Proc.run(["cat"])
+  //   var w = p.stdinWriter
+  //   w.write("hello\n")
+  //   w.write(Buffer.fromBytes([0xC3, 0xA9]))
+  //   w.close
+  //   System.print(p.wait.stdout)
+  stdinWriter {
+    var pid = _id
+    var w = Writer.withFn {|bytes| ProcCore.writeStdinBytes(pid, bytes) }
+    w.setCloseFn_ { ProcCore.closeStdin(pid) }
+    return w
+  }
 
   toString { "Process(id=%(_id))" }
 }
