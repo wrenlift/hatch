@@ -1,0 +1,8 @@
+name        = "@hatch:io"
+version     = "0.1.0"
+entry       = "io"
+description = "Byte buffers plus Reader / Writer streams — in-memory and adaptor-ready."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
