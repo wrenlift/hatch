@@ -1,0 +1,8 @@
+name        = "@hatch:os"
+version     = "0.1.0"
+entry       = "os"
+description = "Process-level primitives: platform, env vars, argv, exit, tty."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
