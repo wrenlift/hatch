@@ -1,0 +1,10 @@
+name        = "@hatch:buffers"
+version     = "0.1.0"
+entry       = "buffers"
+description = "Spec coverage for the built-in ByteArray / Float32Array / Float64Array types."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:crypto" = { path = "../hatch-crypto" }
+"@hatch:zip"    = { path = "../hatch-zip" }

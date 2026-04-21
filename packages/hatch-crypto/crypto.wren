@@ -67,17 +67,21 @@ class Aes {
   static decrypt(key, nonce, ciphertext, aad) {
     validateKey_(key, "Aes.decrypt")
     validateNonce_(nonce, "Aes.decrypt")
-    if (!(ciphertext is List)) Fiber.abort("Aes.decrypt: ciphertext must be a list of bytes")
+    if (!((ciphertext is List) || (ciphertext is ByteArray))) {
+      Fiber.abort("Aes.decrypt: ciphertext must be a list of bytes")
+    }
     return CryptoCore.aesGcmDecrypt(key, nonce, ciphertext, aad)
   }
 
   static validateKey_(k, label) {
-    if (!(k is List) || k.count != 32) {
+    // Accept either a List<Num> or a ByteArray — both expose
+    // .count and present as a byte-shaped payload to the runtime.
+    if (!((k is List) || (k is ByteArray)) || k.count != 32) {
       Fiber.abort("%(label): key must be a 32-byte list")
     }
   }
   static validateNonce_(n, label) {
-    if (!(n is List) || n.count != 12) {
+    if (!((n is List) || (n is ByteArray)) || n.count != 12) {
       Fiber.abort("%(label): nonce must be a 12-byte list")
     }
   }
@@ -93,7 +97,7 @@ class Ed25519 {
   // you're persisting only the secret and need the public on
   // demand.
   static publicFromSecret(secret) {
-    if (!(secret is List) || secret.count != 32) {
+    if (!((secret is List) || (secret is ByteArray)) || secret.count != 32) {
       Fiber.abort("Ed25519.publicFromSecret: secret must be a 32-byte list")
     }
     return CryptoCore.ed25519PublicFromSecret(secret)
@@ -103,7 +107,7 @@ class Ed25519 {
   // signature as List<Num>. Same message + same secret always
   // produces the same signature (Ed25519 is deterministic).
   static sign(secret, message) {
-    if (!(secret is List) || secret.count != 32) {
+    if (!((secret is List) || (secret is ByteArray)) || secret.count != 32) {
       Fiber.abort("Ed25519.sign: secret must be a 32-byte list")
     }
     return CryptoCore.ed25519Sign(secret, message)
@@ -115,8 +119,12 @@ class Ed25519 {
   // `false`, not a throw, so auth flows don't need error handling
   // around a simple "is this valid" check.
   static verify(public, message, signature) {
-    if (!(public is List)) Fiber.abort("Ed25519.verify: public must be a list")
-    if (!(signature is List)) Fiber.abort("Ed25519.verify: signature must be a list")
+    if (!((public is List) || (public is ByteArray))) {
+      Fiber.abort("Ed25519.verify: public must be a list")
+    }
+    if (!((signature is List) || (signature is ByteArray))) {
+      Fiber.abort("Ed25519.verify: signature must be a list")
+    }
     if (public.count != 32 || signature.count != 64) return false
     return CryptoCore.ed25519Verify(public, message, signature)
   }

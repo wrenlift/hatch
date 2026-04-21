@@ -88,6 +88,8 @@ class Zip {
   }
 
   static validateBytes_(b, label) {
-    if (!(b is List)) Fiber.abort("%(label): archive must be a list of bytes")
+    if (!((b is List) || (b is ByteArray))) {
+      Fiber.abort("%(label): archive must be a list of bytes")
+    }
   }
 }

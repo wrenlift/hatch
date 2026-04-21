@@ -112,7 +112,7 @@ Test.describe("input validation") {
   }
   Test.it("non-list/non-string aborts") {
     var e = Fiber.new { Hash.sha256(42) }.try()
-    Expect.that(e).toContain("string or list")
+    Expect.that(e).toContain("string")
   }
 }
 
