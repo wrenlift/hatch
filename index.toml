@@ -27,6 +27,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:03.289781+00:00"
 updated_at = "2026-04-20T16:29:03.289781+00:00"
 
+[packages."@hatch:csv-0.1.0"]
+name = "@hatch:csv"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "RFC 4180 CSV parser + serializer. Handles quoting, embedded newlines, header rows."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-21T17:18:52.958698+00:00"
+updated_at = "2026-04-21T17:18:52.958698+00:00"
+
 [packages."@hatch:events-0.2.0"]
 name = "@hatch:events"
 version = "0.2.0"
@@ -179,6 +188,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:05.321799+00:00"
 updated_at = "2026-04-20T16:29:05.321799+00:00"
 
+[packages."@hatch:random-0.1.0"]
+name = "@hatch:random"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Random numbers, sampling, shuffle \u2014 one-shot statics + seedable streams."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-21T17:19:00.691723+00:00"
+updated_at = "2026-04-21T17:19:00.691723+00:00"
+
 [packages."@hatch:regex-0.1.0"]
 name = "@hatch:regex"
 version = "0.1.0"
@@ -187,6 +205,15 @@ description = "Compiled regular expressions with capture groups, replace, and sp
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:27:05.125073+00:00"
 updated_at = "2026-04-20T16:27:05.125073+00:00"
+
+[packages."@hatch:sqlite-0.1.0"]
+name = "@hatch:sqlite"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch"
+description = "Embedded SQLite \u2014 first hatch package delivered as a dylib plugin."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-21T16:45:36.535754+00:00"
+updated_at = "2026-04-21T16:45:36.535754+00:00"
 
 [packages."@hatch:test-0.1.0"]
 name = "@hatch:test"
