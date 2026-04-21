@@ -1,0 +1,4 @@
+# Supabase CLI cache / state. Version-pinning etc. — reproducible
+# from the user's machine, shouldn't live in git.
+.temp/
+.branches/
