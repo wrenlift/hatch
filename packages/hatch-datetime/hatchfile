@@ -1,0 +1,11 @@
+name        = "@hatch:datetime"
+version     = "0.1.0"
+entry       = "datetime"
+description = "Timezone-aware DateTime value type, Duration arithmetic, RFC 3339 parse + format."
+
+[dependencies]
+"@hatch:time" = { path = "../hatch-time" }
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
