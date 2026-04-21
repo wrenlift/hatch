@@ -5,6 +5,12 @@ Replaces the direct PostgREST `/rest/v1/packages` call that stopped
 working when Supabase deprecated the legacy HS256 `JWT Secret` +
 service_role key flow.
 
+> **All `supabase …` commands below must be run from the `hatch/`
+> directory** (the one containing this `supabase/` subdirectory).
+> The Supabase CLI locates its config via `./supabase/config.toml`
+> relative to `pwd` — from the WrenLift repo root it won't find
+> anything and will warn `no such file or directory`.
+
 ## Endpoints
 
 | path | method | purpose |
@@ -22,8 +28,9 @@ integration — just a string CI and the function agree on.
    (or whichever method your platform uses).
 
 2. **Link this directory to your Supabase project.** From the
-   repo root:
+   `hatch/` directory (the one with `supabase/` as a child):
    ```sh
+   cd /path/to/WrenLift/hatch   # critical — supabase CLI reads ./supabase/config.toml
    supabase login
    supabase link --project-ref <project-ref>
    ```
@@ -37,7 +44,7 @@ integration — just a string CI and the function agree on.
    You'll paste this value in two places next. Keep it somewhere
    safe — you can always rotate by repeating this step.
 
-4. **Register the secret with the function.** From the repo root:
+4. **Register the secret with the function.** Still in `hatch/`:
    ```sh
    supabase secrets set HATCH_BOT_SECRET=<the-hex-string>
    ```
@@ -51,7 +58,7 @@ integration — just a string CI and the function agree on.
      Note the trailing `/publish` — the CLI POSTs to this URL
      verbatim, it doesn't append any path of its own.
 
-6. **Deploy the function:**
+6. **Deploy the function** (still in `hatch/`):
    ```sh
    supabase functions deploy hatch-bot
    ```
