@@ -240,13 +240,22 @@ jobs:
 
       - name: Hatch publish
         env:
-          HATCH_TOKEN: ${{ secrets.HATCH_TOKEN }}
+          # hatch-bot is a Supabase Edge Function (see
+          # `supabase/functions/hatch-bot/`) that owns the write
+          # path against the `packages` table. The CLI detects
+          # HATCH_BOT_URL and POSTs the PackageRecord there with
+          # HATCH_BOT_SECRET as a bearer. Moves us off the
+          # deprecated PostgREST + legacy-JWT flow that CI can't
+          # authenticate against under Supabase's new key model.
+          HATCH_BOT_URL: ${{ vars.HATCH_BOT_URL }}
+          HATCH_BOT_SECRET: ${{ secrets.HATCH_BOT_SECRET }}
         run: |
           set -eu
-          # GitHub masks `secrets.*` in logs; passing it as an arg
-          # is safe and bypasses the `--token -` stdin convention
-          # which older hatch CLIs (<= 0.1.x) don't yet support.
-          hatch login --token "$HATCH_TOKEN"
+          # `hatch login --token` still stores the bearer in
+          # ~/.hatch/credentials; publish reads it back. Value is
+          # the shared secret, not a JWT, but the transport is
+          # the same.
+          hatch login --token "$HATCH_BOT_SECRET"
           hatch publish -C "packages/${{ needs.resolve.outputs.package }}"
 
       - name: Attach dylibs to a versioned release

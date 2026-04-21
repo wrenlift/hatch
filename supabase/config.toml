@@ -1,0 +1,16 @@
+# Supabase CLI config for the hatch project.
+#
+# `project_id` ties this directory to a specific Supabase project.
+# Fill it in with the project ref you can find in your Supabase
+# dashboard URL (`https://supabase.com/dashboard/project/<ref>`)
+# or via `supabase projects list`. Leaving it blank prompts the
+# CLI to link interactively on first `supabase link`.
+
+project_id = ""
+
+[functions.hatch-bot]
+# No JWT verification — the function owns its own auth via the
+# HATCH_BOT_SECRET env var. With verify_jwt=true the gateway
+# requires a valid Supabase-minted JWT before forwarding, which
+# is exactly what we moved away from.
+verify_jwt = false
