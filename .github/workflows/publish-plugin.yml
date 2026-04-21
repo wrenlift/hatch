@@ -243,7 +243,10 @@ jobs:
           HATCH_TOKEN: ${{ secrets.HATCH_TOKEN }}
         run: |
           set -eu
-          echo "$HATCH_TOKEN" | hatch login --token -
+          # GitHub masks `secrets.*` in logs; passing it as an arg
+          # is safe and bypasses the `--token -` stdin convention
+          # which older hatch CLIs (<= 0.1.x) don't yet support.
+          hatch login --token "$HATCH_TOKEN"
           hatch publish -C "packages/${{ needs.resolve.outputs.package }}"
 
       - name: Attach dylibs to a versioned release
