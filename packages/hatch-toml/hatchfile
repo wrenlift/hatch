@@ -1,0 +1,8 @@
+name        = "@hatch:toml"
+version     = "0.1.0"
+entry       = "toml"
+description = "TOML parser and serializer, backed by the Rust `toml` crate."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
