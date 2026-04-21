@@ -27,6 +27,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:03.289781+00:00"
 updated_at = "2026-04-20T16:29:03.289781+00:00"
 
+[packages."@hatch:events-0.2.0"]
+name = "@hatch:events"
+version = "0.2.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Signals, EventEmitter, and a cooperative Scheduler for fiber concurrency."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-21T08:41:49.880515+00:00"
+updated_at = "2026-04-21T08:41:49.880515+00:00"
+
 [packages."@hatch:events-0.1.0"]
 name = "@hatch:events"
 version = "0.1.0"
@@ -62,6 +71,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:03.749537+00:00"
 updated_at = "2026-04-20T16:29:03.749537+00:00"
 
+[packages."@hatch:http-0.3.0"]
+name = "@hatch:http"
+version = "0.3.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "HTTP/1.1 client with TLS, streaming bodies, and fiber-cooperative reads."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-21T08:41:49.486793+00:00"
+updated_at = "2026-04-21T08:41:49.486793+00:00"
+
 [packages."@hatch:http-0.2.0"]
 name = "@hatch:http"
 version = "0.2.0"
@@ -79,6 +97,15 @@ description = "Synchronous HTTP/1.1 client with TLS."
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:03.93575+00:00"
 updated_at = "2026-04-20T16:29:03.93575+00:00"
+
+[packages."@hatch:io-0.2.0"]
+name = "@hatch:io"
+version = "0.2.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Byte buffers plus Reader / Writer streams with fiber-cooperative `withTryFn`."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-21T08:41:48.698297+00:00"
+updated_at = "2026-04-21T08:41:48.698297+00:00"
 
 [packages."@hatch:io-0.1.0"]
 name = "@hatch:io"
@@ -125,6 +152,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:04.839683+00:00"
 updated_at = "2026-04-20T16:29:04.839683+00:00"
 
+[packages."@hatch:proc-0.3.0"]
+name = "@hatch:proc"
+version = "0.3.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Subprocess spawn with lifecycle, streaming IO (blocking + fiber-cooperative), and pipelines."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-21T08:41:49.299653+00:00"
+updated_at = "2026-04-21T08:41:49.299653+00:00"
+
 [packages."@hatch:proc-0.2.0"]
 name = "@hatch:proc"
 version = "0.2.0"
@@ -168,6 +204,15 @@ description = "Clocks, sleep, and UTC timestamp formatting."
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:05.631148+00:00"
 updated_at = "2026-04-20T16:29:05.631148+00:00"
+
+[packages."@hatch:toml-0.1.0"]
+name = "@hatch:toml"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "TOML parser and serializer, backed by the Rust `toml` crate."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-21T08:53:03.585835+00:00"
+updated_at = "2026-04-21T08:53:03.585835+00:00"
 
 [packages."@hatch:url-0.1.0"]
 name = "@hatch:url"
