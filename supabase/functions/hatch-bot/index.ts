@@ -106,6 +106,22 @@ Deno.serve(async (req) => {
   if (!v.ok) return text(v.reason, 400)
   const record = v.record
 
+  // `packages.owner` is NOT NULL. If the caller didn't provide
+  // one (CI typically doesn't — no user identity behind the
+  // bearer), stamp the configured bot UUID. Must be a row in
+  // `auth.users` so any foreign keys on the column still resolve.
+  if (record.owner === undefined) {
+    const botOwner = Deno.env.get('HATCH_BOT_OWNER_UUID')
+    if (!botOwner) {
+      return text(
+        "owner required: set HATCH_BOT_OWNER_UUID on the function " +
+          "or include 'owner' in the request body",
+        400,
+      )
+    }
+    record.owner = botOwner
+  }
+
   // --- DB write ------------------------------------------------
   // SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are auto-injected
   // into every Edge Function by the Supabase runtime. This is

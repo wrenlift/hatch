@@ -6,7 +6,7 @@
 # or via `supabase projects list`. Leaving it blank prompts the
 # CLI to link interactively on first `supabase link`.
 
-project_id = ""
+project_id = "bncbgsfttafynyalrrbb"
 
 [functions.hatch-bot]
 # No JWT verification — the function owns its own auth via the

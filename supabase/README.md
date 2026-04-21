@@ -44,10 +44,17 @@ integration — just a string CI and the function agree on.
    You'll paste this value in two places next. Keep it somewhere
    safe — you can always rotate by repeating this step.
 
-4. **Register the secret with the function.** Still in `hatch/`:
+4. **Register the secret and the bot owner UUID** with the
+   function. Still in `hatch/`:
    ```sh
    supabase secrets set HATCH_BOT_SECRET=<the-hex-string>
+   supabase secrets set HATCH_BOT_OWNER_UUID=<auth.users UUID>
    ```
+   The `packages.owner` column is `NOT NULL` and foreign-keys
+   into `auth.users` in most setups. Create a dedicated user for
+   the bot in Supabase → Authentication → Users (email
+   `hatch-bot@…` or similar) and paste its UUID here. Every
+   CI-driven publish row will attribute to that user.
 
 5. **Register the same secret in GitHub** for the publish CI:
    - Repo → Settings → Secrets and variables → Actions
