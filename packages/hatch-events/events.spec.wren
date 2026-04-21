@@ -1,4 +1,4 @@
-import "./events"      for Signal, EventEmitter
+import "./events"      for Signal, EventEmitter, Scheduler
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -272,6 +272,75 @@ Test.describe("EventEmitter validation") {
   Test.it("on with non-Fn listener aborts") {
     var bus = EventEmitter.new()
     var e = Fiber.new { bus.on("x", 42) }.try()
+    Expect.that(e).toContain("must be a Fn")
+  }
+}
+
+// --- Scheduler ---------------------------------------------------
+
+Test.describe("Scheduler.runAll") {
+  Test.it("runs fibers to completion and returns their values") {
+    var results = Scheduler.runAll([
+      Fiber.new { 1 + 1 },
+      Fiber.new { "hello" },
+      Fiber.new { [1, 2, 3] }
+    ])
+    Expect.that(results[0]).toBe(2)
+    Expect.that(results[1]).toBe("hello")
+    Expect.that(results[2][1]).toBe(2)
+  }
+  Test.it("empty list returns empty list") {
+    Expect.that(Scheduler.runAll([]).count).toBe(0)
+  }
+  Test.it("interleaves yielding fibers") {
+    var trace = []
+    var fa = Fiber.new {
+      trace.add("a1")
+      Fiber.yield()
+      trace.add("a2")
+      Fiber.yield()
+      trace.add("a3")
+      return "A"
+    }
+    var fb = Fiber.new {
+      trace.add("b1")
+      Fiber.yield()
+      trace.add("b2")
+      return "B"
+    }
+    var results = Scheduler.runAll([fa, fb])
+    // a and b should interleave — exact trace:
+    // a1, b1, a2, b2, a3 (b finishes first, then a runs to end)
+    Expect.that(trace[0]).toBe("a1")
+    Expect.that(trace[1]).toBe("b1")
+    Expect.that(trace[2]).toBe("a2")
+    Expect.that(trace[3]).toBe("b2")
+    Expect.that(trace[4]).toBe("a3")
+    Expect.that(results[0]).toBe("A")
+    Expect.that(results[1]).toBe("B")
+  }
+  Test.it("aborted fiber surfaces its error") {
+    var results = Scheduler.runAll([
+      Fiber.new { Fiber.abort("boom") },
+      Fiber.new { 42 }
+    ])
+    Expect.that(results[0]).toContain("boom")
+    Expect.that(results[1]).toBe(42)
+  }
+  Test.it("non-list input aborts") {
+    var e = Fiber.new { Scheduler.runAll(42) }.try()
+    Expect.that(e).toContain("must be a list")
+  }
+}
+
+Test.describe("Scheduler.spawn") {
+  Test.it("returns a fresh Fiber over the given block") {
+    var fib = Scheduler.spawn { "hi" }
+    Expect.that(fib is Fiber).toBe(true)
+    Expect.that(fib.call()).toBe("hi")
+  }
+  Test.it("non-Fn aborts") {
+    var e = Fiber.new { Scheduler.spawn(42) }.try()
     Expect.that(e).toContain("must be a Fn")
   }
 }

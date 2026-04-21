@@ -257,3 +257,69 @@ class EventEmitter {
 
   toString { "EventEmitter(%(_listeners.count) events)" }
 }
+
+// --- Scheduler ---------------------------------------------------------------
+
+// Round-robin runner for cooperatively-yielding fibers. Each
+// fiber runs until it calls `Fiber.yield()` or finishes; the
+// scheduler then moves on to the next. Best paired with the
+// `Reader.withTryFn` from @hatch:io so IO-bound fibers release
+// the runner while waiting on bytes.
+//
+//   import "@hatch:events" for Scheduler
+//
+//   var fibers = [
+//     Fiber.new { Http.getStream(url1).bodyAsync.readAll.toString },
+//     Fiber.new { Http.getStream(url2).bodyAsync.readAll.toString },
+//     Fiber.new { Http.getStream(url3).bodyAsync.readAll.toString },
+//   ]
+//   var results = Scheduler.runAll(fibers)
+//
+// Returns a list of results aligned with the input: each slot
+// holds the fiber's return value, or — on abort — the error
+// string. Fibers that don't yield (CPU-bound) run to completion
+// before the scheduler sees the next one.
+class Scheduler {
+  // Drive every fiber in `fibers` until all are done. Returns a
+  // list of per-fiber results (value on success, error string on
+  // abort).
+  static runAll(fibers) {
+    if (!(fibers is List)) Fiber.abort("Scheduler.runAll: fibers must be a list")
+    var results = []
+    var i = 0
+    while (i < fibers.count) {
+      results.add(null)
+      i = i + 1
+    }
+    if (fibers.count == 0) return results
+    var remaining = fibers.count
+    while (remaining > 0) {
+      var j = 0
+      while (j < fibers.count) {
+        var f = fibers[j]
+        if (!f.isDone) {
+          var r = f.try()
+          if (f.isDone) {
+            var err = f.error
+            results[j] = err == null ? r : err
+            remaining = remaining - 1
+          }
+        }
+        j = j + 1
+      }
+    }
+    return results
+  }
+
+  // Fire-and-forget: start a background fiber that the caller is
+  // expected to eventually include in a `runAll` batch. Returns
+  // the Fiber so callers can attach a result handler.
+  //
+  // Useful when you're composing work dynamically — build up a
+  // list of Fibers across the app, then call `runAll` once at a
+  // top-level drain point.
+  static spawn(fn) {
+    if (!(fn is Fn)) Fiber.abort("Scheduler.spawn: fn must be a Fn")
+    return Fiber.new(fn)
+  }
+}

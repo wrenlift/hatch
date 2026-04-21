@@ -130,11 +130,26 @@ class StreamingResponse {
     var sid = id
     _body = Reader.withFn {|max| HttpCore.streamReadBytes(sid, max) }
     _body.setCloseFn_ { HttpCore.streamClose(sid) }
+    _bodyAsync = null   // lazily built
   }
 
   status    { _status }
   headerMap { _headers }
   body      { _body }
+
+  // Fiber-cooperative body reader. Same bytes as `body`, but
+  // polls via `HttpCore.tryStreamReadBytes` and yields on
+  // "would block" so sibling fibers can run in parallel.
+  // Careful: consuming `body` AND `bodyAsync` at the same time
+  // interleaves reads — pick one.
+  bodyAsync {
+    if (_bodyAsync == null) {
+      var sid = _id
+      _bodyAsync = Reader.withTryFn {|max| HttpCore.tryStreamReadBytes(sid, max) }
+      _bodyAsync.setCloseFn_ { HttpCore.streamClose(sid) }
+    }
+    return _bodyAsync
+  }
 
   ok { _status >= 200 && _status < 300 }
 

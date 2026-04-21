@@ -149,6 +149,27 @@ class Process {
     return Reader.withFn {|max| ProcCore.readStderrBytes(pid, max) }
   }
 
+  // Fiber-cooperative stdout reader. Use inside `Fiber.new { ... }`
+  // to drain output without blocking sibling fibers:
+  //
+  //   var fib = Fiber.new {
+  //     var r = p.stdoutAsync
+  //     var line = r.readLine
+  //     while (line != null) {
+  //       // ...
+  //       line = r.readLine
+  //     }
+  //   }
+  stdoutAsync {
+    var pid = _id
+    return Reader.withTryFn {|max| ProcCore.tryReadStdoutBytes(pid, max) }
+  }
+
+  stderrAsync {
+    var pid = _id
+    return Reader.withTryFn {|max| ProcCore.tryReadStderrBytes(pid, max) }
+  }
+
   // A `Writer` that feeds stdin. Accepts Buffer / String / List<Num>.
   // `close` (or `flush` if that's all you want) sends EOF via
   // `closeStdin`.

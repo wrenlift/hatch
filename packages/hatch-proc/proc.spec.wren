@@ -252,4 +252,35 @@ Test.describe("streaming stdin") {
   }
 }
 
+// --- Fiber-cooperative streaming (stdoutAsync / stderrAsync) ---
+
+Test.describe("async streaming") {
+  Test.it("stdoutAsync drains inside a driver loop") {
+    var p = Proc.run(["printf", "async-line\n"])
+    var fib = Fiber.new { p.stdoutAsync.readAll.toString }
+    var last = null
+    while (!fib.isDone) last = fib.call()
+    p.wait
+    Expect.that(last).toBe("async-line\n")
+  }
+  Test.it("two fibers reading different processes interleave") {
+    // Each prints three lines quickly. When both are driven
+    // round-robin, the output interleaves rather than serializing.
+    var p1 = Proc.run(["printf", "a1\na2\na3\n"])
+    var p2 = Proc.run(["printf", "b1\nb2\nb3\n"])
+    var f1 = Fiber.new { p1.stdoutAsync.readAll.toString }
+    var f2 = Fiber.new { p2.stdoutAsync.readAll.toString }
+    var r1 = null
+    var r2 = null
+    while (!f1.isDone || !f2.isDone) {
+      if (!f1.isDone) r1 = f1.call()
+      if (!f2.isDone) r2 = f2.call()
+    }
+    p1.wait
+    p2.wait
+    Expect.that(r1).toBe("a1\na2\na3\n")
+    Expect.that(r2).toBe("b1\nb2\nb3\n")
+  }
+}
+
 Test.run()

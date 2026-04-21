@@ -293,4 +293,61 @@ Test.describe("Writer.withFn") {
   }
 }
 
+// --- AsyncReader (Reader.withTryFn + Fiber.yield) ---------------
+//
+// `withTryFn` yields to the enclosing fiber on "would block". To
+// drive such a reader to completion you need an outer loop that
+// keeps calling `.call()` until `isDone` — a scheduler, or a
+// simple drain loop in tests. @hatch:events' `Scheduler.runAll`
+// is the production-facing helper; here we drive manually to
+// keep @hatch:io standalone.
+
+var driveFiber_ = Fn.new {|fib|
+  var last = null
+  while (!fib.isDone) last = fib.call()
+  return last
+}
+
+Test.describe("Reader.withTryFn") {
+  Test.it("skips WouldBlock results by yielding; returns bytes") {
+    var tick = 0
+    var r = Reader.withTryFn {|max|
+      tick = tick + 1
+      if (tick == 1) return []           // WouldBlock on first try
+      if (tick == 2) return [0x68, 0x69] // "hi" on second
+      return null
+    }
+    var fib = Fiber.new { r.readAll.toString }
+    var result = driveFiber_.call(fib)
+    Expect.that(result).toBe("hi")
+    Expect.that(tick).toBeGreaterThan(2)
+  }
+  Test.it("null still means EOF with no yields needed") {
+    var r = Reader.withTryFn {|max| null }
+    var fib = Fiber.new { r.readAll }
+    var out = driveFiber_.call(fib)
+    Expect.that(out.count).toBe(0)
+  }
+  Test.it("readLine yields until newline arrives") {
+    var items = [[], [0x61], [0x62, 0x0A], [0x63, 0x0A], null]
+    var i = 0
+    var r = Reader.withTryFn {|max|
+      var v = items[i]
+      i = i + 1
+      return v
+    }
+    var lines = []
+    var fib = Fiber.new {
+      var line = r.readLine
+      while (line != null) {
+        lines.add(line)
+        line = r.readLine
+      }
+    }
+    driveFiber_.call(fib)
+    Expect.that(lines[0]).toBe("ab")
+    Expect.that(lines[1]).toBe("c")
+  }
+}
+
 Test.run()

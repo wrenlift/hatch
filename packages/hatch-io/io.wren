@@ -280,6 +280,39 @@ class Reader {
     return r
   }
 
+  // Fiber-cooperative constructor. `tryReadFn` returns one of:
+  //   * `null`               — EOF; no more bytes ever.
+  //   * `[]`                 — "nothing right now, try again."
+  //   * `List<Num>` (non-empty) — bytes.
+  //
+  // The wrapper spins on the try-read and calls `Fiber.yield()`
+  // on every "would block" result, so other fibers in the same
+  // VM can make progress while this one waits on IO.
+  //
+  //   var r = Reader.withTryFn {|max| ProcCore.tryReadStdoutBytes(pid, max) }
+  //   // Use inside a Fiber.new { ... } to actually get concurrency.
+  static withTryFn(tryReadFn) {
+    var r = Reader.new()
+    r.setReadFn_ {|max|
+      var out = null
+      var done = false
+      while (!done) {
+        var result = tryReadFn.call(max)
+        if (result == null) {
+          done = true
+        } else if (result.count > 0) {
+          out = result
+          done = true
+        } else {
+          // WouldBlock — let other fibers run.
+          Fiber.yield()
+        }
+      }
+      return out
+    }
+    return r
+  }
+
   // Internal — used by `withFn` and subclasses that prefer a
   // callback over overriding `readRaw_`.
   setReadFn_(fn)  { _readFn = fn }

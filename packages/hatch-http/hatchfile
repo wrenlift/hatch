@@ -1,7 +1,7 @@
 name        = "@hatch:http"
-version     = "0.2.0"
+version     = "0.3.0"
 entry       = "http"
-description = "Synchronous HTTP/1.1 client with TLS and streaming bodies."
+description = "HTTP/1.1 client with TLS, streaming bodies, and fiber-cooperative reads."
 
 [dependencies]
 "@hatch:json" = { path = "../hatch-json" }

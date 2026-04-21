@@ -1,7 +1,7 @@
 name        = "@hatch:io"
-version     = "0.1.0"
+version     = "0.2.0"
 entry       = "io"
-description = "Byte buffers plus Reader / Writer streams — in-memory and adaptor-ready."
+description = "Byte buffers plus Reader / Writer streams with fiber-cooperative `withTryFn`."
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }
