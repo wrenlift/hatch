@@ -27,6 +27,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:03.289781+00:00"
 updated_at = "2026-04-20T16:29:03.289781+00:00"
 
+[packages."@hatch:events-0.1.0"]
+name = "@hatch:events"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Signals and Node-style EventEmitter for in-process pub/sub."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T23:42:13.029958+00:00"
+updated_at = "2026-04-20T23:42:13.029958+00:00"
+
 [packages."@hatch:fmt-0.1.0"]
 name = "@hatch:fmt"
 version = "0.1.0"
@@ -53,6 +62,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:03.749537+00:00"
 updated_at = "2026-04-20T16:29:03.749537+00:00"
 
+[packages."@hatch:http-0.2.0"]
+name = "@hatch:http"
+version = "0.2.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Synchronous HTTP/1.1 client with TLS and streaming bodies."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T20:41:57.548137+00:00"
+updated_at = "2026-04-20T20:41:57.548137+00:00"
+
 [packages."@hatch:http-0.1.0"]
 name = "@hatch:http"
 version = "0.1.0"
@@ -61,6 +79,15 @@ description = "Synchronous HTTP/1.1 client with TLS."
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:03.93575+00:00"
 updated_at = "2026-04-20T16:29:03.93575+00:00"
+
+[packages."@hatch:io-0.1.0"]
+name = "@hatch:io"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Byte buffers plus Reader / Writer streams \u2014 in-memory and adaptor-ready."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T20:41:56.64897+00:00"
+updated_at = "2026-04-20T20:41:56.64897+00:00"
 
 [packages."@hatch:json-0.1.0"]
 name = "@hatch:json"
@@ -97,6 +124,15 @@ description = "Filesystem path manipulation: join, split, parent, ext, normalize
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:04.839683+00:00"
 updated_at = "2026-04-20T16:29:04.839683+00:00"
+
+[packages."@hatch:proc-0.2.0"]
+name = "@hatch:proc"
+version = "0.2.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Subprocess spawn with lifecycle, streaming IO, and pipelines."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-20T20:41:57.231531+00:00"
+updated_at = "2026-04-20T20:41:57.231531+00:00"
 
 [packages."@hatch:proc-0.1.0"]
 name = "@hatch:proc"
