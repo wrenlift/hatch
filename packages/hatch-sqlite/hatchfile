@@ -1,0 +1,42 @@
+name        = "@hatch:sqlite"
+version     = "0.1.0"
+entry       = "sqlite"
+description = "Embedded SQLite — first hatch package delivered as a dylib plugin."
+
+# Search path for spec / dev runs — the CI workflow drops
+# cross-built dylibs here before `hatch publish`.
+native_search_paths = ["libs"]
+
+# Where the dylib's source lives. The runtime doesn't touch this
+# field; the hatch-repo CI workflow (`.github/workflows/publish.yml`)
+# consumes it: clone `repo` at `rev`, run `cargo build -p <crate>
+# --release` across a platform matrix, copy each resulting
+# library into `libs/` below, then bundle via `hatch publish`.
+#
+# Pinning is per package version — bump `rev` whenever you need
+# a newer runtime surface. Consumers of `@hatch:sqlite@0.1.0` will
+# always get the dylib built from exactly this SHA.
+
+[plugin_source]
+repo  = "https://github.com/wrenlift/WrenLift.git"
+rev   = "cbf2e1c3f3bdba51c1368eea7d4cb476be7b4966"
+crate = "wlift_sqlite"
+
+# Per-platform dylib paths. CI populates `libs/` via the
+# plugin_source build; local dev can also run the build directly:
+#
+#     cargo build -p wlift_sqlite --release
+#     cp target/release/libwlift_sqlite.dylib \
+#        hatch/packages/hatch-sqlite/libs/
+#
+# At publish time `pack_bundled_native_libs` picks the host
+# platform's entry, embeds its bytes as a `NativeLib` section,
+# and strips this manifest entry — downstream consumers load the
+# dylib from the bundled bytes, not the filesystem.
+
+[native_libs]
+wlift_sqlite = { macos = "libs/libwlift_sqlite.dylib", linux = "libs/libwlift_sqlite.so", windows = "libs/wlift_sqlite.dll" }
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }

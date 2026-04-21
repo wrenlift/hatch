@@ -1,0 +1,259 @@
+name: Publish plugin-backed package
+
+# Builds any hatch package that declares a `[plugin_source]` in
+# its hatchfile. The workflow is generic — every concrete detail
+# (upstream repo, pinned rev, crate name) is read from the
+# hatchfile itself so adding a new plugin-backed package is
+# strictly a data change:
+#
+#   [plugin_source]
+#   repo  = "https://github.com/wrenlift/WrenLift.git"
+#   rev   = "cbf2e1c..."
+#   crate = "wlift_foo"          # cargo package name in `repo`
+#
+# The artifact basename also comes from the crate name
+# (`libwlift_foo.dylib` / `libwlift_foo.so` / `wlift_foo.dll`).
+# No per-package YAML edits required.
+#
+# Trigger: manual (workflow_dispatch) with a `package` input, or
+# a tag matching `publish/<package>@<version>`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package directory under `packages/` (e.g. `hatch-sqlite`)"
+        required: true
+        type: string
+  push:
+    tags:
+      - 'publish/*@*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ---------------------------------------------------------------
+  # Resolve: parse the target hatchfile once and surface all the
+  # per-package knobs every downstream job needs.
+  # ---------------------------------------------------------------
+  resolve:
+    name: Resolve target
+    runs-on: ubuntu-latest
+    outputs:
+      package: ${{ steps.out.outputs.package }}
+      version: ${{ steps.out.outputs.version }}
+      repo:    ${{ steps.out.outputs.repo }}
+      rev:     ${{ steps.out.outputs.rev }}
+      crate:   ${{ steps.out.outputs.crate }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read hatchfile
+        id: out
+        shell: bash
+        run: |
+          set -eu
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            pkg_dir="${{ inputs.package }}"
+          else
+            # `publish/<pkg>@<ver>` — strip prefix, split on '@'.
+            tag="${{ github.ref_name }}"
+            rest="${tag#publish/}"
+            pkg_dir="${rest%@*}"
+          fi
+          hatchfile="packages/${pkg_dir}/hatchfile"
+          if [ ! -f "$hatchfile" ]; then
+            echo "::error::no hatchfile at $hatchfile" && exit 1
+          fi
+
+          version=$(awk -F'"' '/^version *=/ {print $2; exit}' "$hatchfile")
+          if [ "${{ github.event_name }}" = "push" ]; then
+            version="${tag##*@}"
+          fi
+
+          repo=$(awk -F'"' '/^repo *=/  {print $2; exit}' "$hatchfile")
+          rev=$( awk -F'"' '/^rev *=/   {print $2; exit}' "$hatchfile")
+          crate=$(awk -F'"' '/^crate *=/{print $2; exit}' "$hatchfile")
+
+          if [ -z "$repo" ] || [ -z "$rev" ] || [ -z "$crate" ]; then
+            echo "::error::hatchfile $hatchfile missing [plugin_source] repo / rev / crate" && exit 1
+          fi
+
+          echo "package=$pkg_dir" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "repo=$repo"       >> "$GITHUB_OUTPUT"
+          echo "rev=$rev"         >> "$GITHUB_OUTPUT"
+          echo "crate=$crate"     >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------
+  # Build: one matrix entry per target triple. Artifact naming is
+  # derived from the crate (libcrate.dylib / libcrate.so / crate.dll)
+  # so adding a plugin crate doesn't require editing this file.
+  # ---------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.label }}
+    needs: resolve
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macos-arm64
+            os: macos-14
+            target: aarch64-apple-darwin
+            ext: dylib
+            prefix: "lib"
+          - label: macos-x86_64
+            os: macos-13
+            target: x86_64-apple-darwin
+            ext: dylib
+            prefix: "lib"
+          - label: linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            ext: so
+            prefix: "lib"
+          - label: linux-arm64
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            ext: so
+            prefix: "lib"
+            use_cross: true
+          - label: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            ext: dll
+            prefix: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: hatch
+
+      - name: Check out upstream plugin source
+        # Plain git clone so we accept arbitrary URLs
+        # (github / gitlab / self-hosted) without a matrix
+        # of checkout-action flavors.
+        shell: bash
+        run: |
+          set -eu
+          git clone --filter=blob:none \
+                    "${{ needs.resolve.outputs.repo }}" source
+          git -C source checkout "${{ needs.resolve.outputs.rev }}"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.use_cross == true
+        run: cargo install cross --locked
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            source/target
+          key: plugin-${{ needs.resolve.outputs.crate }}-${{ needs.resolve.outputs.rev }}-${{ matrix.target }}
+
+      - name: Build plugin (native)
+        if: matrix.use_cross != true
+        working-directory: source
+        run: cargo build -p ${{ needs.resolve.outputs.crate }} --release --target ${{ matrix.target }}
+
+      - name: Build plugin (cross)
+        if: matrix.use_cross == true
+        working-directory: source
+        run: cross build -p ${{ needs.resolve.outputs.crate }} --release --target ${{ matrix.target }}
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          set -eu
+          src="source/target/${{ matrix.target }}/release/${{ matrix.prefix }}${{ needs.resolve.outputs.crate }}.${{ matrix.ext }}"
+          if [ ! -f "$src" ]; then
+            echo "::error::expected $src not produced" && exit 1
+          fi
+          mkdir -p dist
+          cp "$src" "dist/"
+          ls -la dist/
+
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.label }}
+          path: dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------
+  # Publish: drop the per-platform dylibs into the package's libs/
+  # dir, run hatch publish, and (on tag push) archive them as a
+  # versioned release so historical publishes stay auditable.
+  # ---------------------------------------------------------------
+  publish:
+    name: Bundle + publish
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download every matrix artifact
+        uses: actions/download-artifact@v4
+        with:
+          path: dylibs
+          pattern: "*"
+
+      - name: Stage dylibs into the package's libs/ dir
+        shell: bash
+        run: |
+          set -eu
+          pkg="${{ needs.resolve.outputs.package }}"
+          dest="packages/${pkg}/libs"
+          mkdir -p "$dest"
+          # Each per-label dir holds exactly one file; copy it
+          # verbatim — the matrix already produced the canonical
+          # platform-named filename (libwlift_foo.dylib etc.).
+          for d in dylibs/*/; do
+            cp "$d"/* "$dest/"
+          done
+          echo "::group::final libs/"
+          ls -la "$dest"
+          echo "::endgroup::"
+
+      - name: Install hatch CLI
+        # Pulled from the same upstream revision the plugin was
+        # built against — guarantees the hatch CLI speaks the
+        # same manifest / bundle formats as the plugin assumes.
+        run: |
+          cargo install --git "${{ needs.resolve.outputs.repo }}" \
+                        --rev  "${{ needs.resolve.outputs.rev }}" \
+                        --bin  hatch --locked
+
+      - name: Hatch publish
+        env:
+          HATCH_TOKEN: ${{ secrets.HATCH_TOKEN }}
+        run: |
+          set -eu
+          echo "$HATCH_TOKEN" | hatch login --token -
+          hatch publish -C "packages/${{ needs.resolve.outputs.package }}"
+
+      - name: Attach dylibs to a versioned release
+        if: startsWith(github.ref, 'refs/tags/publish/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ needs.resolve.outputs.package }}@${{ needs.resolve.outputs.version }}
+          files: |
+            packages/${{ needs.resolve.outputs.package }}/libs/*
+          body: |
+            Per-platform dylibs built from
+            `${{ needs.resolve.outputs.repo }}` @ `${{ needs.resolve.outputs.rev }}`
+            for `${{ needs.resolve.outputs.package }}@${{ needs.resolve.outputs.version }}`.
+            Bundled into the corresponding `.hatch` artifact at
+            publish time; these standalone copies are archival
+            only — for audit / replay without re-running CI.
