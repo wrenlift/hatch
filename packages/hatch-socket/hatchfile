@@ -1,0 +1,8 @@
+name        = "@hatch:socket"
+version     = "0.1.0"
+entry       = "socket"
+description = "TCP listeners + connections and UDP datagram sockets. Blocking and non-blocking variants suitable for fiber-cooperative schedulers."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
