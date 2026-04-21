@@ -19,7 +19,7 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-rev   = "cbf2e1c3f3bdba51c1368eea7d4cb476be7b4966"
+rev   = "b67c997ee77b96ce06d08787dc22fe317c73a93b"
 crate = "wlift_sqlite"
 
 # Per-platform dylib paths. CI populates `libs/` via the
