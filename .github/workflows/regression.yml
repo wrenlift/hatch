@@ -1,0 +1,226 @@
+name: Regression — all hatch packages
+
+# Runs every `*.spec.wren` in `packages/*/` against a fresh build
+# of `wlift` (from upstream main). This is the gate that keeps the
+# catalog honest: if a spec we publish no longer passes against
+# the latest runtime, the PR turns red.
+#
+# Two jobs:
+#
+#   * interpreter  — required to pass. Safety net for the spec
+#                    + runtime stdlib surface. 27+ packages, ~700
+#                    specs as of 2026-04-23.
+#
+#   * tiered       — same specs under the tiered JIT. Marked
+#                    `continue-on-error`: tiered-mode flakes are a
+#                    known class of bugs we're still hunting (see
+#                    `memory/project_tiered_flake_root_causes.md`);
+#                    the job surfaces drift but doesn't block PRs.
+#                    Upgrade to required once tiered hits 100%.
+#
+# Packages with a `[plugin_source]` section need per-platform
+# dylibs bundled via the `publish-plugin.yml` workflow. When no
+# dylibs are present in `libs/` those packages are skipped with a
+# warning; everything else runs.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  # Pin the runtime we test against. Bumping this is a deliberate
+  # act (new runtime feature landed, we want the catalog to start
+  # exercising it). Leave empty to track `main` automatically.
+  WLIFT_REV: ""
+
+jobs:
+  # ---------------------------------------------------------------
+  # Build wlift once, share via cache + artifact for the per-mode
+  # test jobs. Saves re-compiling Cranelift on every job.
+  # ---------------------------------------------------------------
+  build-wlift:
+    name: Build wlift
+    runs-on: ubuntu-latest
+    outputs:
+      rev: ${{ steps.clone.outputs.rev }}
+    steps:
+      - name: Clone wren_lift
+        id: clone
+        shell: bash
+        run: |
+          set -eu
+          git clone --filter=blob:none \
+                    https://github.com/wrenlift/WrenLift.git source
+          if [ -n "${WLIFT_REV:-}" ]; then
+            git -C source checkout "$WLIFT_REV"
+          fi
+          rev=$(git -C source rev-parse HEAD)
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+          echo "wlift rev: $rev"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            source/target
+          key: wlift-bin-${{ steps.clone.outputs.rev }}
+          restore-keys: wlift-bin-
+
+      - name: Build wlift
+        working-directory: source
+        run: cargo build --release --bin wlift
+
+      - name: Upload wlift binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: wlift
+          path: source/target/release/wlift
+          if-no-files-found: error
+          retention-days: 3
+
+  # ---------------------------------------------------------------
+  # Run every `*.spec.wren` under the selected execution mode.
+  # The per-package loop is in-lined so GitHub's log UI collapses
+  # each package cleanly via `::group::`.
+  # ---------------------------------------------------------------
+  specs:
+    name: Specs — ${{ matrix.mode }}
+    needs: build-wlift
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.mode == 'tiered' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [interpreter, tiered]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download wlift binary
+        uses: actions/download-artifact@v4
+        with:
+          name: wlift
+          path: bin
+
+      - name: Make wlift executable
+        run: chmod +x bin/wlift
+
+      - name: Run every package's spec
+        shell: bash
+        env:
+          # Spec runs are fully offline. Signal to any package
+          # that keys off the flag — today @hatch:http uses
+          # HATCH_OFFLINE to skip network tests. Keeps CI
+          # deterministic and free of external dependencies.
+          HATCH_OFFLINE: "1"
+        run: |
+          set -u
+          wlift="$PWD/bin/wlift"
+          mode="${{ matrix.mode }}"
+          total=0
+          passed=0
+          failed_pkgs=()
+
+          for dir in packages/*/; do
+            pkg=$(basename "$dir")
+            hf="$dir/hatchfile"
+            [ -f "$hf" ] || continue
+            spec=$(ls "$dir"*.spec.wren 2>/dev/null | head -1)
+            [ -n "$spec" ] || continue
+
+            # Skip plugin-backed packages whose dylibs haven't
+            # been bundled yet. The publish-plugin workflow drops
+            # platform-specific artifacts into `libs/`; without
+            # those the load fails at module-import time with a
+            # "no such dylib" error that's unrelated to the spec
+            # itself.
+            if grep -q '^\[plugin_source\]' "$hf"; then
+              if [ ! -d "$dir/libs" ] || [ -z "$(ls -A "$dir/libs" 2>/dev/null)" ]; then
+                echo "::warning title=$pkg::skipped (plugin-backed, no dylib in libs/)"
+                continue
+              fi
+            fi
+
+            total=$((total + 1))
+            echo "::group::$pkg ($mode)"
+
+            specname=$(basename "$spec")
+            # Run from within the package dir so relative imports
+            # (`import "./foo"`) resolve.
+            pushd "$dir" >/dev/null
+            if output=$("$wlift" --mode "$mode" "$specname" 2>&1); then
+              if echo "$output" | grep -q "^ok:"; then
+                echo "$output" | grep "^ok:"
+                passed=$((passed + 1))
+              else
+                echo "::error title=$pkg ($mode)::no 'ok:' summary line"
+                echo "$output" | tail -30
+                failed_pkgs+=("$pkg")
+              fi
+            else
+              rc=$?
+              echo "::error title=$pkg ($mode)::wlift exited with $rc"
+              echo "$output" | tail -30
+              failed_pkgs+=("$pkg")
+            fi
+            popd >/dev/null
+            echo "::endgroup::"
+          done
+
+          echo ""
+          echo "========================================"
+          echo " $mode: $passed / $total packages passed"
+          echo "========================================"
+          if [ "${#failed_pkgs[@]}" -gt 0 ]; then
+            echo ""
+            echo "Failing packages:"
+            for p in "${failed_pkgs[@]}"; do echo "  - $p"; done
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------
+  # Parse-check the MANIFEST / catalog index so a malformed entry
+  # fails CI before someone tries to publish from it.
+  # ---------------------------------------------------------------
+  catalog-lint:
+    name: Catalog lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check every hatchfile parses as TOML
+        shell: bash
+        run: |
+          set -e
+          fail=0
+          for hf in packages/*/hatchfile; do
+            if ! python3 -c "import tomllib, sys; tomllib.load(open('$hf', 'rb'))" 2>/dev/null; then
+              echo "::error file=$hf::invalid TOML"
+              fail=1
+            fi
+          done
+          if [ -f index.toml ]; then
+            if ! python3 -c "import tomllib; tomllib.load(open('index.toml', 'rb'))"; then
+              echo "::error file=index.toml::invalid TOML"
+              fail=1
+            fi
+          fi
+          [ "$fail" = "0" ]
+
+      - name: Every package has a spec
+        shell: bash
+        run: |
+          set -e
+          fail=0
+          for dir in packages/*/; do
+            [ -f "$dir/hatchfile" ] || continue
+            if ! ls "$dir"*.spec.wren >/dev/null 2>&1; then
+              echo "::warning title=$(basename $dir)::no *.spec.wren found"
+            fi
+          done
