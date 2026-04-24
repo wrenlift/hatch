@@ -143,3 +143,79 @@ class Crypto {
     return CryptoCore.randomBytes(n)
   }
 }
+
+// Password hashing — argon2id by default.
+//
+// Argon2id is OWASP's current recommendation (2024+): memory-hard,
+// resistant to GPU/ASIC cracking, and parameterised so the cost
+// can grow as hardware does. Use it for any value a human will
+// ever type — account passwords, passphrase-derived keys, API
+// token recovery codes.
+//
+//   var hash = Password.hash("correct horse battery staple")
+//   // -> "$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>"
+//
+//   Password.verify("correct horse battery staple", hash)  // true
+//   Password.verify("wrong", hash)                         // false
+//
+// The hash string is self-describing (PHC format) — it embeds the
+// algorithm, parameters, salt, and digest. You store it as-is and
+// pass it back to `verify`. No "what params did I use" bookkeeping.
+//
+// Default params target ~50-80ms per hash on commodity hardware
+// (m=19456 KiB, t=2, p=1). Tune upward with `hashWith` as you
+// scale — the point is to keep hashing slow for an attacker while
+// fast enough for a real login.
+//
+// Never store a plaintext password, never hash with SHA-anything,
+// never use MD5 / SHA-1 / bcrypt for *new* code. `@hatch:hash`
+// is for message digests; `Password` is the only thing in the
+// ecosystem that should touch user passwords.
+class Password {
+  // Hash a password with OWASP-default argon2id params. Returns
+  // a PHC-format String. Each call generates a fresh salt, so
+  // hashing the same password twice produces different strings —
+  // and both verify against the original.
+  static hash(password) {
+    if (!((password is String) || (password is List) || (password is ByteArray))) {
+      Fiber.abort("Password.hash: password must be a String or byte list")
+    }
+    return CryptoCore.argon2Hash(password)
+  }
+
+  // Verify `password` against a previously-stored PHC hash. Returns
+  // true iff the hash matches. Never aborts on a malformed hash
+  // string — returns false — so auth flows stay branch-free and
+  // don't leak "is this a valid PHC string?" side-channels.
+  static verify(password, hash) {
+    if (!((password is String) || (password is List) || (password is ByteArray))) {
+      Fiber.abort("Password.verify: password must be a String or byte list")
+    }
+    if (!(hash is String)) {
+      Fiber.abort("Password.verify: hash must be a String")
+    }
+    return CryptoCore.argon2Verify(password, hash)
+  }
+
+  // Hash with custom argon2id params. `m` is memory in KiB,
+  // `t` is iterations, `p` is parallelism lanes. Use when you
+  // want a stricter (slower) or relaxed (embedded / CI) profile
+  // than the defaults. Producing hashes verifiable against
+  // `Password.verify` requires argon2id — other algorithms are
+  // currently not exposed.
+  static hashWith(password, m, t, p) {
+    if (!((password is String) || (password is List) || (password is ByteArray))) {
+      Fiber.abort("Password.hashWith: password must be a String or byte list")
+    }
+    if (!(m is Num) || !m.isInteger || m <= 0) {
+      Fiber.abort("Password.hashWith: m must be a positive integer (KiB)")
+    }
+    if (!(t is Num) || !t.isInteger || t <= 0) {
+      Fiber.abort("Password.hashWith: t must be a positive integer (iterations)")
+    }
+    if (!(p is Num) || !p.isInteger || p <= 0) {
+      Fiber.abort("Password.hashWith: p must be a positive integer (lanes)")
+    }
+    return CryptoCore.argon2HashWith(password, m, t, p)
+  }
+}

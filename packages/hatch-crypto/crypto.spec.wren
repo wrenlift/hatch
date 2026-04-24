@@ -1,4 +1,4 @@
-import "./crypto"      for Aes, Ed25519, Crypto
+import "./crypto"      for Aes, Ed25519, Crypto, Password
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -230,6 +230,65 @@ Test.describe("Ed25519 validation") {
   Test.it("sign with wrong-length secret aborts") {
     var e = Fiber.new { Ed25519.sign([1, 2, 3], "hi") }.try()
     Expect.that(e).toContain("32-byte")
+  }
+}
+
+// --- Password (argon2id) --------------------------------------
+//
+// The hash/verify round-trip is slow (~50-80ms per hash by
+// design). Use relaxed params for spec runs via `hashWith` where
+// possible so the suite stays fast.
+
+Test.describe("Password.hash / verify") {
+  Test.it("round-trips with default params") {
+    var h = Password.hash("correct horse battery staple")
+    Expect.that(h is String).toBe(true)
+    Expect.that(h.startsWith("$argon2id$")).toBe(true)
+    Expect.that(Password.verify("correct horse battery staple", h)).toBe(true)
+  }
+
+  Test.it("rejects wrong password") {
+    var h = Password.hashWith("swordfish", 8192, 1, 1)
+    Expect.that(Password.verify("swordfis",  h)).toBe(false)
+    Expect.that(Password.verify("swordfish!", h)).toBe(false)
+    Expect.that(Password.verify("", h)).toBe(false)
+  }
+
+  Test.it("same password + different call → different hash (fresh salt)") {
+    var a = Password.hashWith("hunter2", 8192, 1, 1)
+    var b = Password.hashWith("hunter2", 8192, 1, 1)
+    Expect.that(a).not.toBe(b)
+    Expect.that(Password.verify("hunter2", a)).toBe(true)
+    Expect.that(Password.verify("hunter2", b)).toBe(true)
+  }
+
+  Test.it("verify accepts String and byte list equally") {
+    var h = Password.hashWith("utf-8 café", 8192, 1, 1)
+    Expect.that(Password.verify("utf-8 café", h)).toBe(true)
+    // Same string as a byte list — must match, since the hasher
+    // sees bytes either way.
+    var bytes = [117, 116, 102, 45, 56, 32, 99, 97, 102, 195, 169]
+    Expect.that(Password.verify(bytes, h)).toBe(true)
+  }
+
+  Test.it("malformed hash string returns false (no abort)") {
+    Expect.that(Password.verify("any", "not a PHC string")).toBe(false)
+    Expect.that(Password.verify("any", "$argon2id$broken")).toBe(false)
+    Expect.that(Password.verify("any", "")).toBe(false)
+  }
+
+  Test.it("hashWith rejects non-positive params") {
+    var e1 = Fiber.new { Password.hashWith("x", 0, 1, 1) }.try()
+    Expect.that(e1).toContain("positive integer")
+    var e2 = Fiber.new { Password.hashWith("x", 8192, 0, 1) }.try()
+    Expect.that(e2).toContain("positive integer")
+    var e3 = Fiber.new { Password.hashWith("x", 8192, 1, 0) }.try()
+    Expect.that(e3).toContain("positive integer")
+  }
+
+  Test.it("hash rejects non-string / non-bytes input") {
+    var e = Fiber.new { Password.hash(42) }.try()
+    Expect.that(e).toContain("must be a String or byte list")
   }
 }
 
