@@ -1051,15 +1051,18 @@ class Render_ {
         if (tpl == null) Fiber.abort("unknown component: '" + n[1] + "'")
         // Include renders the child AST in the caller's scope — bindings
         // flow through naturally. Child's own {% extends %} is respected
-        // via its blocks metadata.
+        // via its blocks metadata. Forward tpl's own fragments so any
+        // `{% call %}` inside the included template resolves correctly.
         if (tpl.extendsParent_ != null) {
           if (_registry == null) {
             Fiber.abort("included template uses {% extends %} but no registry is set")
           }
           var parent = _registry.get(tpl.extendsParent_)
-          _out.add(Render_.renderFull(parent.ast_, scope, _comps, _slots, tpl.blocks_, _registry))
+          _out.add(Render_.renderFullWithFrags(
+            parent.ast_, scope, _comps, _slots, tpl.blocks_, _registry, tpl.fragments_))
         } else {
-          _out.add(Render_.renderFull(tpl.ast_, scope, _comps, _slots, tpl.blocks_, _registry))
+          _out.add(Render_.renderFullWithFrags(
+            tpl.ast_, scope, _comps, _slots, tpl.blocks_, _registry, tpl.fragments_))
         }
       }
       return
@@ -1144,7 +1147,9 @@ class Render_ {
         }
         slots["caller"] = SlotFill_.new(callBody, scope, _comps, _slots, _registry)
 
-        _out.add(Render_.renderFull(body, child, _comps, slots, _blocks, _registry))
+        // Forward _frags so fragment bodies can call other fragments.
+        _out.add(Render_.renderFullWithFrags(
+          body, child, _comps, slots, _blocks, _registry, _frags))
       }
       return
     }
