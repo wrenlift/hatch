@@ -486,7 +486,31 @@ class Parse_ {
     if (kw == "fragment") return parseFragment_(raw)
     if (kw == "set") return parseSet_(raw)
     if (kw == "include") return parseInclude_(raw)
+    if (kw == "extends") return parseExtends_(raw)
+    if (kw == "block") return parseBlock_(raw)
     Fiber.abort("unknown directive: '" + kw + "'")
+  }
+
+  parseExtends_(raw) {
+    var arg = rest_("extends", raw).trim()
+    if (arg.count >= 2 && (arg[0] == "\"" || arg[0] == "'") &&
+        arg[-1] == arg[0]) {
+      arg = arg[1..-2]
+    }
+    if (arg == "") Fiber.abort("extends: template name required")
+    return ["extends", arg]
+  }
+
+  parseBlock_(raw) {
+    var name = rest_("block", raw).trim()
+    if (name == "") Fiber.abort("block: name required")
+    var body = parseBody_(["endblock"])
+    if (_pos >= _toks.count || _toks[_pos][0] != "stmt" ||
+        firstWord_(_toks[_pos][1]) != "endblock") {
+      Fiber.abort("unterminated {% block %}")
+    }
+    _pos = _pos + 1
+    return ["block", name, body]
   }
 
   parseIf_(raw) {
@@ -634,23 +658,38 @@ class Scope_ {
 }
 
 class Render_ {
-  construct new(nodes, components, slots, fragmentName) {
+  construct new(nodes, components, slots, fragmentName, blocks, registry) {
     _nodes = nodes
     _comps = components
     _slots = slots
+    _blocks = blocks            // map of block-name → override body AST
+    _registry = registry        // TemplateRegistry or null
     _fragment = fragmentName    // if non-null, render only that fragment's body
     _found = false              // set true when target fragment is rendered
     _out = []
   }
 
   static render(nodes, scope, comps, slots) {
-    var r = Render_.new(nodes, comps, slots, null)
+    var r = Render_.new(nodes, comps, slots, null, {}, null)
+    r.walkAll(nodes, scope)
+    return r.output
+  }
+
+  static renderFull(nodes, scope, comps, slots, blocks, registry) {
+    var r = Render_.new(nodes, comps, slots, null, blocks, registry)
     r.walkAll(nodes, scope)
     return r.output
   }
 
   static renderFragment(nodes, scope, name, comps, slots) {
-    var r = Render_.new(nodes, comps, slots, name)
+    var r = Render_.new(nodes, comps, slots, name, {}, null)
+    r.walkAll(nodes, scope)
+    if (!r.found_) Fiber.abort("fragment not found: '" + name + "'")
+    return r.output
+  }
+
+  static renderFragmentFull(nodes, scope, name, comps, slots, blocks, registry) {
+    var r = Render_.new(nodes, comps, slots, name, blocks, registry)
     r.walkAll(nodes, scope)
     if (!r.found_) Fiber.abort("fragment not found: '" + name + "'")
     return r.output
@@ -765,11 +804,38 @@ class Render_ {
     }
     if (kind == "include") {
       if (_fragment == null) {
-        var comp = _comps[n[1]]
-        if (comp == null) Fiber.abort("unknown component: '" + n[1] + "'")
-        var inner = Render_.render(comp.ast_, scope, _comps, _slots)
-        _out.add(inner)
+        // Resolve: in-memory components first, then registry loader.
+        var tpl = null
+        if (_comps != null && _comps.containsKey(n[1])) {
+          tpl = _comps[n[1]]
+        } else if (_registry != null) {
+          tpl = _registry.get(n[1])
+        }
+        if (tpl == null) Fiber.abort("unknown component: '" + n[1] + "'")
+        // Include renders the child AST in the caller's scope — bindings
+        // flow through naturally. Child's own {% extends %} is respected
+        // via its blocks metadata.
+        if (tpl.extendsParent_ != null) {
+          if (_registry == null) {
+            Fiber.abort("included template uses {% extends %} but no registry is set")
+          }
+          var parent = _registry.get(tpl.extendsParent_)
+          _out.add(Render_.renderFull(parent.ast_, scope, _comps, _slots, tpl.blocks_, _registry))
+        } else {
+          _out.add(Render_.renderFull(tpl.ast_, scope, _comps, _slots, tpl.blocks_, _registry))
+        }
       }
+      return
+    }
+    if (kind == "block") {
+      // Blocks render either their override (from _blocks) or their default.
+      var body = _blocks.containsKey(n[1]) ? _blocks[n[1]] : n[2]
+      walkAll(body, scope)
+      return
+    }
+    if (kind == "extends") {
+      // Extends is consumed at Template.analyze time — a stray node here
+      // means someone built an AST manually; ignore rather than abort.
       return
     }
   }
@@ -1002,16 +1068,95 @@ class Render_ {
 
 // --- Public API ------------------------------------------------------------
 
+// Loader protocol — any class with `load(name) → String|null` works.
+// The package ships two concrete loaders: MapLoader (in-memory) and
+// FnLoader (adapt any 1-arg function). For a filesystem-backed loader
+// the user would wire up a FnLoader with `@hatch:fs.read(path)`.
+
+class MapLoader {
+  construct new(sources) { _sources = sources }
+  load(name) {
+    if (_sources.containsKey(name)) return _sources[name]
+    return null
+  }
+}
+
+class FnLoader {
+  construct new(fn) { _fn = fn }
+  load(name) { _fn.call(name) }
+}
+
+// Caches parsed templates by name. Pass a registry to `Template.parseWith`
+// (or call `registry.get(name)`) so `{% extends %}` / `{% include %}` can
+// resolve across files.
+class TemplateRegistry {
+  construct new(loader) {
+    _loader = loader
+    _cache = {}
+  }
+
+  // Fetch + parse + cache a template by name. Repeat calls are O(1).
+  get(name) {
+    if (_cache.containsKey(name)) return _cache[name]
+    var src = _loader.load(name)
+    if (src == null) Fiber.abort("template not found: '" + name + "'")
+    var tpl = Template.parseWith(src, this)
+    _cache[name] = tpl
+    return tpl
+  }
+
+  // Convenience: render a named template. Equivalent to `get(name).render(ctx)`.
+  render(name, ctx) { get(name).render(ctx) }
+  renderFragment(name, fragName, ctx) {
+    get(name).renderFragment(fragName, ctx)
+  }
+}
+
 class Template {
-  construct parse_(ast) { _ast = ast }
+  construct parse_(ast, registry) {
+    _registry = registry
+    analyze_(ast)
+  }
 
   static parse(src) {
     var toks = Lex_.scan(src)
     var ast = Parse_.parse(toks)
-    return Template.parse_(ast)
+    return Template.parse_(ast, null)
+  }
+
+  // Parse + bind to a registry so `{% extends %}` / cross-file `{% include %}`
+  // can resolve. Callers normally reach this through `TemplateRegistry.get`.
+  static parseWith(src, registry) {
+    var toks = Lex_.scan(src)
+    var ast = Parse_.parse(toks)
+    return Template.parse_(ast, registry)
+  }
+
+  // Split an AST into its extends/block metadata + remaining nodes.
+  // Child templates that extend a base are mostly block overrides —
+  // anything outside a `{% block %}` in an extending template is
+  // ignored at render time (matches Jinja semantics).
+  analyze_(ast) {
+    _extends = null
+    _blocks = {}
+    var filtered = []
+    for (n in ast) {
+      if (n[0] == "extends") {
+        _extends = n[1]
+      } else if (n[0] == "block") {
+        _blocks[n[1]] = n[2]
+        filtered.add(n)
+      } else {
+        filtered.add(n)
+      }
+    }
+    _ast = filtered
   }
 
   ast_ { _ast }
+  blocks_ { _blocks }
+  extendsParent_ { _extends }
+  registry_ { _registry }
 
   // Render with optional context map.
   //
@@ -1022,9 +1167,16 @@ class Template {
     ctx = ctx == null ? {} : ctx
     // Wrap ctx in a child scope so {% set %} doesn't mutate the caller's map.
     var scope = Scope_.child(Scope_.root(ctx))
+    if (_extends != null) {
+      if (_registry == null) {
+        Fiber.abort("template uses {% extends %} but was parsed without a registry")
+      }
+      var parent = _registry.get(_extends)
+      return parent.renderWithOverrides_(scope, ctx, _blocks)
+    }
     var slots = ctx.containsKey("#slots") ? ctx["#slots"] : null
     var comps = ctx.containsKey("#components") ? ctx["#components"] : {}
-    return Render_.render(_ast, scope, comps, slots)
+    return Render_.renderFull(_ast, scope, comps, slots, {}, _registry)
   }
 
   // Render only the named {% fragment %} block. The rest of the template
@@ -1036,7 +1188,23 @@ class Template {
     var scope = Scope_.child(Scope_.root(ctx))
     var slots = ctx.containsKey("#slots") ? ctx["#slots"] : null
     var comps = ctx.containsKey("#components") ? ctx["#components"] : {}
-    return Render_.renderFragment(_ast, scope, name, comps, slots)
+    return Render_.renderFragmentFull(_ast, scope, name, comps, slots, _blocks, _registry)
+  }
+
+  // Internal: render this template as the target of an `extends` chain.
+  // Child's block overrides are merged on top of our own blocks, then the
+  // chain walks up until a non-extending template is reached.
+  renderWithOverrides_(scope, ctx, overrides) {
+    if (_extends != null) {
+      var parent = _registry.get(_extends)
+      var merged = {}
+      for (k in _blocks.keys) merged[k] = _blocks[k]       // our blocks
+      for (k in overrides.keys) merged[k] = overrides[k]   // child's win
+      return parent.renderWithOverrides_(scope, ctx, merged)
+    }
+    var slots = ctx.containsKey("#slots") ? ctx["#slots"] : null
+    var comps = ctx.containsKey("#components") ? ctx["#components"] : {}
+    return Render_.renderFull(_ast, scope, comps, slots, overrides, _registry)
   }
 }
 

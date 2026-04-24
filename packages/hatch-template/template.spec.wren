@@ -1,4 +1,5 @@
-import "./template" for Template, Hx, HxResponse, TemplateError
+import "./template" for
+  Template, TemplateRegistry, MapLoader, FnLoader, Hx, HxResponse, TemplateError
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -160,8 +161,9 @@ Test.describe("Template: {% for %}") {
   Test.it("iterates a map as [key, value] pairs") {
     var t = Template.parse("{% for p in m %}{{ p[0] }}={{ p[1] }};{% endfor %}")
     var out = t.render({ "m": { "a": 1, "b": 2 } })
-    // Map iteration is insertion order.
-    Expect.that(out).toBe("a=1;b=2;")
+    // Wren Map iteration order isn't stable — check both pairs appear.
+    Expect.that(out).toContain("a=1;")
+    Expect.that(out).toContain("b=2;")
   }
   Test.it("loop.index / index1 / first / last / length") {
     var t = Template.parse(
@@ -407,6 +409,107 @@ Test.describe("Hx.isRequest / Hx.context") {
     Expect.that(c["trigger"]).toBe("btn")
     Expect.that(c["triggerName"]).toBe("save")
     Expect.that(c["currentUrl"]).toBe("/page")
+  }
+}
+
+// --- Loaders + registry ----------------------------------------------------
+
+Test.describe("MapLoader / FnLoader / TemplateRegistry") {
+  Test.it("MapLoader returns source by name or null") {
+    var l = MapLoader.new({ "a": "<a>", "b": "<b>" })
+    Expect.that(l.load("a")).toBe("<a>")
+    Expect.that(l.load("b")).toBe("<b>")
+    Expect.that(l.load("missing")).toBe(null)
+  }
+  Test.it("FnLoader adapts any Fn") {
+    var l = FnLoader.new(Fn.new {|n| n == "x" ? "X!" : null })
+    Expect.that(l.load("x")).toBe("X!")
+    Expect.that(l.load("y")).toBe(null)
+  }
+  Test.it("registry caches parsed templates") {
+    var count = 0
+    var loader = FnLoader.new(Fn.new {|n|
+      count = count + 1
+      n == "hi" ? "Hi {{ n }}" : null
+    })
+    var reg = TemplateRegistry.new(loader)
+    Expect.that(reg.render("hi", { "n": "A" })).toBe("Hi A")
+    Expect.that(reg.render("hi", { "n": "B" })).toBe("Hi B")
+    // Second render should NOT have re-loaded the source.
+    Expect.that(count).toBe(1)
+  }
+  Test.it("missing template aborts") {
+    var reg = TemplateRegistry.new(MapLoader.new({}))
+    var err = Fiber.new { reg.render("nope", {}) }.try()
+    Expect.that(err).toContain("template not found")
+  }
+}
+
+// --- Template inheritance (extends / block) -------------------------------
+
+Test.describe("Template: {% extends %} + {% block %}") {
+  Test.it("child overrides a named block") {
+    var reg = TemplateRegistry.new(MapLoader.new({
+      "base": "<html>{% block content %}DEFAULT{% endblock %}</html>",
+      "page": "{% extends \"base\" %}{% block content %}CHILD{% endblock %}"
+    }))
+    Expect.that(reg.render("page", {})).toBe("<html>CHILD</html>")
+  }
+  Test.it("block default is used when child doesn't override") {
+    var reg = TemplateRegistry.new(MapLoader.new({
+      "base":
+        "<head>{% block title %}Default Title{% endblock %}</head>" +
+        "<body>{% block body %}DEFAULT{% endblock %}</body>",
+      "page":
+        "{% extends \"base\" %}{% block body %}OVERRIDE{% endblock %}"
+    }))
+    Expect.that(reg.render("page", {}))
+      .toBe("<head>Default Title</head><body>OVERRIDE</body>")
+  }
+  Test.it("three-level inheritance: child wins over middle") {
+    var reg = TemplateRegistry.new(MapLoader.new({
+      "base":   "<[{% block a %}base-a{% endblock %}]>",
+      "middle": "{% extends \"base\" %}{% block a %}mid-a{% endblock %}",
+      "leaf":   "{% extends \"middle\" %}{% block a %}leaf-a{% endblock %}"
+    }))
+    Expect.that(reg.render("leaf", {})).toBe("<[leaf-a]>")
+  }
+  Test.it("non-extending template with {% block %} renders the default") {
+    var t = Template.parse("<x>{% block body %}default{% endblock %}</x>")
+    Expect.that(t.render({})).toBe("<x>default</x>")
+  }
+  Test.it("block body sees ctx variables") {
+    var reg = TemplateRegistry.new(MapLoader.new({
+      "base": "{% block b %}hello {{ name }}{% endblock %}",
+      "page": "{% extends \"base\" %}{% block b %}hi {{ name | upper }}{% endblock %}"
+    }))
+    Expect.that(reg.render("page", { "name": "ada" })).toBe("hi ADA")
+  }
+  Test.it("using {% extends %} without a registry aborts") {
+    var t = Template.parse("{% extends \"x\" %}")
+    var err = Fiber.new { t.render({}) }.try()
+    Expect.that(err).toContain("without a registry")
+  }
+}
+
+// --- include via registry --------------------------------------------------
+
+Test.describe("Template: {% include %} resolves through registry") {
+  Test.it("cross-file include works with a registry") {
+    var reg = TemplateRegistry.new(MapLoader.new({
+      "card": "<card>{{ name }}</card>",
+      "page": "[{% include \"card\" %}]"
+    }))
+    Expect.that(reg.render("page", { "name": "Ada" }))
+      .toBe("[<card>Ada</card>]")
+  }
+  Test.it("included template that itself extends resolves the chain") {
+    var reg = TemplateRegistry.new(MapLoader.new({
+      "base":    "<wrap>{% block inner %}d{% endblock %}</wrap>",
+      "derived": "{% extends \"base\" %}{% block inner %}{{ name }}{% endblock %}",
+      "page":    "[{% include \"derived\" %}]"
+    }))
+    Expect.that(reg.render("page", { "name": "A" })).toBe("[<wrap>A</wrap>]")
   }
 }
 
