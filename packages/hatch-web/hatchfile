@@ -1,0 +1,14 @@
+name        = "@hatch:web"
+version     = "0.1.0"
+entry       = "web"
+description = "Server-rendered, htmx-native web framework for Wren. Router, middleware, content-negotiated rendering via @hatch:template, HTTP/1.1 server on top of @hatch:socket."
+
+[dependencies]
+"@hatch:socket"   = { path = "../hatch-socket" }
+"@hatch:template" = { path = "../hatch-template" }
+"@hatch:log"      = { path = "../hatch-log" }
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:http"   = { path = "../hatch-http" }
