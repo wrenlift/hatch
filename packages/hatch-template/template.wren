@@ -488,6 +488,7 @@ class Parse_ {
     if (kw == "include") return parseInclude_(raw)
     if (kw == "extends") return parseExtends_(raw)
     if (kw == "block") return parseBlock_(raw)
+    if (kw == "embed") return parseEmbed_(raw)
     Fiber.abort("unknown directive: '" + kw + "'")
   }
 
@@ -557,15 +558,155 @@ class Parse_ {
   }
 
   parseSlot_(raw) {
-    var name = rest_("slot", raw).trim()
-    if (name == "") Fiber.abort("slot: name required")
+    var tail = rest_("slot", raw).trim()
+    if (tail == "") Fiber.abort("slot: name required")
+    var np = splitNameTail_(tail)
+    var name = np[0]
+    var rest = np[1]
+    var withBindings = []
+    if (rest.count > 0) {
+      if (!rest.startsWith("with")) {
+        Fiber.abort("slot: expected 'with { ... }', got '" + rest + "'")
+      }
+      withBindings = parseObjectBindings_(rest[4..-1].trim())
+    }
     var body = parseBody_(["endslot"])
     if (_pos >= _toks.count || _toks[_pos][0] != "stmt" ||
         firstWord_(_toks[_pos][1]) != "endslot") {
       Fiber.abort("unterminated {% slot %}")
     }
     _pos = _pos + 1
-    return ["slot", name, body]
+    return ["slot", name, withBindings, body]
+  }
+
+  parseEmbed_(raw) {
+    var tail = rest_("embed", raw).trim()
+    // Name may be quoted or bare.
+    if (tail.count >= 2 && (tail[0] == "\"" || tail[0] == "'")) {
+      var q = tail[0]
+      var end = tail.indexOf(q, 1)
+      if (end < 0) Fiber.abort("embed: unterminated quoted name")
+      var name = tail[1...end]
+      var rest = tail[end + 1..-1].trim()
+      return parseEmbedTail_(name, rest)
+    }
+    var np = splitNameTail_(tail)
+    return parseEmbedTail_(np[0], np[1])
+  }
+
+  parseEmbedTail_(name, rest) {
+    if (name == "") Fiber.abort("embed: name required")
+    var withArgs = []
+    if (rest.count > 0) {
+      if (!rest.startsWith("with")) {
+        Fiber.abort("embed: expected 'with { ... }' or end, got '" + rest + "'")
+      }
+      withArgs = parseObjectBindings_(rest[4..-1].trim())
+    }
+    // Body: whitespace text + {% fill %}s until {% endembed %}.
+    var fills = []
+    while (_pos < _toks.count) {
+      var t = _toks[_pos]
+      if (t[0] == "text") {
+        if (t[1].trim().count > 0) {
+          Fiber.abort("embed: only {% fill %} blocks allowed in body")
+        }
+        _pos = _pos + 1
+      } else if (t[0] == "stmt") {
+        var kw = firstWord_(t[1])
+        if (kw == "endembed") {
+          _pos = _pos + 1
+          return ["embed", name, withArgs, fills]
+        }
+        if (kw == "fill") {
+          _pos = _pos + 1
+          fills.add(parseFillBody_(t[1]))
+        } else {
+          Fiber.abort("embed: unexpected directive '" + kw + "'")
+        }
+      } else {
+        Fiber.abort("embed: {{ ... }} not allowed outside {% fill %}")
+      }
+    }
+    Fiber.abort("unterminated {% embed %}")
+  }
+
+  parseFillBody_(raw) {
+    var name = rest_("fill", raw).trim()
+    if (name == "") Fiber.abort("fill: name required")
+    var body = parseBody_(["endfill"])
+    if (_pos >= _toks.count || _toks[_pos][0] != "stmt" ||
+        firstWord_(_toks[_pos][1]) != "endfill") {
+      Fiber.abort("unterminated {% fill %}")
+    }
+    _pos = _pos + 1
+    return ["fill", name, body]
+  }
+
+  // Shared helper: peel a leading identifier off `tail`, return
+  // [name, rest] with leading whitespace trimmed off `rest`.
+  splitNameTail_(tail) {
+    var i = 0
+    while (i < tail.count) {
+      var c = tail[i]
+      if (c == " " || c == "\t") break
+      i = i + 1
+    }
+    return [tail[0...i], tail[i..-1].trim()]
+  }
+
+  // Parse "{ k1: expr, k2: expr }" into a list of [key, exprAst]
+  // pairs. Commas and colons inside expressions are respected via
+  // paren/bracket depth tracking.
+  parseObjectBindings_(s) {
+    s = s.trim()
+    if (s.count == 0 || s[0] != "{") Fiber.abort("expected '{' in bindings")
+    if (s[-1] != "}") Fiber.abort("expected '}' in bindings")
+    var inner = s[1..-2].trim()
+    var out = []
+    if (inner.count == 0) return out
+    for (part in splitTopLevelCommas_(inner)) {
+      var colon = findTopLevelChar_(part, ":")
+      if (colon < 0) Fiber.abort("expected 'key: expr' in bindings: '" + part + "'")
+      var k = part[0...colon].trim()
+      var v = part[colon + 1..-1].trim()
+      out.add([k, ExprParse_.parse(v)])
+    }
+    return out
+  }
+
+  splitTopLevelCommas_(s) {
+    var out = []
+    var depth = 0
+    var start = 0
+    var i = 0
+    while (i < s.count) {
+      var c = s[i]
+      if (c == "(" || c == "[" || c == "{") {
+        depth = depth + 1
+      } else if (c == ")" || c == "]" || c == "}") {
+        depth = depth - 1
+      } else if (c == "," && depth == 0) {
+        out.add(s[start...i])
+        start = i + 1
+      }
+      i = i + 1
+    }
+    if (start < s.count) out.add(s[start..-1])
+    return out
+  }
+
+  findTopLevelChar_(s, ch) {
+    var depth = 0
+    var i = 0
+    while (i < s.count) {
+      var c = s[i]
+      if (c == "(" || c == "[" || c == "{") depth = depth + 1
+      else if (c == ")" || c == "]" || c == "}") depth = depth - 1
+      else if (c == ch && depth == 0) return i
+      i = i + 1
+    }
+    return -1
   }
 
   parseFragment_(raw) {
@@ -654,6 +795,26 @@ class Scope_ {
     if (_ctx.containsKey(name)) return true
     if (_parent != null) return _parent.has(name)
     return false
+  }
+}
+
+// Internal: wraps a {% fill %} body so a slot that exposes `with { ... }`
+// bindings can render it with those bindings in scope. The fill sees the
+// caller's scope — not the included template's — so references like
+// {{ outerUser.name }} resolve correctly from the embed site.
+class SlotFill_ {
+  construct new(body, scope, comps, slots, registry) {
+    _body = body
+    _scope = scope
+    _comps = comps
+    _slots = slots
+    _registry = registry
+  }
+
+  renderWith(bindings) {
+    var child = Scope_.child(_scope)
+    for (k in bindings.keys) child.set(k, bindings[k])
+    return Render_.renderFull(_body, child, _comps, _slots, {}, _registry)
   }
 }
 
@@ -774,10 +935,30 @@ class Render_ {
     }
     if (kind == "slot") {
       if (_fragment == null) {
-        if (_slots != null && _slots.containsKey(n[1])) {
-          _out.add(_slots[n[1]])
+        var name = n[1]
+        var withBindings = n[2]
+        var defaultBody = n[3]
+        // Evaluate bindings once; they're either exposed to the fill
+        // (via SlotFill_.render) or made visible to the default body.
+        var bindings = {}
+        for (b in withBindings) bindings[b[0]] = evalExpr_(b[1], scope)
+
+        if (_slots != null && _slots.containsKey(name)) {
+          var fill = _slots[name]
+          if (fill is String) {
+            _out.add(fill)
+          } else if (fill is SlotFill_) {
+            _out.add(fill.renderWith(bindings))
+          } else if (fill is Fn) {
+            _out.add(fill.call(bindings))
+          } else {
+            _out.add(fill.toString)
+          }
         } else {
-          walkAll(n[2], scope)
+          // Expose bindings to the default body.
+          var child = Scope_.child(scope)
+          for (k in bindings.keys) child.set(k, bindings[k])
+          walkAll(defaultBody, child)
         }
       }
       return
@@ -836,6 +1017,43 @@ class Render_ {
     if (kind == "extends") {
       // Extends is consumed at Template.analyze time — a stray node here
       // means someone built an AST manually; ignore rather than abort.
+      return
+    }
+    if (kind == "embed") {
+      if (_fragment == null) {
+        var name = n[1]
+        var withArgs = n[2]
+        var fillNodes = n[3]
+
+        var tpl = null
+        if (_comps != null && _comps.containsKey(name)) {
+          tpl = _comps[name]
+        } else if (_registry != null) {
+          tpl = _registry.get(name)
+        }
+        if (tpl == null) Fiber.abort("unknown template: '" + name + "'")
+
+        // Build a slots map: inherit outer slots, then add our fills.
+        var slots = {}
+        if (_slots != null) {
+          for (k in _slots.keys) slots[k] = _slots[k]
+        }
+        for (f in fillNodes) {
+          slots[f[1]] = SlotFill_.new(f[2], scope, _comps, _slots, _registry)
+        }
+
+        // Build child ctx from withArgs; slots + components passed along.
+        var childCtx = {}
+        for (arg in withArgs) childCtx[arg[0]] = evalExpr_(arg[1], scope)
+        childCtx["#slots"] = slots
+        childCtx["#components"] = _comps
+        _out.add(tpl.render(childCtx))
+      }
+      return
+    }
+    if (kind == "fill") {
+      // Bare {% fill %} at top level is meaningless; fills only matter
+      // inside {% embed %}. Ignore silently.
       return
     }
   }

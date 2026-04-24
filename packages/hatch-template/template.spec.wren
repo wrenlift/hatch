@@ -513,6 +513,74 @@ Test.describe("Template: {% include %} resolves through registry") {
   }
 }
 
+// --- Scoped slots + embed/fill --------------------------------------------
+
+Test.describe("Template: scoped slots (with bindings)") {
+  Test.it("default body sees slot's with-bindings") {
+    var t = Template.parse(
+      "[{% slot foot with { n: items | length } %}{{ n }} items{% endslot %}]")
+    Expect.that(t.render({ "items": [1,2,3,4] })).toBe("[4 items]")
+  }
+  Test.it("embed/fill: fill receives the slot's bindings in scope") {
+    var reg = TemplateRegistry.new(MapLoader.new({
+      "card":
+        "<div>{% slot foot with { n: items | length } %}default{% endslot %}</div>",
+      "page":
+        "{% embed \"card\" with { items: xs } %}" +
+          "{% fill foot %}<b>{{ n }}</b>{% endfill %}" +
+        "{% endembed %}"
+    }))
+    Expect.that(reg.render("page", { "xs": [1, 2, 3] }))
+      .toBe("<div><b>3</b></div>")
+  }
+  Test.it("fill body sees the caller's scope, not the component's") {
+    // `title` is only in the page's ctx, not in card's. The fill runs
+    // against the caller's scope so it still resolves.
+    var reg = TemplateRegistry.new(MapLoader.new({
+      "card":
+        "<x>{% slot body with { n: 42 } %}default{% endslot %}</x>",
+      "page":
+        "{% embed \"card\" %}" +
+          "{% fill body %}{{ title }}-{{ n }}{% endfill %}" +
+        "{% endembed %}"
+    }))
+    Expect.that(reg.render("page", { "title": "T" })).toBe("<x>T-42</x>")
+  }
+  Test.it("unfilled slot renders default, with bindings exposed there too") {
+    var reg = TemplateRegistry.new(MapLoader.new({
+      "card": "[{% slot body with { n: 7 } %}<i>{{ n }}</i>{% endslot %}]",
+      "page": "{% embed \"card\" %}{% endembed %}"
+    }))
+    Expect.that(reg.render("page", {})).toBe("[<i>7</i>]")
+  }
+  Test.it("string fill via #slots works without a template-level fill") {
+    var t = Template.parse(
+      "[{% slot body with { n: 3 } %}default{% endslot %}]")
+    Expect.that(t.render({ "#slots": { "body": "SET" } })).toBe("[SET]")
+  }
+  Test.it("Fn fill receives bindings map") {
+    var t = Template.parse(
+      "[{% slot body with { n: 5 } %}default{% endslot %}]")
+    var out = t.render({
+      "#slots": { "body": Fn.new {|b| "n=" + b["n"].toString } }
+    })
+    Expect.that(out).toBe("[n=5]")
+  }
+  Test.it("embed with-args initialises the child template's ctx") {
+    var reg = TemplateRegistry.new(MapLoader.new({
+      "card": "<c>{{ label }}</c>",
+      "page": "{% embed \"card\" with { label: \"HI\" } %}{% endembed %}"
+    }))
+    Expect.that(reg.render("page", {})).toBe("<c>HI</c>")
+  }
+  Test.it("embed body may only contain fills + whitespace") {
+    var err = Fiber.new {
+      Template.parse("{% embed \"x\" %}stray text{% endembed %}")
+    }.try()
+    Expect.that(err).toContain("only {% fill %} blocks allowed")
+  }
+}
+
 // --- Big end-to-end --------------------------------------------------------
 
 Test.describe("Template: realistic htmx flow") {
