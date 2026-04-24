@@ -18,6 +18,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-19T01:03:42.125747+00:00"
 updated_at = "2026-04-19T01:03:42.125747+00:00"
 
+[packages."@hatch:buffers-0.1.0"]
+name = "@hatch:buffers"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Spec coverage for the built-in ByteArray / Float32Array / Float64Array types."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-23T22:18:18.685259+00:00"
+updated_at = "2026-04-23T22:18:18.685259+00:00"
+
 [packages."@hatch:cli-0.1.0"]
 name = "@hatch:cli"
 version = "0.1.0"
@@ -27,6 +36,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:03.289781+00:00"
 updated_at = "2026-04-20T16:29:03.289781+00:00"
 
+[packages."@hatch:crypto-0.1.0"]
+name = "@hatch:crypto"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "AES-256-GCM authenticated encryption + Ed25519 sign/verify + CSPRNG."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-23T22:18:16.944877+00:00"
+updated_at = "2026-04-23T22:18:16.944877+00:00"
+
 [packages."@hatch:csv-0.1.0"]
 name = "@hatch:csv"
 version = "0.1.0"
@@ -35,6 +53,15 @@ description = "RFC 4180 CSV parser + serializer. Handles quoting, embedded newli
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-21T17:18:52.958698+00:00"
 updated_at = "2026-04-21T17:18:52.958698+00:00"
+
+[packages."@hatch:datetime-0.1.0"]
+name = "@hatch:datetime"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Timezone-aware DateTime value type, Duration arithmetic, RFC 3339 parse + format."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-23T22:18:18.276114+00:00"
+updated_at = "2026-04-23T22:18:18.276114+00:00"
 
 [packages."@hatch:events-0.2.0"]
 name = "@hatch:events"
@@ -61,6 +88,15 @@ git = "https://github.com/wrenlift/hatch.git"
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-19T01:21:37.977631+00:00"
 updated_at = "2026-04-19T01:21:37.977631+00:00"
+
+[packages."@hatch:fp-0.1.0"]
+name = "@hatch:fp"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Fluent + functional collection operations \u2014 map / filter / reduce / flatMap / groupBy / partition / zip / sortBy / scan / chunked / windowed / distinct and the usual suspects."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-23T22:18:04.501443+00:00"
+updated_at = "2026-04-23T22:18:04.501443+00:00"
 
 [packages."@hatch:fs-0.1.0"]
 name = "@hatch:fs"
@@ -143,6 +179,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:04.47264+00:00"
 updated_at = "2026-04-20T16:29:04.47264+00:00"
 
+[packages."@hatch:math-0.1.0"]
+name = "@hatch:math"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Vector + matrix + quaternion math \u2014 Vec2 / Vec3 / Vec4 / Mat4 / Quat, easings, and scalar helpers. Built for interactive apps and games."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-23T22:18:18.505131+00:00"
+updated_at = "2026-04-23T22:18:18.505131+00:00"
+
 [packages."@hatch:os-0.1.0"]
 name = "@hatch:os"
 version = "0.1.0"
@@ -206,6 +251,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:27:05.125073+00:00"
 updated_at = "2026-04-20T16:27:05.125073+00:00"
 
+[packages."@hatch:socket-0.1.0"]
+name = "@hatch:socket"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "TCP listeners + connections and UDP datagram sockets. Blocking and non-blocking variants suitable for fiber-cooperative schedulers."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-23T22:18:17.761353+00:00"
+updated_at = "2026-04-23T22:18:17.761353+00:00"
+
 [packages."@hatch:sqlite-0.1.0"]
 name = "@hatch:sqlite"
 version = "0.1.0"
@@ -258,3 +312,12 @@ description = "UUID v4/v5/v7 generation, parsing, and byte conversion."
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:27:14.724314+00:00"
 updated_at = "2026-04-20T16:27:14.724314+00:00"
+
+[packages."@hatch:zip-0.1.0"]
+name = "@hatch:zip"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Read and write ZIP archives entirely in memory (store / deflate / zstd)."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-23T22:18:17.321808+00:00"
+updated_at = "2026-04-23T22:18:17.321808+00:00"
