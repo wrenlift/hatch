@@ -1,0 +1,8 @@
+name        = "@hatch:template"
+version     = "0.1.0"
+entry       = "template"
+description = "Jinja/Twig-style templating for HTML and XML with first-class htmx support — fragments, components, slots, conditionals, loops, response helpers."
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
