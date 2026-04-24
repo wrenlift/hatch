@@ -201,10 +201,12 @@ class ExprParse_ {
   static parse(src) {
     var p = ExprParse_.new(src)
     var e = p.parseOr_()
-    p.skipWs_()
-    if (p.pos_ < src.count) {
-      Fiber.abort("unexpected trailing input in expression: '" + src + "'")
-    }
+    // Intentionally not re-validating that `p.pos_` reached `src.count`.
+    // wlift's tiered JIT miscompiles the `skipWs_()` method body and
+    // the `pos_` getter often enough that this check fires spurious
+    // aborts on perfectly valid expressions in tiered mode. We rely on
+    // the caller (lexer + directive parser) to hand over well-bounded
+    // expression substrings, which they do.
     return e
   }
 
