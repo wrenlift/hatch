@@ -1,4 +1,5 @@
 import "./web"         for App, Router, Request, Response, Session, Csrf, Static, Flash
+import "./css"         for Css
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -378,6 +379,38 @@ Test.describe("Static") {
     Expect.that(Static.mimeOf_("img.png")).toBe("image/png")
     Expect.that(Static.mimeOf_("unknown.xyz")).toBe("application/octet-stream")
     Expect.that(Static.mimeOf_("no-extension")).toBe("application/octet-stream")
+  }
+}
+
+// --- Css integration ------------------------------------------
+
+Test.describe("Css integration with Request/App") {
+  Test.it("req.style(..) registers on fragment sheet") {
+    var app = App.new()
+    app.get("/") {|req|
+      req.style(Css.tw("p-4"))
+      req.style(Css.tw("text-red-500"))
+      Expect.that(req.fragmentSheet.count).toBe(2)
+      return "ok"
+    }
+    app.handle(fakeReq.call("GET", "/"))
+  }
+
+  Test.it("app.globalCss registers on app sheet") {
+    var app = App.new()
+    app.globalCss(Css.tw("font-bold"))
+    app.globalCss(Css.tw("font-bold"))  // dedup
+    Expect.that(app.globalSheet.count).toBe(1)
+  }
+
+  Test.it("globalSheet reaches request via handle()") {
+    var app = App.new()
+    app.globalCss(Css.tw("text-gray-900"))
+    app.get("/") {|req|
+      Expect.that(req.globalSheet).toBe(app.globalSheet)
+      return "ok"
+    }
+    app.handle(fakeReq.call("GET", "/"))
   }
 }
 

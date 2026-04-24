@@ -32,6 +32,7 @@ import "@hatch:hash"     for Hash
 import "@hatch:json"     for JSON
 import "@hatch:crypto"   for Crypto
 import "@hatch:fs"       for Fs
+import "./css"           for Css, Style, Stylesheet
 
 // ── Request ─────────────────────────────────────────────────────────────
 //
@@ -55,6 +56,8 @@ class Request {
     _session    = null   // filled by Session middleware
     _flash      = null   // incoming flash (read-only for handler)
     _flashNext  = null   // outgoing flash (written by handler via setFlash)
+    _fragSheet  = null   // fragment-scoped Stylesheet (lazy)
+    _globalSheet = null  // reference to app's global sheet (set by App.handle)
   }
 
   method    { _method }
@@ -80,6 +83,30 @@ class Request {
     if (_flashNext == null) _flashNext = {}
     _flashNext[key] = value
   }
+
+  // Fragment-scoped stylesheet. Lazily created on first access.
+  // Styles added here are injected inline with the fragment's
+  // HTML, so htmx swaps bring them along without leaking globally.
+  //
+  //   var btn = Css.tw("bg-blue-500 text-white px-4 py-2 rounded")
+  //   req.style(btn)                               // register
+  //   return "<button class='%(btn.className)'>ok</button>"
+  fragmentSheet {
+    if (_fragSheet == null) _fragSheet = Stylesheet.new()
+    return _fragSheet
+  }
+
+  // Register a Style (or multiple) on the request-scoped sheet.
+  // Returns the first Style for chainable use at the call site.
+  style(s) {
+    fragmentSheet.add(s)
+    return s
+  }
+
+  // Internal — App.handle sets this so render() can include the
+  // app's global CSS alongside the fragment CSS.
+  globalSheet=(s) { _globalSheet = s }
+  globalSheet    { _globalSheet }
 
   // Route parameters captured by the router (/posts/:id → req.param("id")).
   param(name) { _params.containsKey(name) ? _params[name] : null }
@@ -126,9 +153,24 @@ class Request {
   // it can pick a fragment; otherwise it renders the full page.
   // Accepts either a Template or a template name (when the app
   // carries a TemplateRegistry — not wired yet in Phase 1).
+  //
+  // CSS: both sheets are threaded into the context so the
+  // template can include them in the right spot. Full-page
+  // responses get both (global in <head>, fragment in <body>);
+  // htmx-fragment responses get fragment-only (the global
+  // sheet is already on the page). Handlers that don't register
+  // any Styles just see empty strings.
   render(tpl, context) {
     var ctx = context == null ? {} : context
     ctx["#hx"] = hx
+    var isHtmx = hx["request"] == true
+    var fragCss = _fragSheet == null ? "" : _fragSheet.styleTag
+    var globalCss = ""
+    if (!isHtmx && _globalSheet != null) {
+      globalCss = _globalSheet.styleTag
+    }
+    ctx["#css"]       = fragCss
+    ctx["#cssGlobal"] = globalCss
     var body = tpl.render(ctx)
     var resp = Response.new(200).html(body)
     return resp
@@ -365,6 +407,7 @@ class App {
   construct new() {
     _router = Router.new()
     _middleware = []
+    _globalSheet = Stylesheet.new()
     _notFound = Fn.new {|req|
       var r = Response.new(404)
       r.html("<h1>404 Not Found</h1><p>%(req.method) %(req.path)</p>")
@@ -376,6 +419,19 @@ class App {
       return r
     }
   }
+
+  // App-wide stylesheet. Styles registered here are injected into
+  // the <head> of every full-page response via `req.render`, deduped
+  // by class name. htmx fragment responses skip it (the page already
+  // has it; repeating would bloat the swap payload).
+  //
+  //   var base = Css.tw("font-sans text-gray-900 leading-normal")
+  //   app.globalCss(base)
+  globalCss(style) {
+    _globalSheet.add(style)
+    return this
+  }
+  globalSheet { _globalSheet }
 
   // Routing delegates to the built-in router.
   get(path, fn) {
@@ -433,6 +489,8 @@ class App {
     var notFound = _notFound
     var errorFn  = _errorHandler
     var stack    = _middleware
+
+    req.globalSheet = _globalSheet
 
     var terminal = Fn.new {|r|
       var match = router.resolve(r.method, r.path)
