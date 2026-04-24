@@ -10,8 +10,7 @@ Build, run, and ship <a href="https://wren.io">Wren</a> programs as standalone p
 
 <p align="center">
 <a href="https://github.com/wrenlift/hatch/actions/workflows/regression.yml"><img src="https://github.com/wrenlift/hatch/actions/workflows/regression.yml/badge.svg?branch=main" alt="Regression — all hatch packages"/></a>
-<img src="https://img.shields.io/badge/language-Rust-orange?logo=rust" alt="Rust"/>
-<img src="https://img.shields.io/badge/edition-2021-blue" alt="Rust 2021"/>
+<img src="https://img.shields.io/badge/language-Wren-6d2afa?logo=wren" alt="Wren"/>
 <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"/>
 <img src="https://img.shields.io/badge/version-0.1.0-blue" alt="Version 0.1.0"/>
 <a href="https://github.com/wrenlift/WrenLift"><img src="https://img.shields.io/badge/powered_by-WrenLift-2563eb" alt="Powered by WrenLift"/></a>
