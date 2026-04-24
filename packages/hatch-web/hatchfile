@@ -7,6 +7,10 @@ description = "Server-rendered, htmx-native web framework for Wren. Router, midd
 "@hatch:socket"   = { path = "../hatch-socket" }
 "@hatch:template" = { path = "../hatch-template" }
 "@hatch:log"      = { path = "../hatch-log" }
+"@hatch:hash"     = { path = "../hatch-hash" }
+"@hatch:json"     = { path = "../hatch-json" }
+"@hatch:crypto"   = { path = "../hatch-crypto" }
+"@hatch:fs"       = { path = "../hatch-fs" }
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }
