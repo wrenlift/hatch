@@ -34,18 +34,29 @@ is a place to put your code and a way to ship it.
 
 ## Install
 
-The `hatch` binary ships alongside the WrenLift runtime — installing
-WrenLift gives you both `wlift` (the runtime) and `hatch` (this CLI)
-on your `$PATH` in one step:
+The `hatch` binary ships alongside the WrenLift runtime — one install
+gives you both `wlift` (the runtime) and `hatch` (this CLI) on your
+`$PATH`.
 
 ```sh
-# From source:
+curl -fsSL https://raw.githubusercontent.com/wrenlift/WrenLift/main/install.sh | bash
+```
+
+That fetches the latest GitHub Release, verifies the SHA256, and
+drops both binaries into `~/.local/bin`. Override with
+`INSTALL_DIR=/usr/local/bin` or pin a tag via `WLIFT_VERSION=v0.1.0`.
+
+macOS (arm64, x86_64) and Linux (x86_64, aarch64) are supported.
+Windows users can grab the binaries manually from
+[Releases](https://github.com/wrenlift/WrenLift/releases).
+
+Or from source:
+
+```sh
 git clone https://github.com/wrenlift/WrenLift
 cd WrenLift
-cargo install --path .
-
-# Or, once we publish:
-cargo install wren_lift
+cargo build --release
+# binaries land in target/release/{wlift,hatch}
 ```
 
 `wlift --version` and `hatch --version` should both print `0.1.0`.
