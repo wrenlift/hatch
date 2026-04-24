@@ -489,6 +489,7 @@ class Parse_ {
     if (kw == "extends") return parseExtends_(raw)
     if (kw == "block") return parseBlock_(raw)
     if (kw == "embed") return parseEmbed_(raw)
+    if (kw == "call") return parseCall_(raw)
     Fiber.abort("unknown directive: '" + kw + "'")
   }
 
@@ -710,7 +711,27 @@ class Parse_ {
   }
 
   parseFragment_(raw) {
-    var name = rest_("fragment", raw).trim()
+    var tail = rest_("fragment", raw).trim()
+    if (tail == "") Fiber.abort("fragment: name required")
+    // `{% fragment foo %}`     → bare, renders inline
+    // `{% fragment foo() %}`   → parameterized (even with 0 args), callable only
+    // `{% fragment foo(a, b) %}` → parameterized with args
+    var paren = tail.indexOf("(")
+    var name = ""
+    var params = null
+    if (paren < 0) {
+      name = tail
+    } else {
+      name = tail[0...paren].trim()
+      if (tail[-1] != ")") Fiber.abort("fragment: unterminated parameter list")
+      params = []
+      var inner = tail[paren + 1...-1].trim()
+      if (inner.count > 0) {
+        for (part in splitTopLevelCommas_(inner)) {
+          params.add(part.trim())
+        }
+      }
+    }
     if (name == "") Fiber.abort("fragment: name required")
     var body = parseBody_(["endfragment"])
     if (_pos >= _toks.count || _toks[_pos][0] != "stmt" ||
@@ -718,7 +739,31 @@ class Parse_ {
       Fiber.abort("unterminated {% fragment %}")
     }
     _pos = _pos + 1
-    return ["fragment", name, body]
+    return ["fragment", name, params, body]
+  }
+
+  parseCall_(raw) {
+    var tail = rest_("call", raw).trim()
+    var paren = tail.indexOf("(")
+    if (paren < 0 || tail[-1] != ")") {
+      Fiber.abort("call: expected 'name(args...)'")
+    }
+    var name = tail[0...paren].trim()
+    if (name == "") Fiber.abort("call: name required")
+    var inner = tail[paren + 1...-1].trim()
+    var argExprs = []
+    if (inner.count > 0) {
+      for (part in splitTopLevelCommas_(inner)) {
+        argExprs.add(ExprParse_.parse(part.trim()))
+      }
+    }
+    var body = parseBody_(["endcall"])
+    if (_pos >= _toks.count || _toks[_pos][0] != "stmt" ||
+        firstWord_(_toks[_pos][1]) != "endcall") {
+      Fiber.abort("unterminated {% call %}")
+    }
+    _pos = _pos + 1
+    return ["call", name, argExprs, body]
   }
 
   parseSet_(raw) {
@@ -819,38 +864,45 @@ class SlotFill_ {
 }
 
 class Render_ {
-  construct new(nodes, components, slots, fragmentName, blocks, registry) {
+  construct new(nodes, components, slots, fragmentName, blocks, registry, frags) {
     _nodes = nodes
     _comps = components
     _slots = slots
     _blocks = blocks            // map of block-name → override body AST
     _registry = registry        // TemplateRegistry or null
+    _frags = frags              // map of fragment-name → ["fragment", n, p, b]
     _fragment = fragmentName    // if non-null, render only that fragment's body
     _found = false              // set true when target fragment is rendered
     _out = []
   }
 
   static render(nodes, scope, comps, slots) {
-    var r = Render_.new(nodes, comps, slots, null, {}, null)
+    var r = Render_.new(nodes, comps, slots, null, {}, null, {})
     r.walkAll(nodes, scope)
     return r.output
   }
 
   static renderFull(nodes, scope, comps, slots, blocks, registry) {
-    var r = Render_.new(nodes, comps, slots, null, blocks, registry)
+    var r = Render_.new(nodes, comps, slots, null, blocks, registry, {})
+    r.walkAll(nodes, scope)
+    return r.output
+  }
+
+  static renderFullWithFrags(nodes, scope, comps, slots, blocks, registry, frags) {
+    var r = Render_.new(nodes, comps, slots, null, blocks, registry, frags)
     r.walkAll(nodes, scope)
     return r.output
   }
 
   static renderFragment(nodes, scope, name, comps, slots) {
-    var r = Render_.new(nodes, comps, slots, name, {}, null)
+    var r = Render_.new(nodes, comps, slots, name, {}, null, {})
     r.walkAll(nodes, scope)
     if (!r.found_) Fiber.abort("fragment not found: '" + name + "'")
     return r.output
   }
 
   static renderFragmentFull(nodes, scope, name, comps, slots, blocks, registry) {
-    var r = Render_.new(nodes, comps, slots, name, blocks, registry)
+    var r = Render_.new(nodes, comps, slots, name, blocks, registry, {})
     r.walkAll(nodes, scope)
     if (!r.found_) Fiber.abort("fragment not found: '" + name + "'")
     return r.output
@@ -964,16 +1016,20 @@ class Render_ {
       return
     }
     if (kind == "fragment") {
+      // n: ["fragment", name, params, body]  (params null = bare fragment)
+      var params = n[2]
+      var body = n[3]
       if (_fragment == null) {
-        walkAll(n[2], scope)
+        // Parameterized fragments (even with 0 params) don't render inline;
+        // they're pure callables. Bare fragments (params == null) do.
+        if (params == null) walkAll(body, scope)
       } else if (_fragment == n[1]) {
         _fragment = null
         _found = true
-        walkAll(n[2], scope)
+        walkAll(body, scope)
         _fragment = n[1]
       } else {
-        // Walk children so nested fragments can match.
-        walkAll(n[2], scope)
+        walkAll(body, scope)
       }
       return
     }
@@ -1055,6 +1111,51 @@ class Render_ {
       // Bare {% fill %} at top level is meaningless; fills only matter
       // inside {% embed %}. Ignore silently.
       return
+    }
+    if (kind == "call") {
+      if (_fragment == null) {
+        var name = n[1]
+        var argExprs = n[2]
+        var callBody = n[3]
+
+        if (_frags == null || !_frags.containsKey(name)) {
+          Fiber.abort("unknown fragment: '" + name + "'")
+        }
+        var frag = _frags[name]
+        var params = frag[2]
+        var body = frag[3]
+        // A null params list means the fragment was declared without a
+        // parameter clause — {% call %} against it must pass zero args.
+        var expected = params == null ? 0 : params.count
+        if (argExprs.count != expected) {
+          Fiber.abort("call " + name + ": expected " + expected.toString +
+            " args, got " + argExprs.count.toString)
+        }
+
+        // Evaluate args in caller's scope, bind to fragment's params.
+        var child = Scope_.child(scope)
+        bindCallArgs_(params, argExprs, child, scope)
+
+        // Expose the call body as a `caller` slot — the fragment can
+        // render it via `{% slot caller %}...{% endslot %}`.
+        var slots = {}
+        if (_slots != null) {
+          for (k in _slots.keys) slots[k] = _slots[k]
+        }
+        slots["caller"] = SlotFill_.new(callBody, scope, _comps, _slots, _registry)
+
+        _out.add(Render_.renderFull(body, child, _comps, slots, _blocks, _registry))
+      }
+      return
+    }
+  }
+
+  bindCallArgs_(params, argExprs, child, scope) {
+    if (params == null) return
+    var i = 0
+    while (i < params.count) {
+      child.set(params[i], evalExpr_(argExprs[i], scope))
+      i = i + 1
     }
   }
 
@@ -1357,6 +1458,7 @@ class Template {
   analyze_(ast) {
     _extends = null
     _blocks = {}
+    _frags = {}
     var filtered = []
     for (n in ast) {
       if (n[0] == "extends") {
@@ -1365,16 +1467,40 @@ class Template {
         _blocks[n[1]] = n[2]
         filtered.add(n)
       } else {
+        if (n[0] == "fragment") _frags[n[1]] = n
         filtered.add(n)
       }
     }
     _ast = filtered
+    // Also surface fragments nested one level inside if/for/block so
+    // `{% call %}` can reach them. Deeper nesting is an anti-pattern —
+    // lift the fragment to the top if you want to call it.
+    collectFragments_(_ast)
+  }
+
+  collectFragments_(nodes) {
+    for (n in nodes) {
+      if (n[0] == "fragment") {
+        _frags[n[1]] = n
+        collectFragments_(n[3])
+      } else if (n[0] == "if") {
+        for (b in n[1]) collectFragments_(b[1])
+        if (n[2] != null) collectFragments_(n[2])
+      } else if (n[0] == "for") {
+        collectFragments_(n[3])
+      } else if (n[0] == "block") {
+        collectFragments_(n[2])
+      } else if (n[0] == "slot") {
+        collectFragments_(n[3])
+      }
+    }
   }
 
   ast_ { _ast }
   blocks_ { _blocks }
   extendsParent_ { _extends }
   registry_ { _registry }
+  fragments_ { _frags }
 
   // Render with optional context map.
   //
@@ -1394,13 +1520,15 @@ class Template {
     }
     var slots = ctx.containsKey("#slots") ? ctx["#slots"] : null
     var comps = ctx.containsKey("#components") ? ctx["#components"] : {}
-    return Render_.renderFull(_ast, scope, comps, slots, {}, _registry)
+    return Render_.renderFullWithFrags(_ast, scope, comps, slots, {}, _registry, _frags)
   }
 
   // Render only the named {% fragment %} block. The rest of the template
   // is walked but only emits output once we're inside the target fragment.
   //
   //   tpl.renderFragment("user-row", { "user": u })
+  //
+  // If the fragment has params, its ctx keys populate them.
   renderFragment(name, ctx) {
     ctx = ctx == null ? {} : ctx
     var scope = Scope_.child(Scope_.root(ctx))
@@ -1422,7 +1550,7 @@ class Template {
     }
     var slots = ctx.containsKey("#slots") ? ctx["#slots"] : null
     var comps = ctx.containsKey("#components") ? ctx["#components"] : {}
-    return Render_.renderFull(_ast, scope, comps, slots, overrides, _registry)
+    return Render_.renderFullWithFrags(_ast, scope, comps, slots, overrides, _registry, _frags)
   }
 }
 

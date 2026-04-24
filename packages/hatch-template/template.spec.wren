@@ -581,6 +581,78 @@ Test.describe("Template: scoped slots (with bindings)") {
   }
 }
 
+// --- Fragment params + {% call %} ------------------------------------------
+
+Test.describe("Template: fragment params + {% call %}") {
+  Test.it("parameterized fragment doesn't render inline") {
+    // Without params fragments render inline; with params they stay
+    // off until called.
+    var t = Template.parse(
+      "before{% fragment greet(who) %}hello {{ who }}{% endfragment %}after")
+    Expect.that(t.render({})).toBe("beforeafter")
+  }
+  Test.it("bare fragments still render inline") {
+    var t = Template.parse(
+      "a{% fragment row %}X{% endfragment %}b")
+    Expect.that(t.render({})).toBe("aXb")
+  }
+  Test.it("{% call %} binds positional args to the fragment's params") {
+    var t = Template.parse(
+      "{% fragment greet(who, excl) %}" +
+        "hello {{ who }}{{ excl }}" +
+      "{% endfragment %}" +
+      "A-{% call greet(\"Ada\", \"!\") %}{% endcall %}-B")
+    Expect.that(t.render({})).toBe("A-hello Ada!-B")
+  }
+  Test.it("call args evaluate in the caller's scope") {
+    var t = Template.parse(
+      "{% fragment u(n) %}<b>{{ n }}</b>{% endfragment %}" +
+      "{% call u(name) %}{% endcall %}")
+    Expect.that(t.render({ "name": "Ada" })).toBe("<b>Ada</b>")
+  }
+  Test.it("call body is exposed as the `caller` slot inside the fragment") {
+    var t = Template.parse(
+      "{% fragment box(title) %}" +
+        "<div><h>{{ title }}</h>" +
+        "{% slot caller %}{% endslot %}</div>" +
+      "{% endfragment %}" +
+      "{% call box(\"Hi\") %}<p>Body</p>{% endcall %}")
+    Expect.that(t.render({})).toBe("<div><h>Hi</h><p>Body</p></div>")
+  }
+  Test.it("caller body sees the caller's scope") {
+    var t = Template.parse(
+      "{% fragment box() %}[{% slot caller %}{% endslot %}]{% endfragment %}" +
+      "{% call box() %}{{ msg }}{% endcall %}")
+    Expect.that(t.render({ "msg": "hey" })).toBe("[hey]")
+  }
+  Test.it("arg count mismatch aborts with a clear message") {
+    var t = Template.parse(
+      "{% fragment g(a, b) %}{{ a }}{{ b }}{% endfragment %}" +
+      "{% call g(1) %}{% endcall %}")
+    var err = Fiber.new { t.render({}) }.try()
+    Expect.that(err).toContain("expected 2 args, got 1")
+  }
+  Test.it("calling an unknown fragment aborts") {
+    var t = Template.parse("{% call missing() %}{% endcall %}")
+    var err = Fiber.new { t.render({}) }.try()
+    Expect.that(err).toContain("unknown fragment")
+  }
+  Test.it("fragments nested in if/for are still callable") {
+    var t = Template.parse(
+      "{% if true %}" +
+        "{% fragment inner(x) %}<i>{{ x }}</i>{% endfragment %}" +
+      "{% endif %}" +
+      "{% call inner(7) %}{% endcall %}")
+    Expect.that(t.render({})).toBe("<i>7</i>")
+  }
+  Test.it("renderFragment on a parameterized fragment uses ctx keys as params") {
+    var t = Template.parse(
+      "{% fragment row(user) %}<tr>{{ user.name }}</tr>{% endfragment %}")
+    Expect.that(t.renderFragment("row", { "user": { "name": "Zoe" } }))
+      .toBe("<tr>Zoe</tr>")
+  }
+}
+
 // --- Big end-to-end --------------------------------------------------------
 
 Test.describe("Template: realistic htmx flow") {
