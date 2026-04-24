@@ -1142,21 +1142,14 @@ class Render_ {
         bindCallArgs_(params, argExprs, child, scope)
 
         // Expose the call body as a `caller` slot — the fragment can
-        // render it via `{% slot caller %}...{% endslot %}`.
-        //
-        // Pre-render the body NOW (against the caller's scope) and
-        // stash the result as a String fill. This keeps things simple
-        // and also dodges an x86_64-interpreter bug where lazy rendering
-        // via SlotFill_ loses caller-scope access. The semantics match
-        // Jinja (calling `caller()` multiple times produces the same
-        // output, since the body's free vars close over caller scope).
-        var callerRendered = Render_.renderFullWithFrags(
-          callBody, scope, _comps, _slots, {}, _registry, _frags)
+        // render it via `{% slot caller %}...{% endslot %}`. Using a
+        // SlotFill_ lets `caller()` be evaluated lazily, against the
+        // calling scope, matching Jinja's semantics.
         var slots = {}
         if (_slots != null) {
           for (k in _slots.keys) slots[k] = _slots[k]
         }
-        slots["caller"] = callerRendered
+        slots["caller"] = SlotFill_.new(callBody, scope, _comps, _slots, _registry)
 
         _out.add(Render_.renderFullWithFrags(
           body, child, _comps, slots, _blocks, _registry, _frags))
