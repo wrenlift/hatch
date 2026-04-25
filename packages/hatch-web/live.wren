@@ -75,7 +75,7 @@ class Scheduler_ {
       } else {
         f.try()
         if (f.isDone) {
-          if (f.error != null) {
+          if (f.error != null && !Scheduler_.isExpectedDisconnect_(f.error)) {
             System.print("scheduler: fiber aborted: %(f.error)")
           }
           Scheduler_.removeAt_(_fibers, i)
@@ -84,6 +84,21 @@ class Scheduler_ {
         }
       }
     }
+  }
+
+  // Broken-pipe / connection-reset on a Tcp.write are normal when a
+  // browser closes a tab or the OS GCs an idle SSE connection. The
+  // serve fiber aborts cleanly, the scheduler removes it, and any
+  // Subscription it left behind is reaped via the queue-overflow cap
+  // on the next broadcast. Logging the abort would spam stderr
+  // every time a tab closes, so we silence the well-known
+  // disconnect cases here. Genuine handler bugs still surface.
+  static isExpectedDisconnect_(err) {
+    if (!(err is String)) return false
+    if (err.contains("Broken pipe")) return true
+    if (err.contains("Connection reset")) return true
+    if (err.contains("Connection aborted")) return true
+    return false
   }
 
   static removeAt_(list, idx) {
