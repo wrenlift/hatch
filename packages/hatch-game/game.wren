@@ -1,47 +1,52 @@
 // @hatch:game — minimal game-loop scaffold.
 //
-// LÖVE-style setup / update / draw lifecycle, PixiJS-style
-// `Sprite` display object (in @hatch:gpu), Godot-flavoured
-// state-based input polling. Window + device + surface
-// lifetimes are managed by `Game.run`; user code is just the
-// game.
+// PixiJS / Cocos / Godot-style: subclass `Game`, override the
+// hooks you care about, hand the class to `Game.run`. State
+// lives in fields on your subclass — no userdata scratchpad,
+// no closure ceremony.
 //
 //   import "@hatch:game"  for Game
 //   import "@hatch:gpu"   for Renderer2D, Camera2D, Sprite
 //   import "@hatch:image" for Image
 //
-//   Game.run({
-//     "title":      "Sprite Demo",
-//     "width":      800, "height": 600,
-//     "clearColor": [0.08, 0.08, 0.12, 1.0],
+//   class MyGame is Game {
+//     // Wren doesn't inherit constructors; declare an empty
+//     // `construct new() {}` so Game.run can instantiate.
+//     construct new() {}
 //
-//     "setup": Fn.new {|g|
-//       var img = Image.decode(...)
-//       var sprite = Sprite.new(g.device.uploadImage(img))
-//       sprite.anchor(0.5, 0.5)
-//       g.set("sprite",   sprite)
-//       g.set("renderer", Renderer2D.new(g.device, g.surfaceFormat))
-//       g.set("camera",   Camera2D.new(g.width, g.height))
-//     },
+//     config { {
+//       "title":      "Sprite Demo",
+//       "width":      800, "height": 600,
+//       "clearColor": [0.08, 0.08, 0.12, 1.0]
+//     } }
 //
-//     "update": Fn.new {|g|
-//       var s = g.get("sprite")
-//       s.x = s.x + (g.input.isDown("KeyD") ? 200 * g.dt : 0)
-//       s.x = s.x - (g.input.isDown("KeyA") ? 200 * g.dt : 0)
-//       if (g.input.isDown("Escape")) g.requestQuit
-//     },
-//
-//     "draw": Fn.new {|g|
-//       var r = g.get("renderer")
-//       r.beginFrame(g.get("camera"))
-//       g.get("sprite").draw(r)
-//       r.flush(g.pass)
+//     setup(g) {
+//       var img    = Image.decode(...)
+//       _sprite    = Sprite.new(g.device.uploadImage(img))
+//       _sprite.anchor(0.5, 0.5)
+//       _renderer  = Renderer2D.new(g.device, g.surfaceFormat)
+//       _camera    = Camera2D.new(g.width, g.height)
 //     }
-//   })
 //
+//     update(g) {
+//       if (g.input.isDown("KeyD")) _sprite.x = _sprite.x + 200 * g.dt
+//       if (g.input.isDown("KeyA")) _sprite.x = _sprite.x - 200 * g.dt
+//       if (g.input.isDown("Escape")) g.requestQuit
+//     }
+//
+//     draw(g) {
+//       _renderer.beginFrame(_camera)
+//       _sprite.draw(_renderer)
+//       _renderer.flush(g.pass)
+//     }
+//   }
+//
+//   Game.run(MyGame)
+//
+// Window + device + surface lifetimes are managed by Game.run.
 // Resize events trigger a surface re-configure automatically.
-// Setting `g.requestQuit` from setup / update / draw exits on
-// the next frame boundary.
+// Setting `g.requestQuit` from any hook exits on the next frame
+// boundary.
 
 import "@hatch:window" for Window
 import "@hatch:gpu"    for Gpu
@@ -201,9 +206,29 @@ class GameState {
   quitRequested { _quit }
 }
 
+// Base class for user games. Subclass it, override
+// `config` / `setup` / `update` / `draw` (each optional), and
+// hand the subclass to `Game.run`. Default implementations are
+// no-ops so a stub subclass with only `draw` runs cleanly.
 class Game {
-  // Defaults applied when a config key is missing. `Map.containsKey`
-  // checks below let the user omit any of these.
+  construct new() {}
+
+  // Window / surface configuration. Override in your subclass:
+  //
+  //   class MyGame is Game {
+  //     config { {"title": "...", "width": 800, "height": 600} }
+  //   }
+  //
+  // Defaults below merge in for any key the override leaves out.
+  config { {} }
+
+  // Lifecycle hooks. `g` is the per-frame `GameState` — see the
+  // class above for getters (g.dt, g.input, g.pass, etc.).
+  setup(g)  {}
+  update(g) {}
+  draw(g)   {}
+
+  // Defaults applied for keys the user's `config` override omits.
   static DEFAULTS_ {
     return {
       "title":        "wlift",
@@ -216,17 +241,24 @@ class Game {
     }
   }
 
-  // Open a window, request a device, configure a surface, and
-  // run the loop. `config` is a Map; `setup` / `update` / `draw`
-  // callbacks are optional but `draw` is the usual minimum. The
-  // call returns once the window's close box is clicked or
-  // `g.requestQuit` is invoked.
-  static run(config) {
-    var d = Game.DEFAULTS_
+  // Static entry point. Constructs an instance of `klass`,
+  // resolves its config, opens window + device + surface, and
+  // drives the loop until the window closes or `g.requestQuit`
+  // is called.
+  //
+  //   class MyGame is Game { ... }
+  //   Game.run(MyGame)
+  static run(klass) {
+    if (!(klass is Class)) {
+      Fiber.abort("Game.run: argument must be a Class extending Game.")
+    }
+    var instance = klass.new()
+    var defaults = Game.DEFAULTS_
     var c = {}
-    for (k in d.keys) c[k] = d[k]
-    if (config is Map) {
-      for (k in config.keys) c[k] = config[k]
+    for (k in defaults.keys) c[k] = defaults[k]
+    var override = instance.config
+    if (override is Map) {
+      for (k in override.keys) c[k] = override[k]
     }
 
     var window = Window.create({
@@ -247,13 +279,9 @@ class Game {
     var g = GameState.new_(window, device, c["surfaceFormat"])
     g.surface = surface
 
-    var setupFn  = c.containsKey("setup")  ? c["setup"]  : null
-    var updateFn = c.containsKey("update") ? c["update"] : null
-    var drawFn   = c.containsKey("draw")   ? c["draw"]   : null
+    instance.setup(g)
 
-    if (setupFn != null) setupFn.call(g)
-
-    var lastTime = Clock.mono
+    var lastTime  = Clock.mono
     var startTime = lastTime
 
     while (!g.quitRequested && !window.closeRequested) {
@@ -287,7 +315,7 @@ class Game {
       g.elapsed = now - startTime
       lastTime  = now
 
-      if (updateFn != null) updateFn.call(g)
+      instance.update(g)
 
       var frame = surface.acquire()
       var encoder = device.createCommandEncoder()
@@ -300,7 +328,7 @@ class Game {
         }]
       })
       g.pass = pass
-      if (drawFn != null) drawFn.call(g)
+      instance.draw(g)
       g.pass = null
       pass.end
       encoder.finish
