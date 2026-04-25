@@ -118,15 +118,31 @@ class Scheduler_ {
 // wants a real broker — that's a different library.
 
 class Subscription_ {
+  // Cap on pending messages per subscription. If the queue grows
+  // past this, the subscription is treated as stale (most likely a
+  // disconnected client whose serve fiber died without calling
+  // close) and its broadcast deliveries become drops. The Channel
+  // then reaps it on the next broadcast pass. Tunable via
+  // `Channel.queueLimit=`.
+  static DEFAULT_QUEUE_LIMIT_ { 256 }
+
   construct new_(channel) {
     _channel = channel
     _queue = []
     _closed = false
+    _limit = Subscription_.DEFAULT_QUEUE_LIMIT_
   }
 
-  // Called by Channel.broadcast.
+  limit { _limit }
+  limit=(n) { _limit = n }
+
+  // Called by Channel.broadcast. Returns true on accepted, false
+  // when the queue is over the limit (marks the sub for reaping).
   deliver_(msg) {
-    if (!_closed) _queue.add(msg)
+    if (_closed) return false
+    if (_queue.count >= _limit) return false
+    _queue.add(msg)
+    return true
   }
 
   // Cooperative receive: yield until a message is queued, then
@@ -176,15 +192,27 @@ class Channel {
     return sub
   }
 
-  // Fan-out a message to every attached subscriber.
+  // Fan-out a message to every attached subscriber. Subscribers
+  // whose queue overflows the limit (almost certainly stale —
+  // their serve fiber died without close) are reaped here. Without
+  // this, a closed browser tab leaves a Subscription accumulating
+  // every broadcast forever; over a busy stream that's an unbounded
+  // memory leak.
   //
   //   chat.broadcast("event:message\ndata:hello\n\n")
-  //
-  // Callers pass whatever text they want the subscriber to see —
-  // Channel doesn't impose a format. Sse.stream's emit wraps
-  // payloads in SSE syntax; plain subscribers get whatever you send.
   broadcast(msg) {
-    for (sub in _subs) sub.deliver_(msg)
+    var dead = null
+    for (sub in _subs) {
+      if (!sub.deliver_(msg)) {
+        if (dead == null) dead = []
+        dead.add(sub)
+      }
+    }
+    if (dead != null) {
+      for (s in dead) {
+        s.close
+      }
+    }
   }
 
   unsubscribe_(sub) {
