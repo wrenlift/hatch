@@ -915,6 +915,9 @@ class Renderer2D {
   drawSpriteTinted(texture, x, y, w, h, r, g, b, a) {
     drawSprite_(texture, x, y, w, h, 0, 0, 1, 1, r, g, b, a)
   }
+  // PixiJS-style: pass a Sprite display object and let it handle
+  // the transform + uv + tint extraction.
+  draw(sprite) { sprite.draw(this) }
 
   // Internal — does the actual vertex emit. Two triangles per
   // sprite, no shared vertices to keep the fragment-stage
@@ -995,6 +998,124 @@ class Renderer2D {
     _pipelineLayout.destroy
     _bgl.destroy
   }
+}
+
+// -- Sprite display object ---------------------------------------
+//
+// PixiJS / Cocos / Godot lineage: a transformable handle to a
+// texture region with mutable position / size / scale / anchor /
+// tint / uv. Lives independently of the Renderer2D — `r.draw(s)`
+// (or `s.draw(r)`) emits a quad into the active batch.
+//
+//   var s = Sprite.new(tex)
+//   s.anchor(0.5, 0.5)
+//   s.x = 100; s.y = 60
+//   s.scale = 2
+//   s.tint  = [1.0, 0.4, 0.4, 1.0]
+//   r.draw(s)
+//
+// Anchor is a fractional offset (0,0 = top-left, 0.5,0.5 =
+// centre, 1,1 = bottom-right) so changes to scale / size pivot
+// around the same point. Rotation isn't supported in v0 — a
+// rotation-aware drawSprite path lands once the renderer's
+// vertex shader gains the matrix uniform per sprite.
+class Sprite {
+  construct new(texture) {
+    _tex      = texture
+    _x        = 0
+    _y        = 0
+    _w        = texture.width
+    _h        = texture.height
+    _scaleX   = 1
+    _scaleY   = 1
+    _anchorX  = 0
+    _anchorY  = 0
+    _tintR    = 1
+    _tintG    = 1
+    _tintB    = 1
+    _tintA    = 1
+    _u0       = 0
+    _v0       = 0
+    _u1       = 1
+    _v1       = 1
+    _visible  = true
+  }
+
+  texture  { _tex }
+  texture=(t) { _tex = t }
+
+  x        { _x }
+  x=(v)    { _x = v }
+  y        { _y }
+  y=(v)    { _y = v }
+
+  width    { _w }
+  width=(v) { _w = v }
+  height   { _h }
+  height=(v) { _h = v }
+
+  scaleX   { _scaleX }
+  scaleX=(v) { _scaleX = v }
+  scaleY   { _scaleY }
+  scaleY=(v) { _scaleY = v }
+  // Uniform scale shorthand — sets both axes.
+  scale=(v) {
+    _scaleX = v
+    _scaleY = v
+  }
+
+  // Anchor is set as a fractional pair. (0,0) is the top-left
+  // (default — quads grow down-right). (0.5, 0.5) centres the
+  // sprite around (x, y).
+  anchorX  { _anchorX }
+  anchorY  { _anchorY }
+  anchor(ax, ay) {
+    _anchorX = ax
+    _anchorY = ay
+  }
+
+  // Tint is multiplied with the sampled texture in the fragment
+  // shader. RGB drives colourisation; A modulates opacity.
+  tint     { [_tintR, _tintG, _tintB, _tintA] }
+  tint=(rgba) {
+    _tintR = rgba[0]
+    _tintG = rgba[1]
+    _tintB = rgba[2]
+    _tintA = rgba[3]
+  }
+  alpha    { _tintA }
+  alpha=(a) { _tintA = a }
+
+  // UV rect — sub-region of `texture` to sample. (0,0)–(1,1) is
+  // the whole image.
+  uv(u0, v0, u1, v1) {
+    _u0 = u0
+    _v0 = v0
+    _u1 = u1
+    _v1 = v1
+  }
+
+  visible  { _visible }
+  visible=(v) { _visible = v }
+
+  // Translate the sprite's logical pos / size / anchor / scale
+  // into a world-space drawSprite call against the renderer.
+  draw(renderer) {
+    if (!_visible) return
+    var dw = _w * _scaleX
+    var dh = _h * _scaleY
+    var dx = _x - _anchorX * dw
+    var dy = _y - _anchorY * dh
+    if (_u0 == 0 && _v0 == 0 && _u1 == 1 && _v1 == 1 &&
+        _tintR == 1 && _tintG == 1 && _tintB == 1 && _tintA == 1) {
+      renderer.drawSprite(_tex, dx, dy, dw, dh)
+    } else {
+      renderer.drawSprite_(_tex, dx, dy, dw, dh, _u0, _v0, _u1, _v1,
+                           _tintR, _tintG, _tintB, _tintA)
+    }
+  }
+
+  toString { "Sprite(%(_tex), %(_x), %(_y), %(_w)x%(_h))" }
 }
 
 // -- Hot-reloaded pipeline ---------------------------------------
