@@ -5,8 +5,14 @@
 //   - Fragment: button styling registered per request
 //   - htmx:     swapping a fragment also brings its <style> along
 //
-//   wlift styled.wren
+//   wlift --mode interpreter styled.wren
 //   open http://127.0.0.1:3000
+//
+// NOTE: run with `--mode interpreter` until the tiered JIT's
+// method-IC specializer is fixed for the Stylesheet.add path.
+// Tiered mis-dispatches `_styles.add(style)` inside Stylesheet.add
+// to `Request.style(_)`, causing infinite recursion + a bus error.
+// Logged as project_web_jit_miscompile in memory.
 
 import "../web" for App, Css
 
