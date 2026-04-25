@@ -5,10 +5,12 @@
 //   var device = Gpu.requestDevice({})
 //   System.print(device.info["backend"])  // "metal" / "vulkan" / "dx12"
 //
-// Phase 1 ships the headless rendering core: Adapter, Device,
+// Currently exposes the headless rendering core: Adapter, Device,
 // Queue, Buffer, Texture, ShaderModule, RenderPipeline,
-// CommandEncoder, RenderPass, Sampler, BindGroup{,Layout}. No
-// window or surface yet — those land in phase 3.
+// CommandEncoder, RenderPass, Sampler, BindGroup{,Layout}. Window
+// and Surface support is on the way; until then, render to a
+// texture and read pixels back via Buffer.readBytes for tests and
+// off-screen pipelines.
 //
 // API shape mirrors WebGPU JS where possible: descriptor maps,
 // command encoder + render pass, async device request resolved
@@ -382,10 +384,9 @@ class ShaderModule {
   toString { "ShaderModule(%(_id))" }
 }
 
-// 2D texture. Phase 1 supports only D2 textures (no 1D / 3D /
-// cube). Used as a render attachment + readback source for the
-// headless tests, and as a sampled texture once the sprite/mesh
-// renderers land.
+// 2D texture — render attachment, readback source, or sampled
+// input for fragment shaders. Only `D2` dimension is exposed
+// today; 1D / 3D / cube can be added on demand.
 class Texture {
   construct new_(id, descriptor) {
     _id     = id

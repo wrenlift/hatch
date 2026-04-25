@@ -1,10 +1,10 @@
-// @hatch:gpu — phase 1 acceptance test.
+// @hatch:gpu acceptance tests.
 //
-// Headless device request is the most basic exercise: prove the
-// dylib loads, the adapter is discoverable, and the Wren wrapper
-// hands back a valid id with sane metadata. Higher-level passes
-// (buffer, texture, shader, render-to-texture readback) are added
-// as the foreign surface grows.
+// Walks every public class — device discovery, buffer lifecycle,
+// scalar + math-batched buffer writes, shader compilation,
+// texture / view / sampler construction, and the full headless
+// render path: a fullscreen-triangle pass and an indexed cube
+// with uniform + depth, both verified through pixel readback.
 
 import "./gpu" for
   Gpu, Device, Buffer, ShaderModule, Texture, TextureView, Sampler,
@@ -320,6 +320,184 @@ Test.describe("Render to texture + readback") {
     view.destroy
     target.destroy
     pipeline.destroy
+    shader.destroy
+    device.destroy
+  }
+}
+
+Test.describe("Indexed cube with uniform + depth") {
+  // 3D integration test. Exercises:
+  //   - Vertex buffer with position+color attribute layout
+  //   - Index buffer (uint16)
+  //   - Uniform buffer + BindGroupLayout + BindGroup + PipelineLayout
+  //   - Mat4.perspective × Mat4.lookAt × Mat4 chain via writeMat4s
+  //   - Depth attachment + back-face culling
+  //
+  // Asserts the center pixel is something other than the clear
+  // color — proof that the cube actually rendered through the MVP
+  // chain rather than just inheriting the background.
+
+  Test.it("renders an indexed cube and writes non-clear pixels into the center") {
+    var device = Gpu.requestDevice()
+
+    var wgsl = "
+      struct Uniforms { mvp: mat4x4<f32> };
+      @group(0) @binding(0) var<uniform> u: Uniforms;
+
+      struct VsIn  { @location(0) pos: vec3<f32>, @location(1) col: vec3<f32> };
+      struct VsOut { @builtin(position) clip: vec4<f32>, @location(0) col: vec3<f32> };
+
+      @vertex
+      fn vs_main(in: VsIn) -> VsOut {
+        var o: VsOut;
+        o.clip = u.mvp * vec4<f32>(in.pos, 1.0);
+        o.col  = in.col;
+        return o;
+      }
+      @fragment
+      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+        return vec4<f32>(in.col, 1.0);
+      }
+    "
+    var shader = device.createShaderModule({"code": wgsl, "label": "cube"})
+
+    // 8 cube corners — each carries a unique color so the center
+    // pixel is guaranteed non-zero regardless of which face is
+    // visible.
+    var verts = [
+      -1, -1, -1, 1, 0, 0,
+       1, -1, -1, 0, 1, 0,
+       1,  1, -1, 0, 0, 1,
+      -1,  1, -1, 1, 1, 0,
+      -1, -1,  1, 1, 0, 1,
+       1, -1,  1, 0, 1, 1,
+       1,  1,  1, 1, 1, 1,
+      -1,  1,  1, 0.5, 0.5, 0.5
+    ]
+    var indices = [
+      0, 1, 2,  0, 2, 3,   // -Z
+      4, 6, 5,  4, 7, 6,   // +Z
+      0, 4, 5,  0, 5, 1,   // -Y
+      3, 2, 6,  3, 6, 7,   // +Y
+      0, 3, 7,  0, 7, 4,   // -X
+      1, 5, 6,  1, 6, 2    // +X
+    ]
+
+    var vbuf = device.createBuffer({
+      "size": verts.count * 4, "usage": ["vertex", "copy-dst"], "label": "cube-vbo"
+    })
+    vbuf.writeFloats(0, verts)
+
+    // 36 uint32 indices = 144 bytes. Buffer.writeUints emits u32
+    // per Num so the index format matches the storage; switch to
+    // a uint16 path once a writeUint16s helper is in place.
+    var ibuf = device.createBuffer({
+      "size": indices.count * 4, "usage": ["index", "copy-dst"], "label": "cube-ibo"
+    })
+    ibuf.writeUints(0, indices)
+
+    // MVP: perspective × lookAt × identity model.
+    var proj  = Mat4.perspective(60.0 * 3.14159265 / 180.0, 1.0, 0.1, 50.0)
+    var view  = Mat4.lookAt(Vec3.new(2.5, 2.5, 4.0), Vec3.zero, Vec3.unitY)
+    var mvp   = proj * view
+
+    var ubuf = device.createBuffer({
+      "size":  64, "usage": ["uniform", "copy-dst"], "label": "cube-mvp"
+    })
+    ubuf.writeMat4s(0, [mvp])
+
+    var bgl = device.createBindGroupLayout({
+      "entries": [{
+        "binding": 0, "visibility": ["vertex"], "kind": "uniform"
+      }]
+    })
+    var bg = device.createBindGroup({
+      "layout": bgl,
+      "entries": [{ "binding": 0, "buffer": ubuf, "size": 64 }]
+    })
+    var pl = device.createPipelineLayout({"bindGroupLayouts": [bgl]})
+
+    var pipeline = device.createRenderPipeline({
+      "layout": pl,
+      "vertex": {
+        "module": shader, "entryPoint": "vs_main",
+        "buffers": [{
+          "arrayStride": 24, "stepMode": "vertex",
+          "attributes": [
+            { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
+            { "shaderLocation": 1, "offset": 12, "format": "float32x3" }
+          ]
+        }]
+      },
+      "fragment": { "module": shader, "entryPoint": "fs_main",
+                    "targets": [{"format": "rgba8unorm"}] },
+      "primitive": { "topology": "triangle-list", "cullMode": "back" },
+      "depthStencil": { "format": "depth32float", "depthWriteEnabled": true,
+                        "depthCompare": "less" },
+      "label": "cube-pipeline"
+    })
+
+    var color = device.createTexture({
+      "width": 64, "height": 64, "format": "rgba8unorm",
+      "usage": ["render-attachment", "copy-src"]
+    })
+    var depth = device.createTexture({
+      "width": 64, "height": 64, "format": "depth32float",
+      "usage": ["render-attachment"]
+    })
+    var colorView = color.createView()
+    var depthView = depth.createView()
+    var readback = device.createBuffer({"size": 16384, "usage": ["copy-dst", "map-read"]})
+
+    var encoder = device.createCommandEncoder()
+    var pass = encoder.beginRenderPass({
+      "colorAttachments": [{
+        "view": colorView,
+        "loadOp": "clear",
+        "clearValue": [0.0, 0.0, 0.0, 1.0],
+        "storeOp": "store"
+      }],
+      "depthStencilAttachment": {
+        "view": depthView,
+        "depthLoadOp":     "clear",
+        "depthClearValue": 1.0,
+        "depthStoreOp":    "store"
+      }
+    })
+    pass.setPipeline(pipeline)
+    pass.setBindGroup(0, bg)
+    pass.setVertexBuffer(0, vbuf)
+    pass.setIndexBuffer(ibuf, "uint32")
+    pass.drawIndexed(36)
+    pass.end
+    encoder.copyTextureToBuffer(color, readback, {"width": 64, "height": 64})
+    encoder.finish
+    device.submit([encoder])
+
+    var pixels = readback.readBytes()
+    // Center pixel — same indexing as the triangle test.
+    var r = pixels[8320]
+    var g = pixels[8321]
+    var b = pixels[8322]
+    var a = pixels[8323]
+    Expect.that(a).toBe(255)
+    // Cube was lit by per-vertex colors; the center pixel must
+    // have at least one channel above the clear color (0).
+    Expect.that(r + g + b > 0).toBe(true)
+
+    // Cleanup
+    readback.destroy
+    depthView.destroy
+    colorView.destroy
+    depth.destroy
+    color.destroy
+    pipeline.destroy
+    pl.destroy
+    bg.destroy
+    bgl.destroy
+    ubuf.destroy
+    ibuf.destroy
+    vbuf.destroy
     shader.destroy
     device.destroy
   }
