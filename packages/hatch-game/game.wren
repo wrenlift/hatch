@@ -150,6 +150,8 @@ class GameState {
     _device  = device
     _surface = null         // set after first configure
     _surfaceFormat = surfaceFormat
+    _depthFormat = null
+    _depthView   = null
     _pass    = null
     _events  = []
     _dt      = 0
@@ -163,6 +165,15 @@ class GameState {
   // Aggregated keyboard / mouse state for this frame. See `Input`
   // above — `g.input.isDown("Space")`, `g.input.mouseX`, etc.
   input { _input }
+
+  // Depth attachment (`null` if the loop wasn't configured with
+  // `"depth": true`). The framework attaches this automatically
+  // when present; renderers like Renderer3D pass `g.depthFormat`
+  // when they build their pipeline.
+  depthFormat       { _depthFormat }
+  depthFormat=(v)   { _depthFormat = v }
+  depthView         { _depthView }
+  depthView=(v)     { _depthView = v }
 
   window        { _window }
   device        { _device }
@@ -229,6 +240,11 @@ class Game {
   draw(g)   {}
 
   // Defaults applied for keys the user's `config` override omits.
+  // Pass `"depth": true` (or a format string like `"depth32float"`)
+  // in your config to have the loop allocate + bind a depth
+  // attachment automatically — required for 3D rendering and
+  // the recommended path for any game that mixes Renderer2D
+  // HUDs over a Renderer3D scene.
   static DEFAULTS_ {
     return {
       "title":        "wlift",
@@ -237,7 +253,8 @@ class Game {
       "resizable":    true,
       "surfaceFormat": "bgra8unorm",
       "clearColor":   [0.0, 0.0, 0.0, 1.0],
-      "presentMode":  "fifo"
+      "presentMode":  "fifo",
+      "depth":        false       // Bool or "depth32float" / "depth24plus"
     }
   }
 
@@ -276,8 +293,27 @@ class Game {
       "presentMode": c["presentMode"]
     })
 
+    // Resolve depth attachment config. true → "depth32float";
+    // a string overrides; false / null → no depth attachment.
+    var depthFormat = null
+    if (c["depth"] is String) depthFormat = c["depth"]
+    if (c["depth"] == true)   depthFormat = "depth32float"
+
+    var depthTexture = null
+    var depthView    = null
+    if (depthFormat != null) {
+      depthTexture = device.createTexture({
+        "width":  c["width"], "height": c["height"],
+        "format": depthFormat,
+        "usage":  ["render-attachment"]
+      })
+      depthView = depthTexture.createView()
+    }
+
     var g = GameState.new_(window, device, c["surfaceFormat"])
-    g.surface = surface
+    g.surface     = surface
+    g.depthFormat = depthFormat
+    g.depthView   = depthView
 
     instance.setup(g)
 
@@ -319,14 +355,23 @@ class Game {
 
       var frame = surface.acquire()
       var encoder = device.createCommandEncoder()
-      var pass = encoder.beginRenderPass({
+      var passDesc = {
         "colorAttachments": [{
           "view":       frame.view,
           "loadOp":     "clear",
           "clearValue": c["clearColor"],
           "storeOp":    "store"
         }]
-      })
+      }
+      if (depthView != null) {
+        passDesc["depthStencilAttachment"] = {
+          "view":            depthView,
+          "depthLoadOp":     "clear",
+          "depthClearValue": 1.0,
+          "depthStoreOp":    "store"
+        }
+      }
+      var pass = encoder.beginRenderPass(passDesc)
       g.pass = pass
       instance.draw(g)
       g.pass = null
