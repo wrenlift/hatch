@@ -6,7 +6,10 @@
 // (buffer, texture, shader, render-to-texture readback) are added
 // as the foreign surface grows.
 
-import "./gpu" for Gpu, Device, Buffer, ShaderModule, Texture, TextureView, Sampler
+import "./gpu" for
+  Gpu, Device, Buffer, ShaderModule, Texture, TextureView, Sampler,
+  BindGroupLayout, BindGroup, PipelineLayout, RenderPipeline,
+  CommandEncoder, RenderPass
 import "@hatch:math"   for Vec3, Vec4, Mat4, Quat
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
@@ -188,6 +191,136 @@ Test.describe("ShaderModule + Texture + Sampler") {
     var s = device.createSampler({})
     Expect.that(s is Sampler).toBe(true)
     s.destroy
+    device.destroy
+  }
+}
+
+Test.describe("Render to texture + readback") {
+  // Headless render path: render pass → texture, copy texture →
+  // mappable buffer, map-and-read on the host. Validates the
+  // entire pipeline (encoder, render pass, copy, queue submit,
+  // sync map) end to end.
+  //
+  // Texture is 64×64 RGBA8 (256 bytes per row, exactly the
+  // wgpu::COPY_BYTES_PER_ROW_ALIGNMENT). Smaller targets need
+  // explicit padding which the spec doesn't bother with yet.
+
+  Test.it("clears to magenta and reads back exact pixel values") {
+    var device = Gpu.requestDevice()
+    var target = device.createTexture({
+      "width": 64, "height": 64,
+      "format": "rgba8unorm",
+      "usage": ["render-attachment", "copy-src"],
+      "label": "spec-target"
+    })
+    var view = target.createView()
+
+    var readback = device.createBuffer({
+      "size":  16384,
+      "usage": ["copy-dst", "map-read"],
+      "label": "spec-readback"
+    })
+
+    var encoder = device.createCommandEncoder()
+    var pass = encoder.beginRenderPass({
+      "colorAttachments": [{
+        "view": view,
+        "loadOp": "clear",
+        "clearValue": [1.0, 0.0, 1.0, 1.0],
+        "storeOp": "store"
+      }]
+    })
+    pass.end
+    encoder.copyTextureToBuffer(target, readback, {"width": 64, "height": 64})
+    encoder.finish
+    device.submit([encoder])
+
+    var pixels = readback.readBytes()
+    Expect.that(pixels.count).toBe(16384)
+    Expect.that(pixels[0]).toBe(255)
+    Expect.that(pixels[1]).toBe(0)
+    Expect.that(pixels[2]).toBe(255)
+    Expect.that(pixels[3]).toBe(255)
+
+    readback.destroy
+    view.destroy
+    target.destroy
+    device.destroy
+  }
+
+  Test.it("renders a fullscreen-triangle shader to a green output") {
+    var device = Gpu.requestDevice()
+
+    // Vertex shader baked-in fullscreen triangle (no vertex buffer
+    // needed). Fragment fills the screen with green. Reading back
+    // the center pixel proves the pipeline + render pass executed
+    // and produced new color, not the clear value.
+    var wgsl = "
+      @vertex
+      fn vs_main(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
+        var p = array<vec2<f32>, 3>(
+          vec2<f32>(-1.0, -1.0),
+          vec2<f32>( 3.0, -1.0),
+          vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(p[vid], 0.0, 1.0);
+      }
+      @fragment
+      fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(0.0, 1.0, 0.0, 1.0);
+      }
+    "
+
+    var shader = device.createShaderModule({"code": wgsl, "label": "fullscreen-tri"})
+    var pipeline = device.createRenderPipeline({
+      "layout": "auto",
+      "vertex":   { "module": shader, "entryPoint": "vs_main" },
+      "fragment": { "module": shader, "entryPoint": "fs_main",
+                    "targets": [{"format": "rgba8unorm"}] },
+      "primitive": { "topology": "triangle-list" },
+      "label": "spec-fullscreen"
+    })
+
+    var target = device.createTexture({
+      "width": 64, "height": 64,
+      "format": "rgba8unorm",
+      "usage": ["render-attachment", "copy-src"]
+    })
+    var view = target.createView()
+    var readback = device.createBuffer({
+      "size":  16384,
+      "usage": ["copy-dst", "map-read"]
+    })
+
+    var encoder = device.createCommandEncoder()
+    var pass = encoder.beginRenderPass({
+      "colorAttachments": [{
+        "view": view,
+        "loadOp": "clear",
+        "clearValue": [1.0, 0.0, 0.0, 1.0],   // red clear, fragment overrides
+        "storeOp": "store"
+      }]
+    })
+    pass.setPipeline(pipeline)
+    pass.draw(3)
+    pass.end
+    encoder.copyTextureToBuffer(target, readback, {"width": 64, "height": 64})
+    encoder.finish
+    device.submit([encoder])
+
+    var pixels = readback.readBytes()
+    // Center of a 64x64 image: row 32, col 32. Bytes per row = 256
+    // (already aligned), so the pixel index is 32*256 + 32*4 = 8320.
+    Expect.that(pixels[8320]).toBe(0)     // R (red clear was overdrawn)
+    Expect.that(pixels[8321]).toBe(255)   // G
+    Expect.that(pixels[8322]).toBe(0)     // B
+    Expect.that(pixels[8323]).toBe(255)   // A
+
+    readback.destroy
+    view.destroy
+    target.destroy
+    pipeline.destroy
+    shader.destroy
     device.destroy
   }
 }

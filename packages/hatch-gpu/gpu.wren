@@ -89,6 +89,57 @@ foreign class GpuCore {
 
   #!symbol = "wlift_gpu_sampler_destroy"
   foreign static samplerDestroy(id)
+
+  // -- Bind group layouts + bind groups --------------------------
+
+  #!symbol = "wlift_gpu_bind_group_layout_create"
+  foreign static bindGroupLayoutCreate(deviceId, descriptor)
+
+  #!symbol = "wlift_gpu_bind_group_layout_destroy"
+  foreign static bindGroupLayoutDestroy(id)
+
+  #!symbol = "wlift_gpu_pipeline_layout_create"
+  foreign static pipelineLayoutCreate(deviceId, descriptor)
+
+  #!symbol = "wlift_gpu_pipeline_layout_destroy"
+  foreign static pipelineLayoutDestroy(id)
+
+  #!symbol = "wlift_gpu_bind_group_create"
+  foreign static bindGroupCreate(deviceId, descriptor)
+
+  #!symbol = "wlift_gpu_bind_group_destroy"
+  foreign static bindGroupDestroy(id)
+
+  // -- Render pipelines ------------------------------------------
+
+  #!symbol = "wlift_gpu_render_pipeline_create"
+  foreign static renderPipelineCreate(deviceId, descriptor)
+
+  #!symbol = "wlift_gpu_render_pipeline_destroy"
+  foreign static renderPipelineDestroy(id)
+
+  // -- CommandEncoder + render pass + readback -------------------
+
+  #!symbol = "wlift_gpu_encoder_create"
+  foreign static encoderCreate(deviceId, descriptor)
+
+  #!symbol = "wlift_gpu_encoder_destroy"
+  foreign static encoderDestroy(id)
+
+  #!symbol = "wlift_gpu_encoder_record_pass"
+  foreign static encoderRecordPass(encoderId, descriptor)
+
+  #!symbol = "wlift_gpu_encoder_copy_texture_to_buffer"
+  foreign static encoderCopyTextureToBuffer(encoderId, textureId, bufferId, descriptor)
+
+  #!symbol = "wlift_gpu_encoder_finish"
+  foreign static encoderFinish(id)
+
+  #!symbol = "wlift_gpu_queue_submit"
+  foreign static queueSubmit(deviceId, encoderIds)
+
+  #!symbol = "wlift_gpu_buffer_read_bytes"
+  foreign static bufferReadBytes(id)
 }
 
 // Static entry point — `Gpu.requestDevice({...})`.
@@ -179,6 +230,78 @@ class Device {
     return Sampler.new_(sid)
   }
 
+  // Create a bind group layout. Descriptor:
+  //   "entries": [
+  //     { "binding": Num,
+  //       "visibility": ["vertex" | "fragment" | "compute"],
+  //       "kind": "uniform" | "storage" | "read-only-storage" |
+  //               "sampler" | "texture",
+  //       // texture-only:
+  //       "sampleType": "float" | "depth" | "uint" | "sint",
+  //     }, ...
+  //   ]
+  createBindGroupLayout(descriptor) {
+    var lid = GpuCore.bindGroupLayoutCreate(_id, descriptor)
+    return BindGroupLayout.new_(lid)
+  }
+
+  // Combine bind group layouts into a pipeline layout.
+  //   "bindGroupLayouts": [BindGroupLayout, ...]
+  createPipelineLayout(descriptor) {
+    var ids = []
+    for (l in descriptor["bindGroupLayouts"]) ids.add(l.id)
+    var pdesc = { "bindGroupLayouts": ids }
+    if (descriptor.containsKey("label")) pdesc["label"] = descriptor["label"]
+    var plid = GpuCore.pipelineLayoutCreate(_id, pdesc)
+    return PipelineLayout.new_(plid)
+  }
+
+  // Bind buffers / samplers / texture views to a layout's slots.
+  //   "layout":  BindGroupLayout
+  //   "entries": [
+  //     { "binding": Num, "buffer":  Buffer, "offset"?: Num, "size"?: Num },
+  //     { "binding": Num, "sampler": Sampler },
+  //     { "binding": Num, "view":    TextureView },
+  //   ]
+  createBindGroup(descriptor) {
+    var entries = []
+    for (e in descriptor["entries"]) {
+      var rewritten = { "binding": e["binding"] }
+      if (e.containsKey("buffer"))  rewritten["buffer"]  = e["buffer"].id
+      if (e.containsKey("offset"))  rewritten["offset"]  = e["offset"]
+      if (e.containsKey("size"))    rewritten["size"]    = e["size"]
+      if (e.containsKey("sampler")) rewritten["sampler"] = e["sampler"].id
+      if (e.containsKey("view"))    rewritten["view"]    = e["view"].id
+      entries.add(rewritten)
+    }
+    var dec = { "layout": descriptor["layout"].id, "entries": entries }
+    if (descriptor.containsKey("label")) dec["label"] = descriptor["label"]
+    var bid = GpuCore.bindGroupCreate(_id, dec)
+    return BindGroup.new_(bid)
+  }
+
+  // Create a render pipeline. See gpu.spec.wren for the full
+  // descriptor shape.
+  createRenderPipeline(descriptor) {
+    var dec = RenderPipeline.normalize_(descriptor)
+    var pid = GpuCore.renderPipelineCreate(_id, dec)
+    return RenderPipeline.new_(pid)
+  }
+
+  // Open a fresh command encoder. Descriptor optional ({"label":...}).
+  createCommandEncoder() { createCommandEncoder({}) }
+  createCommandEncoder(descriptor) {
+    var eid = GpuCore.encoderCreate(_id, descriptor)
+    return CommandEncoder.new_(eid, this)
+  }
+
+  // Submit a list of finished CommandEncoders to this device's queue.
+  submit(encoders) {
+    var ids = []
+    for (e in encoders) ids.add(e.id)
+    GpuCore.queueSubmit(_id, ids)
+  }
+
   // Drop the underlying wgpu Device + Queue. Idempotent — calling
   // twice is fine.
   destroy {
@@ -232,6 +355,12 @@ class Buffer {
     for (item in items) out.add(item.data)
     return out
   }
+
+  // Synchronously map for read + copy bytes back to Wren as a
+  // List<Num>, one entry per byte. Blocks the host while wgpu
+  // drains pending submissions, so use sparingly — best for tests
+  // and one-shot CPU readback.
+  readBytes() { GpuCore.bufferReadBytes(_id) }
 
   destroy {
     GpuCore.bufferDestroy(_id)
@@ -315,4 +444,187 @@ class Sampler {
     _id = -1
   }
   toString { "Sampler(%(_id))" }
+}
+
+// -- Bind groups -------------------------------------------------
+
+class BindGroupLayout {
+  construct new_(id) { _id = id }
+  id { _id }
+  destroy {
+    GpuCore.bindGroupLayoutDestroy(_id)
+    _id = -1
+  }
+}
+
+class PipelineLayout {
+  construct new_(id) { _id = id }
+  id { _id }
+  destroy {
+    GpuCore.pipelineLayoutDestroy(_id)
+    _id = -1
+  }
+}
+
+class BindGroup {
+  construct new_(id) { _id = id }
+  id { _id }
+  destroy {
+    GpuCore.bindGroupDestroy(_id)
+    _id = -1
+  }
+}
+
+// -- Render pipeline --------------------------------------------
+
+class RenderPipeline {
+  construct new_(id) { _id = id }
+  id { _id }
+  destroy {
+    GpuCore.renderPipelineDestroy(_id)
+    _id = -1
+  }
+
+  // Translate a user-friendly descriptor into the flat Map shape
+  // the foreign side expects. We unwrap shader / layout objects
+  // into raw ids so the descriptor is pure data when it crosses
+  // the FFI boundary.
+  static normalize_(d) {
+    var out = {}
+    if (d.containsKey("label")) out["label"] = d["label"]
+
+    // layout: "auto" or a PipelineLayout
+    if (d.containsKey("layout")) {
+      var l = d["layout"]
+      out["layout"] = (l is String) ? l : l.id
+    }
+
+    // vertex stage
+    var v = d["vertex"]
+    var vout = { "module": v["module"].id, "entryPoint": v["entryPoint"] }
+    if (v.containsKey("buffers")) vout["buffers"] = v["buffers"]
+    out["vertex"] = vout
+
+    // fragment stage (optional)
+    if (d.containsKey("fragment")) {
+      var f = d["fragment"]
+      out["fragment"] = {
+        "module":     f["module"].id,
+        "entryPoint": f["entryPoint"],
+        "targets":    f["targets"]
+      }
+    }
+
+    if (d.containsKey("primitive"))    out["primitive"]    = d["primitive"]
+    if (d.containsKey("depthStencil")) out["depthStencil"] = d["depthStencil"]
+    return out
+  }
+}
+
+// -- Command encoder + render pass -------------------------------
+
+class CommandEncoder {
+  construct new_(id, device) {
+    _id = id
+    _device = device
+  }
+
+  id     { _id }
+  device { _device }
+
+  // Open a render pass. Returns a `RenderPass` that accumulates
+  // commands; call `pass.end` to flush them into the encoder.
+  beginRenderPass(descriptor) {
+    return RenderPass.new_(this, descriptor)
+  }
+
+  // Copy `texture` into `buffer` so the host can read pixels back.
+  // `descriptor` keys:
+  //   "width", "height": copy region size
+  //   "bytesPerRow"?, "rowsPerImage"?: layout overrides
+  copyTextureToBuffer(texture, buffer, descriptor) {
+    GpuCore.encoderCopyTextureToBuffer(_id, texture.id, buffer.id, descriptor)
+  }
+
+  finish {
+    GpuCore.encoderFinish(_id)
+    return this
+  }
+
+  destroy {
+    GpuCore.encoderDestroy(_id)
+    _id = -1
+  }
+}
+
+// Render pass builder. Accumulates commands client-side and emits
+// them in a single foreign call on `end`. Sidesteps the
+// wgpu::RenderPass<'a> lifetime — no long-lived borrow on the
+// encoder needs to cross the FFI boundary.
+class RenderPass {
+  construct new_(encoder, descriptor) {
+    _encoder = encoder
+    _desc    = descriptor
+    _cmds    = []
+  }
+
+  setPipeline(p) {
+    _cmds.add({ "op": "setPipeline", "pipeline": p.id })
+    return this
+  }
+  setVertexBuffer(slot, buffer) {
+    _cmds.add({ "op": "setVertexBuffer", "slot": slot, "buffer": buffer.id })
+    return this
+  }
+  // `format` is "uint16" (default) or "uint32".
+  setIndexBuffer(buffer, format) {
+    _cmds.add({ "op": "setIndexBuffer", "buffer": buffer.id, "format": format })
+    return this
+  }
+  setIndexBuffer(buffer) { setIndexBuffer(buffer, "uint16") }
+  setBindGroup(index, group) {
+    _cmds.add({ "op": "setBindGroup", "index": index, "group": group.id })
+    return this
+  }
+  draw(vertexCount) { draw(vertexCount, 1) }
+  draw(vertexCount, instanceCount) {
+    _cmds.add({ "op": "draw", "vertexCount": vertexCount, "instanceCount": instanceCount })
+    return this
+  }
+  drawIndexed(indexCount) { drawIndexed(indexCount, 1) }
+  drawIndexed(indexCount, instanceCount) {
+    _cmds.add({ "op": "drawIndexed", "indexCount": indexCount, "instanceCount": instanceCount })
+    return this
+  }
+
+  // Translate object refs in the original descriptor into raw ids
+  // and forward the whole record (descriptor + commands) to the
+  // foreign side.
+  end {
+    var dec = RenderPass.normalizeDescriptor_(_desc)
+    dec["commands"] = _cmds
+    GpuCore.encoderRecordPass(_encoder.id, dec)
+  }
+
+  static normalizeDescriptor_(d) {
+    var out = {}
+    var attachments = []
+    for (a in d["colorAttachments"]) {
+      var rec = { "view": a["view"].id }
+      if (a.containsKey("loadOp"))     rec["loadOp"]     = a["loadOp"]
+      if (a.containsKey("clearValue")) rec["clearValue"] = a["clearValue"]
+      if (a.containsKey("storeOp"))    rec["storeOp"]    = a["storeOp"]
+      attachments.add(rec)
+    }
+    out["colorAttachments"] = attachments
+    if (d.containsKey("depthStencilAttachment")) {
+      var ds = d["depthStencilAttachment"]
+      var rec = { "view": ds["view"].id }
+      if (ds.containsKey("depthLoadOp"))     rec["depthLoadOp"]     = ds["depthLoadOp"]
+      if (ds.containsKey("depthClearValue")) rec["depthClearValue"] = ds["depthClearValue"]
+      if (ds.containsKey("depthStoreOp"))    rec["depthStoreOp"]    = ds["depthStoreOp"]
+      out["depthStencilAttachment"] = rec
+    }
+    return out
+  }
 }
