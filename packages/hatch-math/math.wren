@@ -244,6 +244,12 @@ class Vec2 {
   // Conversion / comparison -----------------------------------------
 
   toList           { [_x, _y] }
+  // Raw component list, ordered (x, y). Companion to `Vec3.data` /
+  // `Vec4.data` / `Mat4.data` / `Quat.data` — used by foreign GPU
+  // upload paths that need a stable, list-shaped view of the
+  // underlying storage. Currently allocates each call (fields are
+  // scalars); cheap enough for the uses we care about.
+  data             { [_x, _y] }
   approxEq(other) { approxEq(other, 0.000001) }
   approxEq(other, eps) {
     return (_x - other.x).abs < eps &&
@@ -353,6 +359,7 @@ class Vec3 {
   }
 
   toList           { [_x, _y, _z] }
+  data             { [_x, _y, _z] }
   approxEq(o) { approxEq(o, 0.000001) }
   approxEq(o, eps) {
     return (_x - o.x).abs < eps &&
@@ -423,6 +430,7 @@ class Vec4 {
   xyz { Vec3.new(_x, _y, _z) }
 
   toList           { [_x, _y, _z, _w] }
+  data             { [_x, _y, _z, _w] }
   approxEq(o) { approxEq(o, 0.000001) }
   approxEq(o, eps) {
     return (_x - o.x).abs < eps &&
@@ -611,6 +619,12 @@ class Mat4 {
 
   // Internal raw setter used by the scalar multiply loop.
   setRaw_(i, v) { _m[i] = v }
+
+  // Raw row-major 16-element list. Returns the underlying storage
+  // by reference — foreign GPU upload paths read sequentially with
+  // List indexing instead of paying for 16 `at(r, c)` method calls
+  // per matrix. Mutating the returned list mutates the matrix.
+  data { _m }
 
   transpose {
     var r = Mat4.new()
@@ -828,6 +842,12 @@ class Quat {
     m.set(2, 2, 1 - 2 * (xx + yy))
     return m
   }
+
+  // Raw component list. Order is `(w, x, y, z)` — same as the
+  // `Quat.new(w, x, y, z)` constructor — so foreign upload paths
+  // can stream the list directly into shader uniforms that store
+  // quaternions in scalar-first layout.
+  data { [_w, _x, _y, _z] }
 
   approxEq(o) { approxEq(o, 0.000001) }
   approxEq(o, eps) {

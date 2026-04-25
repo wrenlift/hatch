@@ -1,0 +1,6 @@
+# Built dylibs are populated by CI from [plugin_source] before
+# `hatch publish`. Local dev can drop a freshly-built dylib here
+# (see hatchfile) — never check it in.
+*.dylib
+*.so
+*.dll

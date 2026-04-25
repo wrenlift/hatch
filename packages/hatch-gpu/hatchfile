@@ -1,0 +1,37 @@
+name        = "@hatch:gpu"
+version     = "0.1.0"
+entry       = "gpu"
+description = "GPU primitives backed by wgpu — Device, Buffer, Texture, ShaderModule, RenderPipeline, CommandEncoder, RenderPass. Foundation for 2D/3D rendering and the @hatch:game framework."
+
+# Search path for the dylib at spec / dev time. CI populates
+# `libs/` from the `[plugin_source]` build, but local development
+# can drop a freshly-built dylib here too:
+#
+#     cargo build -p wlift_gpu --release
+#     cp target/release/libwlift_gpu.dylib hatch/packages/hatch-gpu/libs/
+native_search_paths = ["libs"]
+
+# Dependency on @hatch:math — we reuse Vec3 / Mat4 / Quat via
+# their public `.data` accessor for batched buffer uploads, no
+# duplicated math API. Pin via path during local dev; hatch-bot
+# rewrites this to a registry pin at publish time.
+[dependencies]
+"@hatch:math" = { path = "../hatch-math" }
+
+# Where the cdylib lives. Same shape as @hatch:sqlite — clone
+# `repo` at `rev`, run `cargo build -p wlift_gpu --release`
+# across the platform matrix, drop each dylib into `libs/`,
+# bundle via `hatch publish`.
+[plugin_source]
+repo  = "https://github.com/wrenlift/WrenLift.git"
+rev   = "8f16a3daf5a60f2bfb4b4afcd70f1b7d4bc4df38"
+crate = "wlift_gpu"
+
+# Per-platform dylib paths. CI populates libs/ via the
+# plugin_source build.
+[native_libs]
+wlift_gpu = { macos = "libs/libwlift_gpu.dylib", linux = "libs/libwlift_gpu.so", windows = "libs/wlift_gpu.dll" }
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
