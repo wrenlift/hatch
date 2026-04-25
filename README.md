@@ -1,5 +1,5 @@
 <p align="center">
-<img style="display: block;" src="logo.png" alt="hatch Logo" width="250"/>
+<img style="display: block;" src="hatch_logo_flat.png" alt="hatch Logo" width="250"/>
 </p>
 
 <h1 align="center">Hatch</h1>
