@@ -59,6 +59,36 @@ foreign class GpuCore {
 
   #!symbol = "wlift_gpu_buffer_write_quats"
   foreign static bufferWriteQuats(id, offset, data)
+
+  // -- Shader ----------------------------------------------------
+
+  #!symbol = "wlift_gpu_shader_create"
+  foreign static shaderCreate(deviceId, descriptor)
+
+  #!symbol = "wlift_gpu_shader_destroy"
+  foreign static shaderDestroy(id)
+
+  // -- Texture ---------------------------------------------------
+
+  #!symbol = "wlift_gpu_texture_create"
+  foreign static textureCreate(deviceId, descriptor)
+
+  #!symbol = "wlift_gpu_texture_destroy"
+  foreign static textureDestroy(id)
+
+  #!symbol = "wlift_gpu_texture_create_view"
+  foreign static textureCreateView(textureId)
+
+  #!symbol = "wlift_gpu_view_destroy"
+  foreign static viewDestroy(id)
+
+  // -- Sampler ---------------------------------------------------
+
+  #!symbol = "wlift_gpu_sampler_create"
+  foreign static samplerCreate(deviceId, descriptor)
+
+  #!symbol = "wlift_gpu_sampler_destroy"
+  foreign static samplerDestroy(id)
 }
 
 // Static entry point — `Gpu.requestDevice({...})`.
@@ -109,6 +139,44 @@ class Device {
     if (!(descriptor is Map)) Fiber.abort("Device.createBuffer: descriptor must be a Map.")
     var bid = GpuCore.bufferCreate(_id, descriptor)
     return Buffer.new_(bid, descriptor["size"])
+  }
+
+  // Compile a WGSL shader. Descriptor:
+  //   "code":  String  — WGSL source
+  //   "label": String? — diagnostics
+  createShaderModule(descriptor) {
+    if (!(descriptor is Map)) Fiber.abort("Device.createShaderModule: descriptor must be a Map.")
+    var sid = GpuCore.shaderCreate(_id, descriptor)
+    return ShaderModule.new_(sid)
+  }
+
+  // Allocate a texture. Descriptor:
+  //   "width":  Num
+  //   "height": Num
+  //   "depth":  Num?              (default 1, layer count for arrays)
+  //   "format": String            ("rgba8unorm", "depth32float", ...)
+  //   "usage":  List<String>      ("render-attachment", "texture-binding",
+  //                                "storage-binding", "copy-src", "copy-dst")
+  //   "sampleCount": Num?         (default 1)
+  //   "label":  String?
+  createTexture(descriptor) {
+    if (!(descriptor is Map)) Fiber.abort("Device.createTexture: descriptor must be a Map.")
+    var tid = GpuCore.textureCreate(_id, descriptor)
+    return Texture.new_(tid, descriptor)
+  }
+
+  // Allocate a sampler. Descriptor (all optional):
+  //   "magFilter":     "nearest" | "linear"   (default linear)
+  //   "minFilter":     "nearest" | "linear"   (default linear)
+  //   "mipmapFilter":  "nearest" | "linear"   (default nearest)
+  //   "addressModeU":  "clamp-to-edge" | "repeat" | "mirror-repeat"
+  //   "addressModeV":  same
+  //   "addressModeW":  same
+  //   "label":         String?
+  createSampler(descriptor) {
+    if (!(descriptor is Map)) descriptor = {}
+    var sid = GpuCore.samplerCreate(_id, descriptor)
+    return Sampler.new_(sid)
   }
 
   // Drop the underlying wgpu Device + Queue. Idempotent — calling
@@ -171,4 +239,80 @@ class Buffer {
   }
 
   toString { "Buffer(%(_id), %(_size) bytes)" }
+}
+
+// Compiled WGSL module — stamped out by Device.createShaderModule.
+// Used as a vertex / fragment / compute stage source on a pipeline.
+class ShaderModule {
+  construct new_(id) { _id = id }
+  id { _id }
+  destroy {
+    GpuCore.shaderDestroy(_id)
+    _id = -1
+  }
+  toString { "ShaderModule(%(_id))" }
+}
+
+// 2D texture. Phase 1 supports only D2 textures (no 1D / 3D /
+// cube). Used as a render attachment + readback source for the
+// headless tests, and as a sampled texture once the sprite/mesh
+// renderers land.
+class Texture {
+  construct new_(id, descriptor) {
+    _id     = id
+    _width  = descriptor["width"]
+    _height = descriptor["height"]
+    _format = descriptor["format"]
+  }
+
+  id     { _id }
+  width  { _width }
+  height { _height }
+  format { _format }
+
+  // Default view — covers the whole texture, matches the texture's
+  // format. Higher-level renderers can build sliced views by
+  // calling the foreign API directly when needed.
+  createView() {
+    var vid = GpuCore.textureCreateView(_id)
+    return TextureView.new_(vid, _format, _width, _height)
+  }
+
+  destroy {
+    GpuCore.textureDestroy(_id)
+    _id = -1
+  }
+
+  toString { "Texture(%(_id), %(_width)x%(_height) %(_format))" }
+}
+
+class TextureView {
+  construct new_(id, format, width, height) {
+    _id     = id
+    _format = format
+    _width  = width
+    _height = height
+  }
+
+  id     { _id }
+  format { _format }
+  width  { _width }
+  height { _height }
+
+  destroy {
+    GpuCore.viewDestroy(_id)
+    _id = -1
+  }
+
+  toString { "TextureView(%(_id))" }
+}
+
+class Sampler {
+  construct new_(id) { _id = id }
+  id { _id }
+  destroy {
+    GpuCore.samplerDestroy(_id)
+    _id = -1
+  }
+  toString { "Sampler(%(_id))" }
 }

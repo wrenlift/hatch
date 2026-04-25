@@ -6,7 +6,7 @@
 // (buffer, texture, shader, render-to-texture readback) are added
 // as the foreign surface grows.
 
-import "./gpu"         for Gpu, Device, Buffer
+import "./gpu" for Gpu, Device, Buffer, ShaderModule, Texture, TextureView, Sampler
 import "@hatch:math"   for Vec3, Vec4, Mat4, Quat
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
@@ -131,6 +131,63 @@ Test.describe("Buffer batched math writes") {
     buf.writeVec4s(32, [Vec4.new(0.1, 0.2, 0.3, 1.0)])
     buf.writeQuats(64, [Quat.fromAxisAngle(Vec3.unitY, 1.5708)])
     buf.destroy
+    device.destroy
+  }
+}
+
+Test.describe("ShaderModule + Texture + Sampler") {
+  Test.it("compiles a trivial WGSL shader") {
+    var device = Gpu.requestDevice()
+    var sm = device.createShaderModule({
+      "code": "
+        @vertex fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+          return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        }
+        @fragment fn fs_main() -> @location(0) vec4<f32> {
+          return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+        }
+      ",
+      "label": "spec-trivial"
+    })
+    Expect.that(sm is ShaderModule).toBe(true)
+    sm.destroy
+    device.destroy
+  }
+
+  Test.it("creates a 2D texture and a default view") {
+    var device = Gpu.requestDevice()
+    var tex = device.createTexture({
+      "width": 16, "height": 16,
+      "format": "rgba8unorm",
+      "usage": ["render-attachment", "copy-src"],
+      "label": "spec-target"
+    })
+    Expect.that(tex is Texture).toBe(true)
+    Expect.that(tex.width).toBe(16)
+    Expect.that(tex.height).toBe(16)
+    Expect.that(tex.format).toBe("rgba8unorm")
+
+    var view = tex.createView()
+    Expect.that(view is TextureView).toBe(true)
+    view.destroy
+    tex.destroy
+    device.destroy
+  }
+
+  Test.it("rejects unknown formats") {
+    var device = Gpu.requestDevice()
+    var e = Fiber.new {
+      device.createTexture({"width": 8, "height": 8, "format": "bogus", "usage": ["copy-src"]})
+    }.try()
+    Expect.that(e).toContain("unknown format")
+    device.destroy
+  }
+
+  Test.it("creates a sampler with default config") {
+    var device = Gpu.requestDevice()
+    var s = device.createSampler({})
+    Expect.that(s is Sampler).toBe(true)
+    s.destroy
     device.destroy
   }
 }
