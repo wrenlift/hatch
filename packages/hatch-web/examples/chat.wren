@@ -1,14 +1,12 @@
 // @hatch:web chat demo — Phase 4 showcase.
 //
-//   wlift --mode interpreter --step-limit 100000000000 chat.wren
+//   wlift --mode interpreter --step-limit 0 chat.wren
 //   Open two browser tabs at http://127.0.0.1:3000
 //   Post a message in one; watch it appear in the other.
 //
-// The step-limit bump is needed because the server runs forever;
-// the default 1B caps out after ~10-30 minutes of polling-loop
-// instructions. 100B gives ~28 hours of headroom — plenty for a
-// demo. Production servers will want either a much larger value
-// or none at all (run with `--step-limit 0` once that's wired).
+// `--step-limit 0` disables the interpreter step cap (default 1B
+// caps out after ~10-30 minutes of polling-loop instructions on
+// a long-running server).
 //
 // What this stitches together (and is the first demo that needs):
 //   - Fiber-cooperative scheduler in App.listen (concurrent conns)

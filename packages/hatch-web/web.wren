@@ -544,7 +544,6 @@ class App {
     System.print("@hatch:web listening on http://%(addr)")
     var sched = Scheduler_.new()
     var self = this
-    var ticks = 0
     while (true) {
       var conn = listener.tryAccept
       if (conn != null) {
@@ -554,19 +553,6 @@ class App {
         sched.tick
       } else if (conn == null) {
         Clock.sleepMs(10)
-      }
-      // Periodic GC. Without this, the per-tick allocations from
-      // fiber yield/resume + tryAccept return values pile up
-      // before the generational GC's young-gen threshold trips —
-      // a long-running server with a couple of live SSE clients
-      // grows to hundreds of MB of mostly-dead objects in
-      // minutes. 1000 ticks ≈ once every 10s at the idle 100Hz
-      // poll rate; under load it fires more often. Cheap relative
-      // to the allocations being reclaimed.
-      ticks = ticks + 1
-      if (ticks >= 1000) {
-        System.gc()
-        ticks = 0
       }
     }
   }
