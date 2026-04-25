@@ -36,6 +36,7 @@ import "./css"           for Css, Style, Stylesheet
 import "./forms"         for Form, Field, FormResult
 import "./live"          for Scheduler_, Channel, Sse, SseStream
 import "@hatch:time"     for Clock
+import "hatch"           for Hatch
 
 // ── Request ─────────────────────────────────────────────────────────────
 //
@@ -437,6 +438,22 @@ class App {
       r.html("<h1>500 Internal Server Error</h1><pre>%(err)</pre>")
       return r
     }
+    // Auto-installed hot-reload hook: clear routes BEFORE the
+    // reloaded module re-runs its top-level. The user can write
+    // direct `app.get/post(...)` calls in any non-entry module and
+    // they'll re-register cleanly without accumulating duplicates.
+    var self = this
+    Hatch.beforeReload(Fn.new {|name|
+      self.clearRoutes_()
+    })
+  }
+
+  // Drop every registered route + middleware. Called by the
+  // before-reload hook; safe to invoke directly if the user wants
+  // to wipe routes for any other reason.
+  clearRoutes_() {
+    _router = Router.new()
+    _middleware = []
   }
 
   // App-wide stylesheet. Styles registered here are injected into
@@ -539,6 +556,9 @@ class App {
   // writers between emits. The whole thing is cooperative —
   // one fiber can't preempt another, but it also can't starve
   // the rest if it parks on an `Fiber.yield()`.
+  //
+  // Hot reload (`hatch web serve`) is driven by the runtime's
+  // SIGUSR1 watcher — there's nothing for the framework to do.
   listen(addr) {
     var listener = TcpListener.bind(addr)
     System.print("@hatch:web listening on http://%(addr)")
