@@ -1,5 +1,6 @@
 import "./web"         for App, Router, Request, Response, Session, Csrf, Static, Flash
 import "./css"         for Css
+import "./forms"       for Form, Field
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -411,6 +412,49 @@ Test.describe("Css integration with Request/App") {
       return "ok"
     }
     app.handle(fakeReq.call("GET", "/"))
+  }
+}
+
+// --- Forms integration ----------------------------------------
+
+Test.describe("req.validate") {
+  Test.it("accepts a valid form") {
+    var app = App.new()
+    var schema = Form.new([
+      Field.new("email").required.email,
+      Field.new("password").required.minLength(8)
+    ])
+    app.post("/signup") {|req|
+      var r = req.validate(schema)
+      if (!r.valid) return Response.new(422).text("invalid")
+      return "ok:%(r.data["email"])"
+    }
+    var req = Request.new_(
+      "POST", "/signup", "", {},
+      "email=ann@example.com&password=correct horse",
+      null)
+    var resp = app.handle(req)
+    Expect.that(resp.status).toBe(200)
+    Expect.that(resp.body).toContain("ok:ann@example.com")
+  }
+
+  Test.it("surfaces errors on invalid input") {
+    var app = App.new()
+    var schema = Form.new([Field.new("email").required.email])
+    app.post("/signup") {|req|
+      var r = req.validate(schema)
+      if (!r.valid) {
+        return Response.new(422).text(r.firstError("email"))
+      }
+      return "ok"
+    }
+    var req = Request.new_(
+      "POST", "/signup", "", {},
+      "email=not-an-email",
+      null)
+    var resp = app.handle(req)
+    Expect.that(resp.status).toBe(422)
+    Expect.that(resp.body).toContain("email")
   }
 }
 

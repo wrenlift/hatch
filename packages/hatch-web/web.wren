@@ -33,6 +33,7 @@ import "@hatch:json"     for JSON
 import "@hatch:crypto"   for Crypto
 import "@hatch:fs"       for Fs
 import "./css"           for Css, Style, Stylesheet
+import "./forms"         for Form, Field, FormResult
 
 // ── Request ─────────────────────────────────────────────────────────────
 //
@@ -102,6 +103,16 @@ class Request {
     fragmentSheet.add(s)
     return s
   }
+
+  // Validate the form body against a Form schema. Equivalent to
+  // `form.validate(req.form)` — just spares the handler one line.
+  //
+  //   app.post("/signup") {|req|
+  //     var r = req.validate(signup)
+  //     if (!r.valid) return renderWithErrors(req, r)
+  //     ...
+  //   }
+  validate(form) { form.validate(this.form) }
 
   // Internal — App.handle sets this so render() can include the
   // app's global CSS alongside the fragment CSS.
