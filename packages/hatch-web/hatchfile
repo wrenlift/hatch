@@ -11,6 +11,7 @@ description = "Server-rendered, htmx-native web framework for Wren. Router, midd
 "@hatch:json"     = { path = "../hatch-json" }
 "@hatch:crypto"   = { path = "../hatch-crypto" }
 "@hatch:fs"       = { path = "../hatch-fs" }
+"@hatch:time"     = { path = "../hatch-time" }
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

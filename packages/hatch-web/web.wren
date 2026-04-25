@@ -34,6 +34,8 @@ import "@hatch:crypto"   for Crypto
 import "@hatch:fs"       for Fs
 import "./css"           for Css, Style, Stylesheet
 import "./forms"         for Form, Field, FormResult
+import "./live"          for Scheduler_, Channel, Sse, SseStream
+import "@hatch:time"     for Clock
 
 // ── Request ─────────────────────────────────────────────────────────────
 //
@@ -276,6 +278,11 @@ class Response {
       for (k in value.headers.keys) r.header(k, value.headers[k])
       return r
     }
+    if (value is SseStream) {
+      var r = Response.new(200)
+      r.body = value
+      return r
+    }
     if (value is String) return Response.new(200).html(value)
     if (value == null)   return Response.new(204)
     return Response.new(200).text(value.toString)
@@ -419,6 +426,7 @@ class App {
     _router = Router.new()
     _middleware = []
     _globalSheet = Stylesheet.new()
+    _channels = {}
     _notFound = Fn.new {|req|
       var r = Response.new(404)
       r.html("<h1>404 Not Found</h1><p>%(req.method) %(req.path)</p>")
@@ -520,17 +528,42 @@ class App {
   }
 
   // Bind + accept loop. `addr` looks like "127.0.0.1:3000" or
-  // "0.0.0.0:8080". Blocks until the listener is closed. Phase 1
-  // handles one connection at a time — enough to prove the shape;
-  // concurrency via fibers is Phase 2.
+  // "0.0.0.0:8080". Runs cooperatively: `tryAccept` is polled,
+  // each accepted connection spawns a serve fiber on the scheduler,
+  // and `tick` drives every fiber a step. When the scheduler is
+  // idle, a 10ms sleep keeps CPU calm without making the server
+  // feel sluggish.
+  //
+  // Fibers yield on would-block I/O (see `ByteBuf_.fill_`), on
+  // `Channel.receive` waiting for a broadcast, and inside SSE
+  // writers between emits. The whole thing is cooperative —
+  // one fiber can't preempt another, but it also can't starve
+  // the rest if it parks on an `Fiber.yield()`.
   listen(addr) {
     var listener = TcpListener.bind(addr)
     System.print("@hatch:web listening on http://%(addr)")
+    var sched = Scheduler_.new()
+    var self = this
     while (true) {
-      var conn = listener.accept
-      if (conn == null) break
-      serve_(conn)
+      var conn = listener.tryAccept
+      if (conn != null) {
+        sched.spawn(Fn.new { self.serve_(conn) })
+      }
+      if (!sched.isEmpty) {
+        sched.tick
+      } else if (conn == null) {
+        Clock.sleepMs(10)
+      }
     }
+  }
+
+  // Channel registry — `app.channel("room-42")` hands back the
+  // same Channel every call, so handlers and SSE writers share
+  // subscribers for the same name.
+  channel(name) {
+    if (_channels == null) _channels = {}
+    if (!_channels.containsKey(name)) _channels[name] = Channel.new(name)
+    return _channels[name]
   }
 
   serve_(conn) {
@@ -541,6 +574,26 @@ class App {
     }
     var req = parsed
     var resp = handle(req)
+
+    // Streaming responses (e.g. SSE) set resp.body to an SseStream
+    // marker via `Sse.stream {|emit| ... }`. Detect and serve in a
+    // keep-alive style; non-streaming falls through to the plain
+    // Content-Length path.
+    if (resp.body is SseStream) {
+      Http_.writeSseHeaders(conn)
+      var writer = resp.body.writer
+      var emit = Fn.new {|payload|
+        var frame = Sse.frame(payload)
+        conn.write(frame)
+      }
+      // Fiber boundary already — `writer.call(emit)` runs inside
+      // THIS serve fiber. It's free to yield; the scheduler keeps
+      // everyone else going.
+      writer.call(emit)
+      conn.close
+      return
+    }
+
     Http_.writeResponse(conn, resp)
     conn.close
   }
@@ -598,6 +651,20 @@ class Http_ {
     if (clen > 0) body = buf.read(clen)
 
     return Request.new_(method, path, query, headers, body, null)
+  }
+
+  // Emit the header block for an SSE stream. Keeps the connection
+  // open (no Content-Length, Connection: keep-alive), turns off
+  // intermediate proxy buffering via `X-Accel-Buffering: no` so
+  // events don't batch, and disables caching.
+  static writeSseHeaders(conn) {
+    var out = "HTTP/1.1 200 OK\r\n" +
+      "Content-Type: text/event-stream\r\n" +
+      "Cache-Control: no-cache\r\n" +
+      "Connection: keep-alive\r\n" +
+      "X-Accel-Buffering: no\r\n" +
+      "\r\n"
+    conn.write(out)
   }
 
   // Serialize a Response onto the socket.
@@ -793,12 +860,21 @@ class ByteBuf_ {
   }
 
   fill_() {
-    var chunk = _conn.read(4096)
-    if (chunk.count == 0) {
-      _eof = true
-      return
+    // Cooperative read: spin on tryRead and yield on would-block so
+    // the scheduler can drive other fibers. `tryRead` returns null
+    // when no data is ready, [] on EOF, or the bytes when available.
+    while (true) {
+      var chunk = _conn.tryRead(4096)
+      if (chunk == null) {
+        Fiber.yield()
+      } else if (chunk.count == 0) {
+        _eof = true
+        return
+      } else {
+        for (b in chunk) _buf.add(b)
+        return
+      }
     }
-    for (b in chunk) _buf.add(b)
   }
 
   bytesToString_(from, to) {
