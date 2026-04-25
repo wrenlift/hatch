@@ -3,6 +3,11 @@ version     = "0.1.0"
 entry       = "web"
 description = "Server-rendered, htmx-native web framework for Wren. Router, middleware, content-negotiated rendering via @hatch:template, HTTP/1.1 server on top of @hatch:socket."
 
+# Explicit module list. Excludes examples/* (those have top-level
+# `app.listen()` calls that would block the dep-install pass).
+# Order matters: dependents come after their dependencies.
+modules = ["css", "forms", "live", "web"]
+
 [dependencies]
 "@hatch:socket"   = { path = "../hatch-socket" }
 "@hatch:template" = { path = "../hatch-template" }
