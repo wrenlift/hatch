@@ -1,0 +1,18 @@
+name        = "@hatch:window"
+version     = "0.1.0"
+entry       = "window"
+description = "Default window provider for the WrenLift game framework — winit-backed Window class with a polled event loop. Hands @hatch:gpu the raw-window-handle Map it needs to build a Surface, so any embedder can replace this package with their own window without touching the renderer."
+
+native_search_paths = ["libs"]
+
+[plugin_source]
+repo  = "https://github.com/wrenlift/WrenLift.git"
+rev   = "8f16a3daf5a60f2bfb4b4afcd70f1b7d4bc4df38"
+crate = "wlift_window"
+
+[native_libs]
+wlift_window = { macos = "libs/libwlift_window.dylib", linux = "libs/libwlift_window.so", windows = "libs/wlift_window.dll" }
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }

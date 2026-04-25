@@ -142,6 +142,23 @@ foreign class GpuCore {
 
   #!symbol = "wlift_gpu_buffer_read_bytes"
   foreign static bufferReadBytes(id)
+
+  // -- Surface (bring-your-own-window) ---------------------------
+
+  #!symbol = "wlift_gpu_surface_create_from_handle"
+  foreign static surfaceCreate(deviceId, handle)
+
+  #!symbol = "wlift_gpu_surface_destroy"
+  foreign static surfaceDestroy(id)
+
+  #!symbol = "wlift_gpu_surface_configure"
+  foreign static surfaceConfigure(id, descriptor)
+
+  #!symbol = "wlift_gpu_surface_acquire"
+  foreign static surfaceAcquire(id)
+
+  #!symbol = "wlift_gpu_surface_present_frame"
+  foreign static surfacePresentFrame(frameId)
 }
 
 // Static entry point — `Gpu.requestDevice({...})`.
@@ -302,6 +319,33 @@ class Device {
     var ids = []
     for (e in encoders) ids.add(e.id)
     GpuCore.queueSubmit(_id, ids)
+  }
+
+  // Build a Surface bound to this device from a raw window
+  // handle. The `handle` Map is platform-tagged with the same
+  // shape as raw_window_handle's variants; any window provider
+  // can produce one — @hatch:window is the default winit-backed
+  // implementation, but custom embedders (IDE viewports, native
+  // shells, host apps) just need to surface the right pointer
+  // integers and pick the right "platform" string.
+  //
+  // Examples:
+  //
+  //   // macOS via @hatch:window:
+  //   var surface = device.createSurface(window.handle)
+  //
+  //   // Custom AppKit embed (already have an NSView*):
+  //   var surface = device.createSurface({
+  //     "platform": "appkit",
+  //     "ns_view": nsViewPtr  // as Num
+  //   })
+  //
+  // The caller MUST keep the underlying window alive at least as
+  // long as the Surface — wgpu doesn't pin it.
+  createSurface(handle) {
+    if (!(handle is Map)) Fiber.abort("Device.createSurface: handle must be a Map.")
+    var sid = GpuCore.surfaceCreate(_id, handle)
+    return Surface.new_(sid, this)
   }
 
   // Drop the underlying wgpu Device + Queue. Idempotent — calling
@@ -716,5 +760,77 @@ class LivePipeline {
 
     if (oldPipe != null) oldPipe.destroy
     if (oldShader != null) oldShader.destroy
+  }
+}
+
+// -- Surface + SurfaceFrame --------------------------------------
+//
+// Surface is the swap-chain target tied to a window. After
+// `Device.createSurface(windowHandle)`, you must call
+// `surface.configure({...})` before the first `acquire`, and
+// again on every window-resize event:
+//
+//   surface.configure({
+//     "width": 1280, "height": 720,
+//     "format": "bgra8unorm",
+//     "presentMode": "fifo"           // default
+//   })
+//
+// The render loop is:
+//
+//   var frame = surface.acquire()    // a SurfaceFrame
+//   var enc = device.createCommandEncoder()
+//   var pass = enc.beginRenderPass({
+//     "colorAttachments": [{
+//       "view": frame.view, ...
+//     }]
+//   })
+//   pass.setPipeline(p); pass.draw(3); pass.end
+//   enc.finish
+//   device.submit([enc])
+//   frame.present                    // schedules vblank
+class Surface {
+  construct new_(id, device) {
+    _id     = id
+    _device = device
+  }
+
+  id { _id }
+
+  configure(descriptor) { GpuCore.surfaceConfigure(_id, descriptor) }
+
+  // Acquire the next swap-chain image as a SurfaceFrame. The
+  // frame's `view` is a TextureView usable in render-pass
+  // colorAttachments; `frame.present` schedules the swap.
+  // Aborts if the swap chain is lost / outdated — callers
+  // should re-configure on a window-resize event and retry.
+  acquire() {
+    var pair = GpuCore.surfaceAcquire(_id)
+    return SurfaceFrame.new_(pair["frame"], pair["view"])
+  }
+
+  destroy {
+    GpuCore.surfaceDestroy(_id)
+    _id = -1
+  }
+}
+
+// One in-flight swap-chain frame. `view` is consumed by render
+// passes, `present` retires the frame to the compositor. The
+// underlying SurfaceTexture is held in the foreign registry so
+// the view stays valid for the whole render pass; presenting
+// drops both at once.
+class SurfaceFrame {
+  construct new_(frameId, viewId) {
+    _id   = frameId
+    _view = TextureView.new_(viewId, null, 0, 0)
+  }
+
+  id   { _id }
+  view { _view }
+
+  present {
+    GpuCore.surfacePresentFrame(_id)
+    _id = -1
   }
 }
