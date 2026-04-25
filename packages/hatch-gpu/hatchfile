@@ -11,12 +11,19 @@ description = "GPU primitives backed by wgpu — Device, Buffer, Texture, Shader
 #     cp target/release/libwlift_gpu.dylib hatch/packages/hatch-gpu/libs/
 native_search_paths = ["libs"]
 
-# Dependency on @hatch:math — we reuse Vec3 / Mat4 / Quat via
-# their public `.data` accessor for batched buffer uploads, no
-# duplicated math API. Pin via path during local dev; hatch-bot
-# rewrites this to a registry pin at publish time.
+# @hatch:math — we reuse Vec3 / Mat4 / Quat via their public
+# `.data` accessor for batched buffer uploads, no duplicated math
+# API.
+#
+# @hatch:assets — backs LivePipeline / LiveShader hot reload.
+# Pipelines built from a watched shader path rebuild themselves
+# in place when the source file's content hash advances.
+#
+# Pin via path during local dev; hatch-bot rewrites these to
+# registry pins at publish time.
 [dependencies]
-"@hatch:math" = { path = "../hatch-math" }
+"@hatch:math"   = { path = "../hatch-math" }
+"@hatch:assets" = { path = "../hatch-assets" }
 
 # Where the cdylib lives. Same shape as @hatch:sqlite — clone
 # `repo` at `rev`, run `cargo build -p wlift_gpu --release`
@@ -35,3 +42,8 @@ wlift_gpu = { macos = "libs/libwlift_gpu.dylib", linux = "libs/libwlift_gpu.so",
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }
 "@hatch:assert" = { path = "../hatch-assert" }
+# @hatch:fs + @hatch:hash are pulled in transitively by
+# @hatch:assets, but local `wlift gpu.spec.wren` runs only walk
+# spec-dependencies so spell them out here too.
+"@hatch:fs"     = { path = "../hatch-fs" }
+"@hatch:hash"   = { path = "../hatch-hash" }

@@ -9,8 +9,10 @@
 import "./gpu" for
   Gpu, Device, Buffer, ShaderModule, Texture, TextureView, Sampler,
   BindGroupLayout, BindGroup, PipelineLayout, RenderPipeline,
-  CommandEncoder, RenderPass
+  CommandEncoder, RenderPass, LivePipeline
 import "@hatch:math"   for Vec3, Vec4, Mat4, Quat
+import "@hatch:assets" for Assets
+import "@hatch:fs"     for Fs
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -499,6 +501,107 @@ Test.describe("Indexed cube with uniform + depth") {
     ibuf.destroy
     vbuf.destroy
     shader.destroy
+    device.destroy
+  }
+}
+
+Test.describe("LivePipeline shader hot reload") {
+  Test.it("rebuilds the pipeline when the shader asset's hash changes") {
+    // Stage shader v1 in a scratch dir, build a LivePipeline,
+    // render once. Edit the shader on disk to v2 (different
+    // fragment colour), trigger the assets-db handler the way
+    // the SIGUSR1 path would, render again. Pixel readback must
+    // show the new colour — proof the pipeline rebuilt with the
+    // new code, not against the cached v1.
+
+    var root = Fs.tmpDir + "/hatch-gpu-livepipeline"
+    if (Fs.isDir(root)) Fs.removeTree(root)
+    Fs.mkdirs(root + "/shaders")
+
+    var v1 = "
+      @vertex
+      fn vs_main(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
+        var p = array<vec2<f32>, 3>(
+          vec2<f32>(-1.0, -1.0),
+          vec2<f32>( 3.0, -1.0),
+          vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(p[vid], 0.0, 1.0);
+      }
+      @fragment fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+      }
+    "
+    Fs.writeText(root + "/shaders/triangle.wgsl", v1)
+
+    var device = Gpu.requestDevice()
+    var assets = Assets.open(root)
+    var pipeline = LivePipeline.new(device, assets, "shaders/triangle.wgsl", {
+      "layout": "auto",
+      "vertex":   { "entryPoint": "vs_main" },
+      "fragment": { "entryPoint": "fs_main",
+                    "targets": [{"format": "rgba8unorm"}] },
+      "primitive": { "topology": "triangle-list" }
+    })
+
+    var renderOnce = Fn.new {
+      var target = device.createTexture({
+        "width": 64, "height": 64, "format": "rgba8unorm",
+        "usage": ["render-attachment", "copy-src"]
+      })
+      var view = target.createView()
+      var readback = device.createBuffer({"size": 16384, "usage": ["copy-dst", "map-read"]})
+      var enc = device.createCommandEncoder()
+      var pass = enc.beginRenderPass({
+        "colorAttachments": [{
+          "view": view,
+          "loadOp": "clear",
+          "clearValue": [0.0, 0.0, 0.0, 1.0],
+          "storeOp": "store"
+        }]
+      })
+      pass.setPipeline(pipeline)
+      pass.draw(3)
+      pass.end
+      enc.copyTextureToBuffer(target, readback, {"width": 64, "height": 64})
+      enc.finish
+      device.submit([enc])
+      var pixels = readback.readBytes()
+      var rgba = [pixels[8320], pixels[8321], pixels[8322], pixels[8323]]
+      readback.destroy
+      view.destroy
+      target.destroy
+      return rgba
+    }
+
+    var first = renderOnce.call()
+    Expect.that(first[0]).toBe(255)
+    Expect.that(first[1]).toBe(0)
+    Expect.that(first[2]).toBe(0)
+
+    var v2 = "
+      @vertex
+      fn vs_main(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
+        var p = array<vec2<f32>, 3>(
+          vec2<f32>(-1.0, -1.0),
+          vec2<f32>( 3.0, -1.0),
+          vec2<f32>(-1.0,  3.0)
+        );
+        return vec4<f32>(p[vid], 0.0, 1.0);
+      }
+      @fragment fn fs_main() -> @location(0) vec4<f32> {
+        return vec4<f32>(0.0, 1.0, 0.0, 1.0);
+      }
+    "
+    Fs.writeText(root + "/shaders/triangle.wgsl", v2)
+    assets.handleFileChange_(root + "/shaders/triangle.wgsl")
+
+    var second = renderOnce.call()
+    Expect.that(second[0]).toBe(0)
+    Expect.that(second[1]).toBe(255)
+    Expect.that(second[2]).toBe(0)
+
+    pipeline.destroy
     device.destroy
   }
 }

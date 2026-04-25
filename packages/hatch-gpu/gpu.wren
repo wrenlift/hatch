@@ -629,3 +629,92 @@ class RenderPass {
     return out
   }
 }
+
+// -- Hot-reloaded pipeline ---------------------------------------
+//
+// Reads its WGSL from a `@hatch:assets` database; rebuilds the
+// underlying RenderPipeline in place whenever the shader file's
+// content hash advances. From the caller's perspective it
+// behaves exactly like a normal RenderPipeline — bind it via
+// `pass.setPipeline(livePipeline)` and the .id getter resolves
+// to the current internal pipeline at record time.
+//
+//   var assets   = Assets.open("assets")
+//   var pipeline = LivePipeline.new(device, assets,
+//                                   "shaders/triangle.wgsl", {
+//     "vertex":   { "entryPoint": "vs_main" },
+//     "fragment": { "entryPoint": "fs_main",
+//                   "targets": [{"format": "rgba8unorm"}] },
+//     "primitive": { "topology": "triangle-list" }
+//   })
+//
+// Edits to the shader file fire the rebuild between frames; in-
+// flight render passes that already captured the old id finish
+// against the old code, the next pass picks up the new one.
+class LivePipeline {
+  construct new(device, db, shaderPath, descriptor) {
+    _device     = device
+    _db         = db
+    _shaderPath = shaderPath
+    _desc       = descriptor
+    _pipeline   = null
+    _shader     = null
+    rebuild_()
+    var self = this
+    db.on(shaderPath) {|asset| self.rebuild_() }
+  }
+
+  // Forwards setPipeline / debug callers — always points at the
+  // freshest internal pipeline.
+  id { _pipeline.id }
+
+  // Drop watchers + the underlying pipeline + shader. The
+  // assets db's on() registration leaks intentionally — the
+  // user is expected to keep the LivePipeline alive for the
+  // lifetime of the application.
+  destroy {
+    if (_pipeline != null) _pipeline.destroy
+    if (_shader != null) _shader.destroy
+    _pipeline = null
+    _shader = null
+  }
+
+  // Re-read shader source, recompile, rebuild the pipeline using
+  // the new shader as both vertex + fragment module. Old shader +
+  // pipeline are dropped after the new ones land — wgpu
+  // ref-counts them, so any setPipeline that already captured the
+  // old id still resolves correctly through the foreign registry
+  // until the encoder it lives in is submitted.
+  rebuild_() {
+    var oldPipe   = _pipeline
+    var oldShader = _shader
+    var src = _db.text(_shaderPath)
+    var shader = _device.createShaderModule({"code": src, "label": _shaderPath})
+
+    var dec = { "vertex": {
+      "module":     shader,
+      "entryPoint": _desc["vertex"]["entryPoint"]
+    } }
+    if (_desc["vertex"].containsKey("buffers")) {
+      dec["vertex"]["buffers"] = _desc["vertex"]["buffers"]
+    }
+    if (_desc.containsKey("layout"))    dec["layout"]    = _desc["layout"]
+    if (_desc.containsKey("fragment")) {
+      var f = _desc["fragment"]
+      dec["fragment"] = {
+        "module":     shader,
+        "entryPoint": f["entryPoint"],
+        "targets":    f["targets"]
+      }
+    }
+    if (_desc.containsKey("primitive"))    dec["primitive"]    = _desc["primitive"]
+    if (_desc.containsKey("depthStencil")) dec["depthStencil"] = _desc["depthStencil"]
+    if (_desc.containsKey("label"))        dec["label"]        = _desc["label"]
+
+    _shader   = shader
+    _pipeline = _device.createRenderPipeline(dec)
+
+    if (oldPipe != null) oldPipe.destroy
+    if (oldShader != null) oldShader.destroy
+  }
+}
