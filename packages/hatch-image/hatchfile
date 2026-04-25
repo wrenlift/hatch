@@ -1,0 +1,18 @@
+name        = "@hatch:image"
+version     = "0.1.0"
+entry       = "image"
+description = "Image encode + decode for the WrenLift game and tooling stack. PNG / JPG / BMP / WebP in, RGBA8 buffer out — feed `Image.decode(bytes)` straight to @hatch:gpu's `Device.uploadImage(image)`, or encode synthesized buffers back to a file format with `Image.encodePng(...)`."
+
+native_search_paths = ["libs"]
+
+[plugin_source]
+repo  = "https://github.com/wrenlift/WrenLift.git"
+rev   = "8f16a3daf5a60f2bfb4b4afcd70f1b7d4bc4df38"
+crate = "wlift_image"
+
+[native_libs]
+wlift_image = { macos = "libs/libwlift_image.dylib", linux = "libs/libwlift_image.so", windows = "libs/wlift_image.dll" }
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }

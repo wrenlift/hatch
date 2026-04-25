@@ -22,6 +22,8 @@
 // classes below are ergonomic Wren wrappers that own an id and
 // translate calls into the foreign surface.
 
+import "@hatch:math" for Vec3, Mat4
+
 #!native = "wlift_gpu"
 foreign class GpuCore {
   #!symbol = "wlift_gpu_request_device"
@@ -159,6 +161,14 @@ foreign class GpuCore {
 
   #!symbol = "wlift_gpu_surface_present_frame"
   foreign static surfacePresentFrame(frameId)
+
+  // -- Texture upload --------------------------------------------
+  // Image decoding lives in @hatch:image; this is the lower-level
+  // bytes→texture path (also used for font atlases, dynamic
+  // updates, GPU compute outputs, etc.).
+
+  #!symbol = "wlift_gpu_queue_write_texture"
+  foreign static queueWriteTexture(textureId, bytes, descriptor)
 }
 
 // Static entry point — `Gpu.requestDevice({...})`.
@@ -233,6 +243,55 @@ class Device {
     if (!(descriptor is Map)) Fiber.abort("Device.createTexture: descriptor must be a Map.")
     var tid = GpuCore.textureCreate(_id, descriptor)
     return Texture.new_(tid, descriptor)
+  }
+
+  // Build a texture from a decoded image. The argument duck-types
+  // on `width`, `height`, and `pixels` (a ByteArray or List<Num>
+  // of RGBA8 bytes) — anything that exposes those three reads
+  // works, including @hatch:image's `Image` class.
+  //
+  //   import "@hatch:image" for Image
+  //   import "@hatch:assets" for Assets
+  //
+  //   var img = Image.decode(Assets.open("assets").bytes("hero.png"))
+  //   var tex = device.uploadImage(img)
+  //
+  // `options` (Map, all optional):
+  //   "label":      String?
+  //   "format":     "rgba8unorm" | "rgba8unorm-srgb" (default srgb)
+  //   "extraUsage": List<String> appended to ["texture-binding", "copy-dst"]
+  uploadImage(image) { uploadImage(image, {}) }
+  uploadImage(image, options) {
+    var format = options.containsKey("format") ? options["format"] : "rgba8unorm-srgb"
+    var extraUsage = options.containsKey("extraUsage") ? options["extraUsage"] : []
+    var usage = ["texture-binding", "copy-dst"]
+    for (u in extraUsage) usage.add(u)
+    var desc = {
+      "width":  image.width,
+      "height": image.height,
+      "format": format,
+      "usage":  usage
+    }
+    if (options.containsKey("label")) desc["label"] = options["label"]
+    var tex = createTexture(desc)
+    writeTexture(tex, image.pixels, {
+      "width":       image.width,
+      "height":      image.height,
+      "bytesPerRow": image.width * 4
+    })
+    return tex
+  }
+
+  // Direct CPU → texture upload via the device queue. Useful for
+  // dynamic textures (font atlases, GPU-readback round-trips,
+  // procedurally-generated content). The descriptor:
+  //
+  //   "x", "y":         Num?  (default 0; copy origin within the texture)
+  //   "width", "height": Num
+  //   "bytesPerRow":     Num
+  //   "rowsPerImage":    Num?  (default = height)
+  writeTexture(texture, bytes, descriptor) {
+    GpuCore.queueWriteTexture(texture.id, bytes, descriptor)
   }
 
   // Allocate a sampler. Descriptor (all optional):
@@ -671,6 +730,270 @@ class RenderPass {
       out["depthStencilAttachment"] = rec
     }
     return out
+  }
+}
+
+// -- Renderer2D --------------------------------------------------
+//
+// Sprite batcher + ortho camera. Built on top of every other
+// primitive in this module — pure Wren, no extra plugin.
+//
+//   var renderer = Renderer2D.new(device, surfaceFormat)
+//   renderer.beginFrame(camera)
+//
+//   // ... render-pass setup as usual; bind via renderer.bind(pass) ...
+//   renderer.drawSprite(texture, x, y, w, h)
+//   renderer.flush(pass)
+//
+// One pipeline + one vertex buffer + one uniform buffer per
+// renderer. Sprites with the same texture get coalesced into one
+// draw call; a texture switch flushes the current batch and
+// starts a new one. The current cap is 4096 sprites per flush
+// (32 floats per sprite × 4096 = 512 KB vertex buffer); flushes
+// are explicit so the user controls when GPU work goes out.
+
+class Camera2D {
+  // Build an orthographic projection that maps the half-extents
+  // (x = ±width/2, y = ±height/2) to NDC. Origin centred — most
+  // game cameras want this. Use `worldOrigin` to shift the
+  // visible region around.
+  construct new(width, height) {
+    _width  = width
+    _height = height
+    _origin = Vec3.new(0, 0, 0)
+  }
+
+  width   { _width }
+  height  { _height }
+  origin  { _origin }
+  origin=(v) { _origin = v }
+
+  // Compute view-projection. Ortho maps (-w/2 + ox, -h/2 + oy)
+  // through (w/2 + ox, h/2 + oy) onto NDC. Z range is generous
+  // (-1000..1000) so callers can layer sprites by Z without
+  // worrying about clipping.
+  viewProj {
+    var hw = _width  / 2
+    var hh = _height / 2
+    var l = _origin.x - hw
+    var r = _origin.x + hw
+    var b = _origin.y - hh
+    var t = _origin.y + hh
+    return Mat4.ortho(l, r, b, t, -1000, 1000)
+  }
+}
+
+class Renderer2D {
+  // Default sprite shader — position (vec2) + uv (vec2) +
+  // color (vec4) per vertex; one mat4 view-projection in a
+  // uniform; sampler + texture in the same bind group.
+  static SPRITE_WGSL_ {
+    return "
+      struct Uniforms { vp: mat4x4<f32> };
+      @group(0) @binding(0) var<uniform> u: Uniforms;
+      @group(0) @binding(1) var t: texture_2d<f32>;
+      @group(0) @binding(2) var s: sampler;
+
+      struct VsIn  {
+        @location(0) pos:   vec2<f32>,
+        @location(1) uv:    vec2<f32>,
+        @location(2) color: vec4<f32>,
+      };
+      struct VsOut {
+        @builtin(position) clip:  vec4<f32>,
+        @location(0)       uv:    vec2<f32>,
+        @location(1)       color: vec4<f32>,
+      };
+
+      @vertex
+      fn vs_main(in: VsIn) -> VsOut {
+        var o: VsOut;
+        o.clip  = u.vp * vec4<f32>(in.pos, 0.0, 1.0);
+        o.uv    = in.uv;
+        o.color = in.color;
+        return o;
+      }
+      @fragment
+      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+        return textureSample(t, s, in.uv) * in.color;
+      }
+    "
+  }
+
+  static MAX_SPRITES_  { 4096 }
+  static FLOATS_PER_VERTEX_  { 8 }   // 2 pos + 2 uv + 4 color
+  static VERTS_PER_SPRITE_   { 6 }   // two triangles, no shared verts (simpler)
+
+  construct new(device, surfaceFormat) {
+    _device = device
+
+    var shader = device.createShaderModule({
+      "code": Renderer2D.SPRITE_WGSL_,
+      "label": "renderer2d-sprite"
+    })
+
+    _bgl = device.createBindGroupLayout({
+      "entries": [
+        { "binding": 0, "visibility": ["vertex"],   "kind": "uniform" },
+        { "binding": 1, "visibility": ["fragment"], "kind": "texture" },
+        { "binding": 2, "visibility": ["fragment"], "kind": "sampler" }
+      ]
+    })
+    _pipelineLayout = device.createPipelineLayout({"bindGroupLayouts": [_bgl]})
+
+    _pipeline = device.createRenderPipeline({
+      "layout": _pipelineLayout,
+      "vertex": {
+        "module": shader, "entryPoint": "vs_main",
+        "buffers": [{
+          "arrayStride": Renderer2D.FLOATS_PER_VERTEX_ * 4,
+          "stepMode": "vertex",
+          "attributes": [
+            { "shaderLocation": 0, "offset": 0,  "format": "float32x2" },
+            { "shaderLocation": 1, "offset": 8,  "format": "float32x2" },
+            { "shaderLocation": 2, "offset": 16, "format": "float32x4" }
+          ]
+        }]
+      },
+      "fragment": {
+        "module": shader, "entryPoint": "fs_main",
+        "targets": [{ "format": surfaceFormat }]
+      },
+      "primitive": { "topology": "triangle-list", "cullMode": "none" },
+      "label": "renderer2d-pipeline"
+    })
+
+    var vboBytes = Renderer2D.MAX_SPRITES_ *
+                   Renderer2D.VERTS_PER_SPRITE_ *
+                   Renderer2D.FLOATS_PER_VERTEX_ * 4
+    _vbo = device.createBuffer({
+      "size":  vboBytes,
+      "usage": ["vertex", "copy-dst"],
+      "label": "renderer2d-vbo"
+    })
+    _ubo = device.createBuffer({
+      "size":  64,            // one mat4
+      "usage": ["uniform", "copy-dst"],
+      "label": "renderer2d-ubo"
+    })
+    _sampler = device.createSampler({
+      "magFilter": "linear", "minFilter": "linear",
+      "addressModeU": "clamp-to-edge", "addressModeV": "clamp-to-edge"
+    })
+
+    // Per-frame state
+    _floats     = []
+    _spriteCount = 0
+    _curTexture  = null
+    _curBindGroup = null
+    _bindGroups   = {}    // texture id → BindGroup (lazy cache)
+  }
+
+  // Begin a new frame. Resets the batch + uploads the camera
+  // view-projection. Call before any drawSprite calls.
+  beginFrame(camera) {
+    _ubo.writeMat4s(0, [camera.viewProj])
+    _floats = []
+    _spriteCount = 0
+    _curTexture = null
+    _curBindGroup = null
+  }
+
+  // Queue a sprite. `dst` is screen-space; `uv` defaults to the
+  // full texture (0, 0)–(1, 1). `color` is an RGBA tint, default
+  // opaque white.
+  //
+  //   renderer.drawSprite(tex, x, y, w, h)
+  //   renderer.drawSpriteUV(tex, x, y, w, h, u0, v0, u1, v1)
+  //   renderer.drawSpriteTinted(tex, x, y, w, h, color)
+  drawSprite(texture, x, y, w, h) {
+    drawSprite_(texture, x, y, w, h, 0, 0, 1, 1, 1, 1, 1, 1)
+  }
+  drawSpriteUV(texture, x, y, w, h, u0, v0, u1, v1) {
+    drawSprite_(texture, x, y, w, h, u0, v0, u1, v1, 1, 1, 1, 1)
+  }
+  drawSpriteTinted(texture, x, y, w, h, r, g, b, a) {
+    drawSprite_(texture, x, y, w, h, 0, 0, 1, 1, r, g, b, a)
+  }
+
+  // Internal — does the actual vertex emit. Two triangles per
+  // sprite, no shared vertices to keep the fragment-stage
+  // colour interpolation correct without an index buffer.
+  drawSprite_(texture, x, y, w, h, u0, v0, u1, v1, r, g, b, a) {
+    if (_curTexture != null && _curTexture.id != texture.id) {
+      Fiber.abort("Renderer2D: texture switches require an explicit flush(pass).")
+    }
+    _curTexture = texture
+    if (_spriteCount >= Renderer2D.MAX_SPRITES_) {
+      Fiber.abort("Renderer2D: batch full (%(_spriteCount) sprites). Call flush(pass) sooner.")
+    }
+    var x1 = x + w
+    var y1 = y + h
+    var f = _floats
+
+    // Triangle 1 — top-left, bottom-left, bottom-right
+    pushVertex_(f, x,  y,  u0, v0, r, g, b, a)
+    pushVertex_(f, x,  y1, u0, v1, r, g, b, a)
+    pushVertex_(f, x1, y1, u1, v1, r, g, b, a)
+    // Triangle 2 — top-left, bottom-right, top-right
+    pushVertex_(f, x,  y,  u0, v0, r, g, b, a)
+    pushVertex_(f, x1, y1, u1, v1, r, g, b, a)
+    pushVertex_(f, x1, y,  u1, v0, r, g, b, a)
+    _spriteCount = _spriteCount + 1
+  }
+
+  // Tight scalar push so drawSprite_ stays linear and readable.
+  pushVertex_(f, px, py, u, v, r, g, b, a) {
+    f.add(px)
+    f.add(py)
+    f.add(u)
+    f.add(v)
+    f.add(r)
+    f.add(g)
+    f.add(b)
+    f.add(a)
+  }
+
+  // Lazily cache one BindGroup per (texture id) — sampler + UBO
+  // are shared, so the only thing that varies per texture is the
+  // view binding.
+  bindGroupFor_(texture) {
+    if (_bindGroups.containsKey(texture.id)) return _bindGroups[texture.id]
+    var bg = _device.createBindGroup({
+      "layout": _bgl,
+      "entries": [
+        { "binding": 0, "buffer":  _ubo },
+        { "binding": 1, "view":    texture.createView() },
+        { "binding": 2, "sampler": _sampler }
+      ]
+    })
+    _bindGroups[texture.id] = bg
+    return bg
+  }
+
+  // Flush whatever's in the batch into `pass`. Call at the end
+  // of each frame (after all drawSprite calls), and again every
+  // time you swap textures.
+  flush(pass) {
+    if (_spriteCount == 0) return
+    _vbo.writeFloats(0, _floats)
+    var bg = bindGroupFor_(_curTexture)
+    pass.setPipeline(_pipeline)
+    pass.setBindGroup(0, bg)
+    pass.setVertexBuffer(0, _vbo)
+    pass.draw(_spriteCount * Renderer2D.VERTS_PER_SPRITE_)
+    _floats = []
+    _spriteCount = 0
+    _curTexture = null
+  }
+
+  destroy {
+    _vbo.destroy
+    _ubo.destroy
+    _sampler.destroy
+    _pipeline.destroy
+    _pipelineLayout.destroy
+    _bgl.destroy
   }
 }
 
