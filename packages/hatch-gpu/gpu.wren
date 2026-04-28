@@ -753,20 +753,80 @@ class RenderPass {
 // are explicit so the user controls when GPU work goes out.
 
 class Camera2D {
-  // Build an orthographic projection that maps the half-extents
-  // (x = ±width/2, y = ±height/2) to NDC. Origin centred — most
-  // game cameras want this. Use `worldOrigin` to shift the
-  // visible region around.
+  // Default constructor: stretch the design rectangle to the full
+  // surface. `(width, height)` are the design dimensions in
+  // screen-pixel space; (0, 0) is the top-left, (width, height)
+  // is the bottom-right, +y points down.
   construct new(width, height) {
     _width  = width
     _height = height
     _origin = Vec3.new(0, 0, 0)
+    _padX   = 0
+    _padY   = 0
+  }
+
+  // Aspect-fit-contain projection. The design rectangle
+  // (`designW × designH` in screen-pixel coordinates) renders at
+  // the largest size that fits inside the surface
+  // (`surfaceW × surfaceH`), centred. The leftover area on the
+  // wider axis is padded by extending the orthographic bounds
+  // past the design rectangle, so any draw outside design space
+  // simply lands in the letterbox region — and the render pass's
+  // clear colour already paints that whole area, giving free
+  // letterbox bars without needing a render-pass viewport call.
+  //
+  //   class MyGame is Game {
+  //     setup(g) {
+  //       _camera = Camera2D.contain(960, 720, g.width, g.height)
+  //     }
+  //     resize(g, w, h) {
+  //       _camera.fitContain(w, h)
+  //     }
+  //   }
+  static contain(designW, designH, surfaceW, surfaceH) {
+    var c = Camera2D.new(designW, designH)
+    c.fitContain(surfaceW, surfaceH)
+    return c
   }
 
   width   { _width }
   height  { _height }
   origin  { _origin }
   origin=(v) { _origin = v }
+
+  // Refit the projection to a new surface size while keeping the
+  // design rectangle (`width × height`) intact. Use this from a
+  // `Game.resize` override so a single camera tracks resizes
+  // without being reallocated each frame.
+  fitContain(surfaceW, surfaceH) {
+    if (surfaceH == 0 || _height == 0) {
+      _padX = 0
+      _padY = 0
+      return
+    }
+    var sa = surfaceW / surfaceH
+    var da = _width   / _height
+    if (sa > da) {
+      // Surface is wider than design → pillarbox left + right.
+      // Extend the ortho bounds horizontally so the design
+      // rectangle's width maps to the largest centred sub-region
+      // that preserves aspect.
+      _padX = (_height * sa - _width) / 2
+      _padY = 0
+    } else {
+      // Surface is taller than design → letterbox top + bottom.
+      _padX = 0
+      _padY = (_width / sa - _height) / 2
+    }
+  }
+
+  // Reset to the stretch-to-surface behaviour after a previous
+  // `fitContain`. Useful if a fullscreen toggle wants to drop the
+  // letterbox.
+  fitStretch() {
+    _padX = 0
+    _padY = 0
+  }
 
   // Compute view-projection. Screen-pixel convention: (0, 0) is
   // the top-left, (width, height) is the bottom-right, +y points
@@ -778,14 +838,18 @@ class Camera2D {
   // `_origin` shifts the entire view: setting `origin` to the
   // player's world-space pixel position turns Camera2D into a
   // scrolling camera that keeps the player centred on screen.
+  // `_padX` / `_padY` are non-zero only after `fitContain`; the
+  // ortho bounds extend past the design rectangle by that amount
+  // on the wider axis so the design region lands in a centred
+  // sub-rectangle of the surface.
   viewProj {
-    var l = _origin.x
-    var r = _origin.x + _width
+    var l = _origin.x - _padX
+    var r = _origin.x + _width + _padX
     // bottom > top → m[1,1] negative → y axis flips so screen-
     // pixel coordinates (y-down) land on the WebGPU NDC the
     // shader expects.
-    var b = _origin.y + _height
-    var t = _origin.y
+    var b = _origin.y + _height + _padY
+    var t = _origin.y - _padY
     return Mat4.ortho(l, r, b, t, -1000, 1000)
   }
 }
