@@ -843,8 +843,6 @@ class Camera2D {
   // on the wider axis so the design region lands in a centred
   // sub-rectangle of the surface.
   viewProj {
-    if (_origin == null) Fiber.abort("Camera2D.viewProj: _origin is null — was the camera created via `Camera2D.new` or `Camera2D.contain`?")
-    if (_padX == null || _padY == null) Fiber.abort("Camera2D.viewProj: _padX/_padY uninitialised — internal invariant broken")
     var l = _origin.x - _padX
     var r = _origin.x + _width + _padX
     // bottom > top → m[1,1] negative → y axis flips so screen-
