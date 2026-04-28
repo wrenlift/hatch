@@ -399,6 +399,15 @@ class Game {
     g.lastTime_  = Clock.mono
     g.startTime_ = g.lastTime_
 
+    // Track the *requested* window size, not the clamped surface
+    // dimensions, so the resize check below doesn't loop forever
+    // when the GPU's `max_texture_dimension_2d` clamps the surface
+    // (Apple integrated GPUs cap at 2048; a 3024px-wide retina
+    // window stays clamped to 2048 forever, so comparing winW
+    // against `g.width` would request a reconfigure every frame).
+    var lastReqW = sw
+    var lastReqH = sh
+
     while (!g.quitRequested && !window.closeRequested) {
       // Drain OS events. Use an index-based while loop instead of
       // `for (e in events)` because mutating outer-scope locals
@@ -436,7 +445,9 @@ class Game {
       var ws = window.size
       var winW = ws["width"]
       var winH = ws["height"]
-      if (winW > 0 && winH > 0 && (winW != g.width || winH != g.height)) {
+      if (winW > 0 && winH > 0 && (winW != lastReqW || winH != lastReqH)) {
+        lastReqW = winW
+        lastReqH = winH
         var actual = surface.configure({
           "width":       winW,
           "height":      winH,
