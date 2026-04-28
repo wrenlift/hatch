@@ -321,37 +321,24 @@ class Game {
   //   class MyGame is Game { ... }
   //   Game.run(MyGame)
   // Walk every queued OS event, route input through `g.input`,
-  // honour close requests, and surface the latest resize size as
-  // [width, height] (or [0, 0] if no resize happened this tick).
+  // and honour close requests. Resize events are intentionally
+  // *not* handled here — `Game.run` polls `Window.size` directly
+  // every frame. See the call site for why polling beats
+  // event-driven resizes on macOS.
   //
   // Indexed `while` loop, NOT `for (e in events)` — the for-in
   // body forms a closure for outer-scope locals, and the
-  // closure-upvalue mutation bug means writes to `resizeW` /
-  // `resizeH` inside don't propagate back. The function would
-  // then return [0, 0] regardless of how many resize events came
-  // through, leaving the surface at its initial dimensions
-  // (cropped-to-a-corner symptom on a resized window).
+  // closure-upvalue mutation bug means writes to captured
+  // counters inside don't propagate back.
   static drainEvents_(events, g) {
-    var size = [0, 0]
     var n = events.count
     var i = 0
     while (i < n) {
       var e = events[i]
       g.input.applyEvent_(e)
-      var t = e["type"]
-      if (t == "close") {
-        g.requestQuit
-      } else if (t == "resize") {
-        var ew = e["width"]
-        var eh = e["height"]
-        if (ew > 0 && eh > 0) {
-          size[0] = ew
-          size[1] = eh
-        }
-      }
+      if (e["type"] == "close") g.requestQuit
       i = i + 1
     }
-    return size
   }
 
   static run(klass) {
@@ -421,18 +408,43 @@ class Game {
       // must be a number" the next frame.
       var events = window.pollEvents
       g.input.beginFrame_
-      var resize = Game.drainEvents_(events, g)
-      var resizeW = resize[0]
-      var resizeH = resize[1]
-      if (resizeW > 0 && resizeH > 0) {
+      Game.drainEvents_(events, g)
+
+      // Poll the live window size every frame instead of relying
+      // on `WindowEvent::Resized` reaching us through the event
+      // queue. Two reasons:
+      //
+      //  1. winit on macOS only fires `Resized` at
+      //     `windowDidEndLiveResize` — i.e. when the user
+      //     releases the mouse. During the drag, the run loop
+      //     is in NSEventTrackingRunLoopMode, our pump call
+      //     returns nothing, and the swap chain stays at its
+      //     stale dimensions. The visible window grows,
+      //     uncovered area shows the OS background through.
+      //  2. After `windowDidEndLiveResize` the Resized event
+      //     does come through, but on some macOS / winit
+      //     combinations only one of the two dimensions
+      //     updates per event and we miss the other axis until
+      //     the next event.
+      //
+      // `Window.size` reads back the live cached `inner_size`
+      // that the winit event handler keeps current, which is
+      // updated even when the queued `Resized` event has not
+      // yet been popped by `pollEvents`. Comparing it to the
+      // surface's published viewport gives a reliable resize
+      // signal.
+      var ws = window.size
+      var winW = ws["width"]
+      var winH = ws["height"]
+      if (winW > 0 && winH > 0 && (winW != g.width || winH != g.height)) {
         var actual = surface.configure({
-          "width":       resizeW,
-          "height":      resizeH,
+          "width":       winW,
+          "height":      winH,
           "format":      c["surfaceFormat"],
           "presentMode": c["presentMode"]
         })
-        var aw = actual is Map ? actual["width"]  : resizeW
-        var ah = actual is Map ? actual["height"] : resizeH
+        var aw = actual is Map ? actual["width"]  : winW
+        var ah = actual is Map ? actual["height"] : winH
         g.setViewport_(aw, ah)
         if (depthFormat != null) {
           depthTexture = device.createTexture({
