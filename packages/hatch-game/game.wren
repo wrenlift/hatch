@@ -140,6 +140,26 @@ class Input {
   mouseY { _mouseY }
 }
 
+// Render-target dimensions in pixels. Lifecycle:
+//   - constructed once at Game.run startup from the configured
+//     surface size (post-clamp, see Surface.configure)
+//   - replaced atomically when the framework re-configures the
+//     surface on a window resize
+//
+// Frequently the only thing a Camera2D / Camera3D constructor
+// needs, so renderers and game code can pass `g.viewport` around
+// instead of unpacking `(g.width, g.height)` everywhere.
+class Viewport {
+  construct new_(w, h) {
+    _width  = w
+    _height = h
+  }
+  width  { _width }
+  height { _height }
+  aspect { _height == 0 ? 1.0 : (_width / _height) }
+  toString { "Viewport(%(_width)x%(_height))" }
+}
+
 // Per-frame state passed to the user's setup / update / draw.
 // Wraps the long-lived pieces (window, device, surface) plus a
 // scratchpad Map so users can stash frame-to-frame state without
@@ -160,6 +180,9 @@ class GameState {
     _userData = {}
     _quit    = false
     _input   = Input.new_()
+    _viewport = Viewport.new_(0, 0)
+    _lastTime  = 0
+    _startTime = 0
   }
 
   // Aggregated keyboard / mouse state for this frame. See `Input`
@@ -200,10 +223,32 @@ class GameState {
   tick          { _tick }
   tick=(v)      { _tick = v }
 
-  // Window dimensions sourced from the latest resize event.
-  // Convenience over `g.window.size["width"]`.
-  width  { _window.size["width"] }
-  height { _window.size["height"] }
+  // Surface dimensions in actual pixels — what wgpu draws into.
+  // The framework keeps these in sync with the configured surface
+  // (which may be clamped on resize past the GPU's max texture
+  // dimension), so a Camera2D / Camera3D built from `g.width` /
+  // `g.height` always matches the render target. Distinct from
+  // `g.window.size`, which reports the OS window's pre-clamp size.
+  //
+  // `g.viewport` returns a `Viewport` value with .width / .height
+  // / .aspect for callers that want to thread one object through.
+  width    { _viewport.width }
+  height   { _viewport.height }
+  viewport { _viewport }
+  // Internal: replace the viewport. Called by Game.run on startup
+  // and on every resize event after the surface has been
+  // re-configured.
+  setViewport_(w, h) { _viewport = Viewport.new_(w, h) }
+
+  // Internal: frame-clock state. Stored on `GameState` rather than
+  // local variables in `Game.run`'s loop body because the
+  // surrounding loop's complexity confuses the closure-upvalue
+  // capture and the locals end up reading as undefined inside the
+  // loop on the second-or-later iterations.
+  lastTime_       { _lastTime }
+  lastTime_=(v)   { _lastTime = v }
+  startTime_      { _startTime }
+  startTime_=(v)  { _startTime = v }
 
   // Scratchpad. `g.set("renderer", r)` from setup, `g.get("renderer")`
   // from draw — keeps the user out of closure-state-management.
@@ -239,6 +284,16 @@ class Game {
   update(g) {}
   draw(g)   {}
 
+  // Fired after the surface (and optional depth attachment) have
+  // been re-allocated to match the new size. Override to rebuild
+  // anything tied to viewport dimensions — typically a Camera2D /
+  // Camera3D — so projections track the window.
+  //
+  //   resize(g, w, h) {
+  //     _camera = Camera2D.new(w, h)
+  //   }
+  resize(g, width, height) {}
+
   // Defaults applied for keys the user's `config` override omits.
   // Pass `"depth": true` (or a format string like `"depth32float"`)
   // in your config to have the loop allocate + bind a depth
@@ -265,6 +320,40 @@ class Game {
   //
   //   class MyGame is Game { ... }
   //   Game.run(MyGame)
+  // Walk every queued OS event, route input through `g.input`,
+  // honour close requests, and surface the latest resize size as
+  // [width, height] (or [0, 0] if no resize happened this tick).
+  //
+  // Indexed `while` loop, NOT `for (e in events)` — the for-in
+  // body forms a closure for outer-scope locals, and the
+  // closure-upvalue mutation bug means writes to `resizeW` /
+  // `resizeH` inside don't propagate back. The function would
+  // then return [0, 0] regardless of how many resize events came
+  // through, leaving the surface at its initial dimensions
+  // (cropped-to-a-corner symptom on a resized window).
+  static drainEvents_(events, g) {
+    var size = [0, 0]
+    var n = events.count
+    var i = 0
+    while (i < n) {
+      var e = events[i]
+      g.input.applyEvent_(e)
+      var t = e["type"]
+      if (t == "close") {
+        g.requestQuit
+      } else if (t == "resize") {
+        var ew = e["width"]
+        var eh = e["height"]
+        if (ew > 0 && eh > 0) {
+          size[0] = ew
+          size[1] = eh
+        }
+      }
+      i = i + 1
+    }
+    return size
+  }
+
   static run(klass) {
     if (!(klass is Class)) {
       Fiber.abort("Game.run: argument must be a Class extending Game.")
@@ -286,12 +375,14 @@ class Game {
     })
     var device  = Gpu.requestDevice()
     var surface = device.createSurface(window.handle)
-    surface.configure({
+    var initial = surface.configure({
       "width":       c["width"],
       "height":      c["height"],
       "format":      c["surfaceFormat"],
       "presentMode": c["presentMode"]
     })
+    var sw = initial is Map ? initial["width"]  : c["width"]
+    var sh = initial is Map ? initial["height"] : c["height"]
 
     // Resolve depth attachment config. true → "depth32float";
     // a string overrides; false / null → no depth attachment.
@@ -303,7 +394,7 @@ class Game {
     var depthView    = null
     if (depthFormat != null) {
       depthTexture = device.createTexture({
-        "width":  c["width"], "height": c["height"],
+        "width":  sw, "height": sh,
         "format": depthFormat,
         "usage":  ["render-attachment"]
       })
@@ -314,42 +405,52 @@ class Game {
     g.surface     = surface
     g.depthFormat = depthFormat
     g.depthView   = depthView
+    g.setViewport_(sw, sh)
 
     instance.setup(g)
 
-    var lastTime  = Clock.mono
-    var startTime = lastTime
+    g.lastTime_  = Clock.mono
+    g.startTime_ = g.lastTime_
 
     while (!g.quitRequested && !window.closeRequested) {
-      // Drain OS events; rebuild surface when the window resizes
-      // so the swap chain matches the new dimensions, and route
-      // each event through Input so state polling reflects the
-      // freshest values.
+      // Drain OS events. Use an index-based while loop instead of
+      // `for (e in events)` because mutating outer-scope locals
+      // from inside a `for-in` body trips a known closure-upvalue
+      // bug — the surrounding `lastTime` / `startTime` get
+      // clobbered, then `now - lastTime` raises "Right operand
+      // must be a number" the next frame.
       var events = window.pollEvents
       g.input.beginFrame_
-      for (e in events) {
-        g.input.applyEvent_(e)
-        if (e["type"] == "close") {
-          g.requestQuit
-        } else if (e["type"] == "resize") {
-          var w = e["width"]
-          var h = e["height"]
-          if (w > 0 && h > 0) {
-            surface.configure({
-              "width":       w,
-              "height":      h,
-              "format":      c["surfaceFormat"],
-              "presentMode": c["presentMode"]
-            })
-          }
+      var resize = Game.drainEvents_(events, g)
+      var resizeW = resize[0]
+      var resizeH = resize[1]
+      if (resizeW > 0 && resizeH > 0) {
+        var actual = surface.configure({
+          "width":       resizeW,
+          "height":      resizeH,
+          "format":      c["surfaceFormat"],
+          "presentMode": c["presentMode"]
+        })
+        var aw = actual is Map ? actual["width"]  : resizeW
+        var ah = actual is Map ? actual["height"] : resizeH
+        g.setViewport_(aw, ah)
+        if (depthFormat != null) {
+          depthTexture = device.createTexture({
+            "width":  aw, "height": ah,
+            "format": depthFormat,
+            "usage":  ["render-attachment"]
+          })
+          depthView = depthTexture.createView()
+          g.depthView = depthView
         }
+        instance.resize(g, aw, ah)
       }
       g.events = events
 
       var now = Clock.mono
-      g.dt      = now - lastTime
-      g.elapsed = now - startTime
-      lastTime  = now
+      g.dt      = now - g.lastTime_
+      g.elapsed = now - g.startTime_
+      g.lastTime_ = now
 
       instance.update(g)
 
