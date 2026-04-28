@@ -1,0 +1,9 @@
+name        = "web-counter"
+version     = "0.1.0"
+entry       = "main"
+description = "htmx-driven counter — one button, one server-side number, one fragment swap per click. Showcases App.post handlers, fragment-scoped Css styling, and the no-JavaScript update loop @hatch:web is built around."
+
+# @hatch:template comes transitively via @hatch:web; declaring
+# it again trips the resolver's diamond-as-cycle detector.
+[dependencies]
+"@hatch:web" = { path = "../../../packages/hatch-web" }

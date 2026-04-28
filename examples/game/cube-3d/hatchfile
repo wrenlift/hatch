@@ -1,0 +1,10 @@
+name        = "cube-3d"
+version     = "0.1.0"
+entry       = "main"
+description = "Spinning lit cube with a ground plane and a 2D HUD overlay. Showcases Renderer3D + depth, Camera3D + Light, and Renderer2D composing on the same render pass via the depth-aware constructor."
+
+# @hatch:gpu and @hatch:math come transitively through @hatch:game;
+# declaring them again here trips the resolver's cycle detector.
+[dependencies]
+"@hatch:game"  = { path = "../../../packages/hatch-game" }
+"@hatch:image" = { path = "../../../packages/hatch-image" }

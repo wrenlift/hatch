@@ -1,0 +1,11 @@
+name        = "bouncing-ball"
+version     = "0.1.0"
+entry       = "main"
+description = "Physics-driven bouncing balls. A static ground + a stream of dynamic balls under gravity, drawn by Renderer2D. Showcases @hatch:game + @hatch:physics composing through ECS-free GameState fields."
+
+# @hatch:gpu and @hatch:math come transitively through @hatch:game;
+# declaring them again here trips the resolver's cycle detector.
+[dependencies]
+"@hatch:game"    = { path = "../../../packages/hatch-game" }
+"@hatch:physics" = { path = "../../../packages/hatch-physics" }
+"@hatch:image"   = { path = "../../../packages/hatch-image" }

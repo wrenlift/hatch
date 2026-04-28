@@ -1,1 +1,7 @@
 /target
+
+# Built artifacts produced by `hatch build` next to source workspaces.
+# Examples and packages should ship hatchfile + *.wren; the .hatch
+# bytecode bundle is a derived output rebuilt on `hatch run`.
+examples/**/*.hatch
+packages/**/*.hatch

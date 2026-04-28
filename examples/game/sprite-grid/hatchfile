@@ -1,0 +1,10 @@
+name        = "sprite-grid"
+version     = "0.1.0"
+entry       = "main"
+description = "Batched sprite stress test — a moving grid of tinted sprites driven by WASD. Showcases Renderer2D batching, the Sprite display object, and Game.input state polling."
+
+# @hatch:gpu comes transitively through @hatch:game; declaring it
+# again here trips the resolver's cycle detector.
+[dependencies]
+"@hatch:game"  = { path = "../../../packages/hatch-game" }
+"@hatch:image" = { path = "../../../packages/hatch-image" }

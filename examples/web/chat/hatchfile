@@ -1,0 +1,9 @@
+name        = "web-chat"
+version     = "0.1.0"
+entry       = "main"
+description = "Real-time chat over Server-Sent Events. Pub/sub Channel + Sse.stream + htmx's sse extension — no client-side JavaScript beyond the htmx CDN includes. The integration showcase for fiber-cooperative scheduling, pub/sub channels, and live DOM updates."
+
+# @hatch:template comes transitively via @hatch:web; declaring
+# it again trips the resolver's diamond-as-cycle detector.
+[dependencies]
+"@hatch:web" = { path = "../../../packages/hatch-web" }

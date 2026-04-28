@@ -1,0 +1,9 @@
+name        = "web-hello"
+version     = "0.1.0"
+entry       = "main"
+description = "Minimal @hatch:web hello-world server. One route, one path parameter, one logging middleware. The smallest useful demonstration of the App.get / App.use surface."
+
+# @hatch:template comes transitively via @hatch:web; declaring
+# it again trips the resolver's diamond-as-cycle detector.
+[dependencies]
+"@hatch:web" = { path = "../../../packages/hatch-web" }
