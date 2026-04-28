@@ -63,6 +63,40 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
 
+      # System libraries the platform-specific plugins link
+      # against on Linux:
+      #   * libasound2-dev    → wlift_audio (cpal/alsa-sys)
+      #   * libudev-dev       → wlift_window (winit input device
+      #                          enumeration)
+      #   * libxkbcommon-dev,
+      #     libwayland-dev,
+      #     libx11-dev,
+      #     libxcb1-dev,
+      #     libxrandr-dev,
+      #     libxinerama-dev,
+      #     libxcursor-dev,
+      #     libxi-dev         → wlift_window (winit's X11 + wayland
+      #                          backends — pulled in even when
+      #                          we'd be running headless, because
+      #                          winit picks a backend at runtime)
+      # macOS / Windows runners have these via Apple/Microsoft
+      # SDKs, so the install step is gated to ubuntu.
+      - name: Install plugin system deps (linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libasound2-dev \
+            libudev-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev
+
       - name: Cache cargo artifacts
         uses: actions/cache@v4
         with:
