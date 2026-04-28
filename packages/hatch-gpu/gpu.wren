@@ -984,10 +984,16 @@ class Renderer2D {
     // Per-frame state
     _floats     = []
     // Reusable scratch List for the camera matrix upload — 16
-    // floats every beginFrame. Allocated once and cleared per
-    // frame so the per-frame allocation rate stays at zero for
-    // this path.
-    _cameraScratch = []
+    // floats every beginFrame. Pre-allocated to its final size so
+    // `beginFrame` writes via index assignment (no `clear` /
+    // `add` per call) — keeps the per-frame allocation rate at
+    // zero on this path AND sidesteps a tiered-mode miscompile
+    // where the inner `add` calls inside two nested while-loops
+    // were dropping elements (the user's first frame ended up
+    // with `_cameraScratch[0] == null`, which surfaced as
+    // `Buffer.writeFloats: every element must be a number
+    // (index 0)`).
+    _cameraScratch = List.filled(16, 0)
     _spriteCount = 0
     _curTexture  = null
     _curBindGroup = null
@@ -1000,19 +1006,28 @@ class Renderer2D {
     // Mat4 stores row-major; WGSL's mat4x4 reads 16 floats as
     // column-major. Transpose at the upload boundary so the
     // ortho's translation column lands where the shader expects.
-    // `_cameraScratch` is reused across frames so the 16-element
-    // List doesn't get reallocated every beginFrame.
+    // The transpose is unrolled and uses index assignment into
+    // a pre-allocated `_cameraScratch` instead of nested while
+    // loops calling `add` — the looped form miscompiled under
+    // tiered execution and dropped elements, surfacing as
+    // `Buffer.writeFloats: every element must be a number`.
     var d = camera.viewProj.data
-    _cameraScratch.clear()
-    var c = 0
-    while (c < 4) {
-      var r = 0
-      while (r < 4) {
-        _cameraScratch.add(d[r * 4 + c])
-        r = r + 1
-      }
-      c = c + 1
-    }
+    _cameraScratch[0]  = d[0]
+    _cameraScratch[1]  = d[4]
+    _cameraScratch[2]  = d[8]
+    _cameraScratch[3]  = d[12]
+    _cameraScratch[4]  = d[1]
+    _cameraScratch[5]  = d[5]
+    _cameraScratch[6]  = d[9]
+    _cameraScratch[7]  = d[13]
+    _cameraScratch[8]  = d[2]
+    _cameraScratch[9]  = d[6]
+    _cameraScratch[10] = d[10]
+    _cameraScratch[11] = d[14]
+    _cameraScratch[12] = d[3]
+    _cameraScratch[13] = d[7]
+    _cameraScratch[14] = d[11]
+    _cameraScratch[15] = d[15]
     _ubo.writeFloats(0, _cameraScratch)
     _floats.clear()
     _spriteCount = 0
@@ -1660,18 +1675,27 @@ class Renderer3D {
   // Mat4.data is row-major (math convention) but WGSL's
   // mat4x4<f32> consumes 16 floats as column-major. Transpose at
   // the upload boundary so the shader's M*v multiplies row 0
-  // dotted with v as expected.
+  // dotted with v as expected. Unrolled (no nested while) — the
+  // looped form miscompiled under tiered execution; see the
+  // matching note in `Renderer2D.beginFrame`.
   appendMat4_(out, m) {
     var d = m.data
-    var c = 0
-    while (c < 4) {
-      var r = 0
-      while (r < 4) {
-        out.add(d[r * 4 + c])
-        r = r + 1
-      }
-      c = c + 1
-    }
+    out.add(d[0])
+    out.add(d[4])
+    out.add(d[8])
+    out.add(d[12])
+    out.add(d[1])
+    out.add(d[5])
+    out.add(d[9])
+    out.add(d[13])
+    out.add(d[2])
+    out.add(d[6])
+    out.add(d[10])
+    out.add(d[14])
+    out.add(d[3])
+    out.add(d[7])
+    out.add(d[11])
+    out.add(d[15])
   }
   appendVec4_(out, v) {
     out.add(v.x)
