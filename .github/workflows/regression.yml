@@ -77,11 +77,34 @@ jobs:
         working-directory: source
         run: cargo build --release --bin wlift
 
-      - name: Upload wlift binary
+      # Each `[plugin_source]` package in this catalog points at one
+      # of the cdylib crates under `wren_lift/plugins/`. We build
+      # them here against the same wlift rev so plugin-backed specs
+      # exercise the matching ABI version. Without this step
+      # `libs/` is empty (the `.so` is gitignored) and the regression
+      # job either skips the package or hits "library not found".
+      - name: Build plugins
+        working-directory: source
+        run: |
+          for crate in wlift_audio wlift_gpu wlift_image wlift_physics wlift_sqlite wlift_window; do
+            cargo build --release -p "$crate"
+          done
+
+      - name: Stage artifact dir
+        run: |
+          mkdir -p out/libs
+          cp source/target/release/wlift out/wlift
+          # On `ubuntu-latest` cdylibs end up named `lib<crate>.so`.
+          # Stage them flat — the spec job knows the package → crate
+          # mapping from the hatchfile and copies into each package's
+          # `libs/` before running.
+          cp source/target/release/lib*.so out/libs/
+
+      - name: Upload wlift + plugins
         uses: actions/upload-artifact@v4
         with:
           name: wlift
-          path: source/target/release/wlift
+          path: out
           if-no-files-found: error
           retention-days: 3
 
@@ -102,7 +125,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download wlift binary
+      - name: Download wlift + plugins
         uses: actions/download-artifact@v4
         with:
           name: wlift
@@ -110,6 +133,39 @@ jobs:
 
       - name: Make wlift executable
         run: chmod +x bin/wlift
+
+      # Stage each plugin-backed package's matching `lib<crate>.so`
+      # into its own `libs/` directory. The hatchfile's
+      # `[plugin_source].crate = "<name>"` field is the source of
+      # truth for which dylib to copy — same lookup the runtime
+      # uses when resolving a `#!native = "name"` annotation.
+      - name: Stage plugin dylibs into packages
+        shell: bash
+        run: |
+          set -eu
+          python3 <<'PY'
+          import os, shutil, sys, tomllib
+          for hf in sorted(os.listdir("packages")):
+              hf_path = os.path.join("packages", hf, "hatchfile")
+              if not os.path.isfile(hf_path):
+                  continue
+              with open(hf_path, "rb") as f:
+                  manifest = tomllib.load(f)
+              ps = manifest.get("plugin_source")
+              if not ps:
+                  continue
+              crate = ps.get("crate")
+              if not crate:
+                  continue
+              src = f"bin/libs/lib{crate}.so"
+              dst_dir = os.path.join("packages", hf, "libs")
+              os.makedirs(dst_dir, exist_ok=True)
+              if os.path.isfile(src):
+                  shutil.copy(src, os.path.join(dst_dir, f"lib{crate}.so"))
+                  print(f"staged {crate} → {dst_dir}")
+              else:
+                  print(f"::warning::missing plugin {crate} (expected {src})")
+          PY
 
       - name: Run every package's spec
         shell: bash
@@ -135,14 +191,18 @@ jobs:
             [ -n "$spec" ] || continue
 
             # Skip plugin-backed packages whose dylibs haven't
-            # been bundled yet. The publish-plugin workflow drops
-            # platform-specific artifacts into `libs/`; without
-            # those the load fails at module-import time with a
-            # "no such dylib" error that's unrelated to the spec
-            # itself.
+            # made it into `libs/`. The build-wlift job is supposed
+            # to drop a fresh `lib<crate>.so` here, but if that
+            # step missed (e.g. the workspace's plugin set drifted
+            # from the catalog's [plugin_source].crate names) we
+            # warn and keep going rather than fail the spec for
+            # what amounts to a CI plumbing issue. The check looks
+            # for a real `.so` — `.gitignore` alone (the only thing
+            # tracked in `libs/`) used to make `ls -A` non-empty
+            # and trip the package as "ready" when nothing was.
             if grep -q '^\[plugin_source\]' "$hf"; then
-              if [ ! -d "$dir/libs" ] || [ -z "$(ls -A "$dir/libs" 2>/dev/null)" ]; then
-                echo "::warning title=$pkg::skipped (plugin-backed, no dylib in libs/)"
+              if ! ls "$dir"libs/*.so >/dev/null 2>&1; then
+                echo "::warning title=$pkg::skipped (plugin-backed, no .so staged)"
                 continue
               fi
             fi
