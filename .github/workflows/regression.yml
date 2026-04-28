@@ -209,6 +209,15 @@ jobs:
           # HATCH_OFFLINE to skip network tests. Keeps CI
           # deterministic and free of external dependencies.
           HATCH_OFFLINE: "1"
+          # Packages whose specs need real hardware (audio device,
+          # GPU context, window server) and therefore can't run
+          # on a vanilla GitHub runner. The build-plugins step
+          # still compiles them; the spec run skips them with a
+          # warning. Move a package out of this list once its
+          # spec is hardware-free OR the runner can be configured
+          # to provide a stub (e.g. `pulseaudio --start
+          # --exit-idle-time=-1` for audio).
+          HATCH_CI_SKIP: "hatch-audio hatch-gpu hatch-window"
         run: |
           set -u
           wlift="$PWD/bin/wlift"
@@ -223,6 +232,13 @@ jobs:
             [ -f "$hf" ] || continue
             spec=$(ls "$dir"*.spec.wren 2>/dev/null | head -1)
             [ -n "$spec" ] || continue
+
+            # Hardware-bound packages — see `HATCH_CI_SKIP` env
+            # comment above. Whitespace-separated list match.
+            if [[ " $HATCH_CI_SKIP " == *" $pkg "* ]]; then
+              echo "::warning title=$pkg::skipped (hardware-bound; HATCH_CI_SKIP)"
+              continue
+            fi
 
             # Skip plugin-backed packages whose dylibs haven't
             # made it into `libs/`. The build-wlift job is supposed
