@@ -768,17 +768,24 @@ class Camera2D {
   origin  { _origin }
   origin=(v) { _origin = v }
 
-  // Compute view-projection. Ortho maps (-w/2 + ox, -h/2 + oy)
-  // through (w/2 + ox, h/2 + oy) onto NDC. Z range is generous
-  // (-1000..1000) so callers can layer sprites by Z without
-  // worrying about clipping.
+  // Compute view-projection. Screen-pixel convention: (0, 0) is
+  // the top-left, (width, height) is the bottom-right, +y points
+  // *down*. Matches PixiJS / Cocos / Defold and the screen
+  // coordinates the rest of the framework hands sprites. Z range
+  // is generous (-1000..1000) so callers can layer sprites by Z
+  // without worrying about clipping.
+  //
+  // `_origin` shifts the entire view: setting `origin` to the
+  // player's world-space pixel position turns Camera2D into a
+  // scrolling camera that keeps the player centred on screen.
   viewProj {
-    var hw = _width  / 2
-    var hh = _height / 2
-    var l = _origin.x - hw
-    var r = _origin.x + hw
-    var b = _origin.y - hh
-    var t = _origin.y + hh
+    var l = _origin.x
+    var r = _origin.x + _width
+    // bottom > top → m[1,1] negative → y axis flips so screen-
+    // pixel coordinates (y-down) land on the WebGPU NDC the
+    // shader expects.
+    var b = _origin.y + _height
+    var t = _origin.y
     return Mat4.ortho(l, r, b, t, -1000, 1000)
   }
 }
@@ -832,9 +839,17 @@ class Renderer2D {
   // so sprites land on top of whatever's already in the depth
   // buffer without contributing to it.
   construct new(device, surfaceFormat) {
-    new(device, surfaceFormat, null)
+    init_(device, surfaceFormat, null)
   }
   construct new(device, surfaceFormat, depthFormat) {
+    init_(device, surfaceFormat, depthFormat)
+  }
+
+  // Wren doesn't support constructor-to-constructor delegation,
+  // so the shared setup body lives in a regular method that both
+  // constructors invoke. Field accessors work the same as inside
+  // a constructor.
+  init_(device, surfaceFormat, depthFormat) {
     _device = device
 
     var shader = device.createShaderModule({
@@ -904,6 +919,11 @@ class Renderer2D {
 
     // Per-frame state
     _floats     = []
+    // Reusable scratch List for the camera matrix upload — 16
+    // floats every beginFrame. Allocated once and cleared per
+    // frame so the per-frame allocation rate stays at zero for
+    // this path.
+    _cameraScratch = []
     _spriteCount = 0
     _curTexture  = null
     _curBindGroup = null
@@ -913,8 +933,24 @@ class Renderer2D {
   // Begin a new frame. Resets the batch + uploads the camera
   // view-projection. Call before any drawSprite calls.
   beginFrame(camera) {
-    _ubo.writeMat4s(0, [camera.viewProj])
-    _floats = []
+    // Mat4 stores row-major; WGSL's mat4x4 reads 16 floats as
+    // column-major. Transpose at the upload boundary so the
+    // ortho's translation column lands where the shader expects.
+    // `_cameraScratch` is reused across frames so the 16-element
+    // List doesn't get reallocated every beginFrame.
+    var d = camera.viewProj.data
+    _cameraScratch.clear()
+    var c = 0
+    while (c < 4) {
+      var r = 0
+      while (r < 4) {
+        _cameraScratch.add(d[r * 4 + c])
+        r = r + 1
+      }
+      c = c + 1
+    }
+    _ubo.writeFloats(0, _cameraScratch)
+    _floats.clear()
     _spriteCount = 0
     _curTexture = null
     _curBindGroup = null
@@ -1006,7 +1042,7 @@ class Renderer2D {
     pass.setBindGroup(0, bg)
     pass.setVertexBuffer(0, _vbo)
     pass.draw(_spriteCount * Renderer2D.VERTS_PER_SPRITE_)
-    _floats = []
+    _floats.clear()
     _spriteCount = 0
     _curTexture = null
   }
@@ -1096,13 +1132,27 @@ class Sprite {
   }
 
   // Tint is multiplied with the sampled texture in the fragment
-  // shader. RGB drives colourisation; A modulates opacity.
+  // shader. RGB drives colourisation; A modulates opacity. The
+  // list-form setter (`s.tint = [r,g,b,a]`) is convenient for
+  // one-off assignments; the per-frame setter `setTint(r,g,b,a)`
+  // skips the 4-element List allocation that would otherwise fire
+  // 25k+ times per second in a moderate sprite batch.
   tint     { [_tintR, _tintG, _tintB, _tintA] }
   tint=(rgba) {
     _tintR = rgba[0]
     _tintG = rgba[1]
     _tintB = rgba[2]
     _tintA = rgba[3]
+  }
+  /// Set all four tint channels in a single call without
+  /// allocating an intermediate list. Prefer this in hot per-
+  /// frame draw loops; reserve `tint = [r,g,b,a]` for setup /
+  /// cold-path code where readability beats an alloc.
+  setTint(r, g, b, a) {
+    _tintR = r
+    _tintG = g
+    _tintB = b
+    _tintA = a
   }
   alpha    { _tintA }
   alpha=(a) { _tintA = a }
@@ -1543,12 +1593,20 @@ class Renderer3D {
 
   endFrame() { _pass = null }
 
+  // Mat4.data is row-major (math convention) but WGSL's
+  // mat4x4<f32> consumes 16 floats as column-major. Transpose at
+  // the upload boundary so the shader's M*v multiplies row 0
+  // dotted with v as expected.
   appendMat4_(out, m) {
-    var data = m.data
-    var i = 0
-    while (i < 16) {
-      out.add(data[i])
-      i = i + 1
+    var d = m.data
+    var c = 0
+    while (c < 4) {
+      var r = 0
+      while (r < 4) {
+        out.add(d[r * 4 + c])
+        r = r + 1
+      }
+      c = c + 1
     }
   }
   appendVec4_(out, v) {
