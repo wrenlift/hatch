@@ -230,7 +230,12 @@ jobs:
             pkg=$(basename "$dir")
             hf="$dir/hatchfile"
             [ -f "$hf" ] || continue
-            spec=$(ls "$dir"*.spec.wren 2>/dev/null | head -1)
+            # `ls` exits 2 when the glob has no matches — under
+            # `set -eu -o pipefail` that propagates through the
+            # `$(...)` assignment and kills the loop before the
+            # `-n "$spec"` guard fires. `|| true` keeps the empty-
+            # match case quiet so the guard can do its job.
+            spec=$(ls "$dir"*.spec.wren 2>/dev/null | head -1 || true)
             [ -n "$spec" ] || continue
 
             # Hardware-bound packages — see `HATCH_CI_SKIP` env
