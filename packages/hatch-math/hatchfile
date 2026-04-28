@@ -1,5 +1,5 @@
 name        = "@hatch:math"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "math"
 description = "Vector + matrix + quaternion math — Vec2 / Vec3 / Vec4 / Mat4 / Quat, easings, and scalar helpers. Built for interactive apps and games."
 
