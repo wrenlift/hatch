@@ -41,11 +41,12 @@ jobs:
     name: Resolve target
     runs-on: ubuntu-latest
     outputs:
-      package: ${{ steps.out.outputs.package }}
-      version: ${{ steps.out.outputs.version }}
-      repo:    ${{ steps.out.outputs.repo }}
-      rev:     ${{ steps.out.outputs.rev }}
-      crate:   ${{ steps.out.outputs.crate }}
+      package:    ${{ steps.out.outputs.package }}
+      version:    ${{ steps.out.outputs.version }}
+      repo:       ${{ steps.out.outputs.repo }}
+      rev:        ${{ steps.out.outputs.rev }}
+      crate:      ${{ steps.out.outputs.crate }}
+      has_plugin: ${{ steps.out.outputs.has_plugin }}
     steps:
       - uses: actions/checkout@v4
 
@@ -72,6 +73,21 @@ jobs:
             version="${tag##*@}"
           fi
 
+          # `publish-pkg.yml` shares the same `publish/*@*` tag
+          # trigger so dual-firing is the norm. If this hatchfile
+          # has no `[plugin_source]`, the package is pure-Wren —
+          # `publish-pkg.yml` handles it; we exit clean (no
+          # error) so the run shows up as a no-op rather than a
+          # failure on every pure-Wren publish.
+          if ! grep -q '^\[plugin_source\]' "$hatchfile"; then
+            echo "::notice::$pkg_dir has no [plugin_source] — handled by publish-pkg.yml"
+            echo "has_plugin=false" >> "$GITHUB_OUTPUT"
+            echo "package=$pkg_dir" >> "$GITHUB_OUTPUT"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_plugin=true" >> "$GITHUB_OUTPUT"
+
           repo=$(awk -F'"' '/^repo *=/  {print $2; exit}' "$hatchfile")
           rev=$( awk -F'"' '/^rev *=/   {print $2; exit}' "$hatchfile")
           crate=$(awk -F'"' '/^crate *=/{print $2; exit}' "$hatchfile")
@@ -94,6 +110,7 @@ jobs:
   build:
     name: Build ${{ matrix.label }}
     needs: resolve
+    if: needs.resolve.outputs.has_plugin == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -200,6 +217,7 @@ jobs:
   publish:
     name: Bundle + publish
     needs: [resolve, build]
+    if: needs.resolve.outputs.has_plugin == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
