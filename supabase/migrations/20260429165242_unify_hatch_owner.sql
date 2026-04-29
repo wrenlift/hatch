@@ -13,9 +13,17 @@
 -- Forcing every official `@hatch:*` row to belong to the bot
 -- account makes CI publishes idempotent.
 --
+-- Migration order matters: the prior migration
+-- (`…relax_name_ownership_for_bot.sql`) replaces the trigger
+-- with a version that short-circuits to `RETURN NEW` whenever
+-- `NEW.owner = hatch_bot_owner()`. With that in place, this
+-- UPDATE — which sets `owner` to exactly that value for every
+-- `@hatch:*` row — passes the trigger by construction. No
+-- session-level GUC dance, no superuser escape hatch.
+--
 -- Pre-req: insert the bot UUID into `hatch_config` first
--- (the `20260429165240_hatch_config_table.sql` migration adds
--- the table; this one assumes it's populated):
+-- (the `…hatch_config_table.sql` migration adds the table;
+-- this one assumes it's populated):
 --
 --   INSERT INTO hatch_config (key, value, note) VALUES
 --     ('hatch_bot_owner', '<uuid>', 'bot service account')
@@ -34,23 +42,16 @@ BEGIN
       'ON CONFLICT (key) DO UPDATE SET value = excluded.value;';
   END IF;
 
-  -- The `enforce_name_ownership` trigger raises P0001 on any
-  -- update that doesn't match the existing owner, which would
-  -- block this very migration. Switch to replica mode for the
-  -- transaction so user-defined triggers don't fire — the whole
-  -- point of this migration is to *re-stamp* ownership, and the
-  -- trigger's invariant is going to be true again the moment we
-  -- finish.
-  PERFORM set_config('session_replication_role', 'replica', true);
-
+  -- The relaxed `enforce_name_ownership` trigger (deployed by
+  -- the prior migration) short-circuits to `RETURN NEW` when
+  -- `NEW.owner = hatch_bot_owner()`. Since we're setting `owner`
+  -- to exactly that, the trigger lets every row through.
   UPDATE packages
      SET owner = bot_owner
    WHERE name LIKE '@hatch:%'
      AND owner IS DISTINCT FROM bot_owner;
 
   GET DIAGNOSTICS affected = ROW_COUNT;
-
-  PERFORM set_config('session_replication_role', 'origin', true);
 
   RAISE NOTICE 'reassigned % @hatch:* rows to %', affected, bot_owner;
 END $$;
