@@ -28,9 +28,13 @@ native_search_paths = ["libs"]
 # across the platform matrix, drop each dylib into `libs/`,
 # bundle via `hatch publish`.
 [plugin_source]
-repo  = "https://github.com/wrenlift/WrenLift.git"
-rev   = "2254e95d622288184d64b1c3315d6b7e0ce52bb6"
-crate = "wlift_gpu"
+repo      = "https://github.com/wrenlift/WrenLift.git"
+rev       = "2254e95d622288184d64b1c3315d6b7e0ce52bb6"
+crate     = "wlift_gpu"
+# Wasm-only companion cdylib used when the bundle runs in a
+# browser. Built from the same `repo`/`rev`; produces
+# `wlift_gpu_web.wasm` matching the `wasm = …` entry below.
+web_crate = "wlift_gpu_web"
 
 # Per-platform dylib paths. CI populates libs/ via the
 # plugin_source build.

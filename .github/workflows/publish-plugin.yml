@@ -46,6 +46,7 @@ jobs:
       repo:       ${{ steps.out.outputs.repo }}
       rev:        ${{ steps.out.outputs.rev }}
       crate:      ${{ steps.out.outputs.crate }}
+      web_crate:  ${{ steps.out.outputs.web_crate }}
       has_plugin: ${{ steps.out.outputs.has_plugin }}
     steps:
       - uses: actions/checkout@v4
@@ -88,19 +89,26 @@ jobs:
           fi
           echo "has_plugin=true" >> "$GITHUB_OUTPUT"
 
-          repo=$(awk -F'"' '/^repo *=/  {print $2; exit}' "$hatchfile")
-          rev=$( awk -F'"' '/^rev *=/   {print $2; exit}' "$hatchfile")
-          crate=$(awk -F'"' '/^crate *=/{print $2; exit}' "$hatchfile")
+          repo=$(awk -F'"'      '/^repo *=/      {print $2; exit}' "$hatchfile")
+          rev=$( awk -F'"'      '/^rev *=/       {print $2; exit}' "$hatchfile")
+          crate=$(awk -F'"'     '/^crate *=/     {print $2; exit}' "$hatchfile")
+          # Optional: a wasm-only companion crate (`<crate>_web`
+          # by convention) that produces the `.wasm` cdylib used
+          # when the bundle runs in a browser. Hatchfiles that
+          # don't ship a web target leave this unset; the
+          # `build-web` job is then skipped.
+          web_crate=$(awk -F'"' '/^web_crate *=/ {print $2; exit}' "$hatchfile")
 
           if [ -z "$repo" ] || [ -z "$rev" ] || [ -z "$crate" ]; then
             echo "::error::hatchfile $hatchfile missing [plugin_source] repo / rev / crate" && exit 1
           fi
 
-          echo "package=$pkg_dir" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "repo=$repo"       >> "$GITHUB_OUTPUT"
-          echo "rev=$rev"         >> "$GITHUB_OUTPUT"
-          echo "crate=$crate"     >> "$GITHUB_OUTPUT"
+          echo "package=$pkg_dir"     >> "$GITHUB_OUTPUT"
+          echo "version=$version"     >> "$GITHUB_OUTPUT"
+          echo "repo=$repo"           >> "$GITHUB_OUTPUT"
+          echo "rev=$rev"             >> "$GITHUB_OUTPUT"
+          echo "crate=$crate"         >> "$GITHUB_OUTPUT"
+          echo "web_crate=$web_crate" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------
   # Build: one matrix entry per target triple. Artifact naming is
@@ -210,14 +218,83 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------
+  # Build (web): same shape as `build`, but for the wasm-only
+  # companion crate. Skipped when the hatchfile doesn't declare
+  # `web_crate` under `[plugin_source]` — most plugins ship
+  # native-only.
+  # ---------------------------------------------------------------
+  build-web:
+    name: Build wasm32 (${{ needs.resolve.outputs.web_crate }})
+    needs: resolve
+    if: needs.resolve.outputs.has_plugin == 'true' && needs.resolve.outputs.web_crate != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: hatch
+
+      - name: Check out upstream plugin source
+        shell: bash
+        run: |
+          set -eu
+          git clone --filter=blob:none \
+                    "${{ needs.resolve.outputs.repo }}" source
+          git -C source checkout "${{ needs.resolve.outputs.rev }}"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            source/target
+          key: plugin-${{ needs.resolve.outputs.web_crate }}-${{ needs.resolve.outputs.rev }}-wasm32
+
+      - name: Build web plugin
+        working-directory: source
+        run: cargo build -p ${{ needs.resolve.outputs.web_crate }} --release --target wasm32-unknown-unknown
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          set -eu
+          # wasm cdylib output has no `lib` prefix.
+          src="source/target/wasm32-unknown-unknown/release/${{ needs.resolve.outputs.web_crate }}.wasm"
+          if [ ! -f "$src" ]; then
+            echo "::error::expected $src not produced" && exit 1
+          fi
+          mkdir -p dist
+          cp "$src" "dist/"
+          ls -la dist/
+
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm32
+          path: dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------
   # Publish: drop the per-platform dylibs into the package's libs/
   # dir, run hatch publish, and (on tag push) archive them as a
   # versioned release so historical publishes stay auditable.
   # ---------------------------------------------------------------
   publish:
     name: Bundle + publish
-    needs: [resolve, build]
-    if: needs.resolve.outputs.has_plugin == 'true'
+    needs: [resolve, build, build-web]
+    # `build-web` is skipped for native-only plugins; that's
+    # fine, we just need it to either succeed or be skipped.
+    # `always()` lets the publish job run despite a skip.
+    if: |
+      always()
+      && needs.resolve.outputs.has_plugin == 'true'
+      && needs.build.result == 'success'
+      && (needs.build-web.result == 'success' || needs.build-web.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -247,15 +324,53 @@ jobs:
           ls -la "$dest"
           echo "::endgroup::"
 
-      - name: Install hatch CLI
+      - name: Install hatch + wlift CLI
         # Pulled from the same upstream revision the plugin was
-        # built against — guarantees the hatch CLI speaks the
-        # same manifest / bundle formats as the plugin assumes.
+        # built against — guarantees the CLIs speak the same
+        # manifest / bundle formats as the plugin assumes. We
+        # need both: `wlift` builds the `.hatch` bundle (with
+        # the staged dylibs inside), `hatch publish` registers
+        # the catalog row.
         run: |
           cargo install --git "${{ needs.resolve.outputs.repo }}" \
                         --rev  "${{ needs.resolve.outputs.rev }}" \
-                        --bin  hatch --locked \
+                        --bins --locked \
                         wren_lift
+
+      - name: Bundle (host-target)
+        # Default target — compressed payload. The `libs/` dir
+        # we just staged gets pulled into the bundle so `hatch
+        # install` lands a single self-contained `.hatch` with
+        # every per-platform dylib inside.
+        run: |
+          set -eu
+          pkg="${{ needs.resolve.outputs.package }}"
+          ver="${{ needs.resolve.outputs.version }}"
+          mkdir -p dist
+          wlift "packages/${pkg}" --bundle "dist/${pkg}-${ver}.hatch"
+
+      - name: Bundle (wasm32 target)
+        # Uncompressed payload, target stamped wasm32-unknown-
+        # unknown. Browser playground fetches this variant.
+        run: |
+          set -eu
+          pkg="${{ needs.resolve.outputs.package }}"
+          ver="${{ needs.resolve.outputs.version }}"
+          wlift "packages/${pkg}" \
+            --bundle "dist/${pkg}-${ver}-wasm32.hatch" \
+            --bundle-target wasm32-unknown-unknown
+
+      - name: Sanity check bundles
+        run: |
+          set -eu
+          pkg="${{ needs.resolve.outputs.package }}"
+          ver="${{ needs.resolve.outputs.version }}"
+          echo "::group::host-target inspect"
+          wlift "dist/${pkg}-${ver}.hatch" --inspect
+          echo "::endgroup::"
+          echo "::group::wasm32-target inspect"
+          wlift "dist/${pkg}-${ver}-wasm32.hatch" --inspect
+          echo "::endgroup::"
 
       - name: Hatch publish
         env:
@@ -277,18 +392,27 @@ jobs:
           hatch login --token "$HATCH_BOT_SECRET"
           hatch publish -C "packages/${{ needs.resolve.outputs.package }}"
 
-      - name: Attach dylibs to a versioned release
-        if: startsWith(github.ref, 'refs/tags/publish/')
+      - name: Attach .hatch + dylibs to a versioned release
+        # `hatch install` constructs a download URL of shape
+        #   <registry>/releases/download/publish/<dir>%40<ver>/<dir>-<ver>.hatch
+        # so the `.hatch` files are the load-bearing assets.
+        # The standalone dylibs ride along for audit / replay.
+        # Runs for both tag pushes (regular release flow) and
+        # manual dispatch (re-attach a missing `.hatch` to an
+        # existing release without bumping the version).
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: publish/${{ needs.resolve.outputs.package }}@${{ needs.resolve.outputs.version }}
           name: ${{ needs.resolve.outputs.package }}@${{ needs.resolve.outputs.version }}
           files: |
+            dist/${{ needs.resolve.outputs.package }}-${{ needs.resolve.outputs.version }}.hatch
+            dist/${{ needs.resolve.outputs.package }}-${{ needs.resolve.outputs.version }}-wasm32.hatch
             packages/${{ needs.resolve.outputs.package }}/libs/*
           body: |
-            Per-platform dylibs built from
+            Plugin-backed package built from
             `${{ needs.resolve.outputs.repo }}` @ `${{ needs.resolve.outputs.rev }}`
             for `${{ needs.resolve.outputs.package }}@${{ needs.resolve.outputs.version }}`.
-            Bundled into the corresponding `.hatch` artifact at
-            publish time; these standalone copies are archival
-            only — for audit / replay without re-running CI.
+            Three asset classes:
+              - `${{ needs.resolve.outputs.package }}-${{ needs.resolve.outputs.version }}.hatch` — host-target bundle (zstd-compressed, contains every per-platform dylib)
+              - `${{ needs.resolve.outputs.package }}-${{ needs.resolve.outputs.version }}-wasm32.hatch` — wasm-target bundle
+              - `lib*.{so,dylib}` / `*.dll` / `*.wasm` — standalone dylibs, archival only (already inside the `.hatch`)

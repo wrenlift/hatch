@@ -6,9 +6,12 @@ description = "Window + input for `@hatch:game` (and any consumer that wants its
 native_search_paths = ["libs"]
 
 [plugin_source]
-repo  = "https://github.com/wrenlift/WrenLift.git"
-rev   = "2254e95d622288184d64b1c3315d6b7e0ce52bb6"
-crate = "wlift_window"
+repo      = "https://github.com/wrenlift/WrenLift.git"
+rev       = "2254e95d622288184d64b1c3315d6b7e0ce52bb6"
+crate     = "wlift_window"
+# Wasm-only companion cdylib for the browser path; produces
+# `wlift_window_web.wasm` matching the `wasm = …` entry below.
+web_crate = "wlift_window_web"
 
 [native_libs]
 wlift_window = { macos = "libs/libwlift_window.dylib", linux = "libs/libwlift_window.so", windows = "libs/wlift_window.dll", wasm = "libs/wlift_window_web.wasm" }
