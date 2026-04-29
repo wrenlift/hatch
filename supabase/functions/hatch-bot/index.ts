@@ -24,6 +24,15 @@
 //     "git":  "https://github.com/…", "description": "...",
 //     "owner": "<uuid>" }          ← optional
 //
+// `GET /proxy?url=<upstream>` — allowlisted CORS proxy for the
+// browser playground. GitHub release-asset URLs don't carry CORS
+// headers, so the playground can't `fetch()` them directly. This
+// route fetches them server-side and re-emits with permissive
+// CORS + a cross-origin CORP header (so a future COEP-locked
+// page can also consume them). No bearer auth — the upstreams are
+// already public; the allowlist is the security boundary against
+// using the bot as a generic SSRF gadget.
+//
 // `POST /tag` — body shape:
 //
 //   { "tag": "publish/hatch-foo@1.2.3", "sha": "abc...",
@@ -253,12 +262,77 @@ async function handleTag(req: Request): Promise<Response> {
   return json({ ok: true, tag: b.tag, status: 'created', ref: created.ref })
 }
 
+// Hosts the proxy will forward to. Mirrors `wasm/serve.js`'s
+// allowlist so dev-server and Edge Function accept the same set
+// of upstreams. Override at deploy with `HATCH_PROXY_ALLOW=`
+// (comma-separated) for a private mirror.
+const DEFAULT_PROXY_ALLOW = [
+  'https://github.com/',
+  'https://objects.githubusercontent.com/',
+  'https://gitlab.com/',
+  'https://codeberg.org/',
+]
+function proxyAllowlist(): string[] {
+  const env = Deno.env.get('HATCH_PROXY_ALLOW')
+  if (!env) return DEFAULT_PROXY_ALLOW
+  return env.split(',').map((s: string) => s.trim()).filter(Boolean)
+}
+
+function corsPreflight(): Response {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': '*',
+      'Access-Control-Max-Age': '86400',
+    },
+  })
+}
+
+async function handleProxy(req: Request): Promise<Response> {
+  const target = new URL(req.url).searchParams.get('url')
+  if (!target) {
+    return new Response('400 Bad Request: missing ?url=', {
+      status: 400,
+      headers: { 'content-type': 'text/plain', 'Access-Control-Allow-Origin': '*' },
+    })
+  }
+  const allowlist = proxyAllowlist()
+  if (!allowlist.some((prefix) => target.startsWith(prefix))) {
+    return new Response(`403 Forbidden: ${target} is not in the proxy allowlist`, {
+      status: 403,
+      headers: { 'content-type': 'text/plain', 'Access-Control-Allow-Origin': '*' },
+    })
+  }
+  let upstream: Response
+  try {
+    upstream = await fetch(target, { redirect: 'follow' })
+  } catch (err) {
+    return new Response(`502 Bad Gateway: ${err}`, {
+      status: 502,
+      headers: { 'content-type': 'text/plain', 'Access-Control-Allow-Origin': '*' },
+    })
+  }
+  // Stream the body through; drop hop-by-hop headers, keep
+  // content-type and content-length, and stamp our CORS + CORP
+  // so the browser will accept the response under any embedder
+  // policy.
+  const headers = new Headers()
+  const contentType = upstream.headers.get('content-type')
+  if (contentType) headers.set('content-type', contentType)
+  headers.set('Access-Control-Allow-Origin', '*')
+  headers.set('Cross-Origin-Resource-Policy', 'cross-origin')
+  return new Response(upstream.body, { status: upstream.status, headers })
+}
+
 Deno.serve(async (req: Request) => {
   // --- Routing -------------------------------------------------
   // `/`        — health check so you can `curl …/hatch-bot`.
   // `/publish` — package upsert against the Supabase `packages` table.
   // `/tag`     — create `refs/tags/<tag>` on a configured repo via
   //              an internal GitHub App installation token.
+  // `/proxy`   — allowlisted CORS proxy for the wasm playground.
   const url = new URL(req.url)
   const path = url.pathname.replace(/^\/hatch-bot/, '') || '/'
 
@@ -276,6 +350,15 @@ Deno.serve(async (req: Request) => {
     const authErr = checkAuth(req)
     if (authErr) return authErr
     return handleTag(req)
+  }
+
+  if (path === '/proxy') {
+    if (req.method === 'OPTIONS') return corsPreflight()
+    if (req.method === 'GET')     return handleProxy(req)
+    return new Response('405 Method Not Allowed', {
+      status: 405,
+      headers: { 'content-type': 'text/plain', 'Access-Control-Allow-Origin': '*' },
+    })
   }
 
   return text('not found', 404)
