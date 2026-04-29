@@ -1,7 +1,7 @@
 name        = "@hatch:game"
 version     = "0.2.4"
 entry       = "game"
-description = "Tiny game-loop scaffold for the WrenLift game framework. `Game.run(config) {|g| ... }` wires window + device + surface + per-frame encoder + present so the user code is just the actual game."
+description = "The WrenLift game framework — `Game.run(MyGame)` and you're rendering. Wires `@hatch:window`, `@hatch:gpu`, `@hatch:time`, input, and a per-frame loop into a single subclass-and-go entry point; ships alongside `@hatch:ecs`, `@hatch:assets`, `@hatch:audio` (and friends) for the rest of a game's surface area. Native + web parity — same code drives a winit window or a page-attached canvas."
 
 [dependencies]
 "@hatch:window" = "0.2.4"
