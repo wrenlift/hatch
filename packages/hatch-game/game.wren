@@ -52,6 +52,16 @@ import "@hatch:window" for Window
 import "@hatch:gpu"    for Gpu
 import "@hatch:time"   for Clock
 
+// On web, the main fiber holds the JS thread until it parks on
+// an async bridge. The frame loop yields with
+// `Browser.setTimeout(0).await` so the JS event loop drains and
+// the page stays responsive. The prelude's `Browser` class is
+// only auto-injected into the user's `run()` source — bundle
+// modules have to import it explicitly. Native builds strip
+// this whole import via the cfg pre-pass.
+#!wasm
+import "wlift_prelude" for Browser
+
 // Aggregated keyboard / mouse state. Updated each frame by
 // Game.run from the window's event stream. Both event-style
 // (`g.events`, the raw list) and state-style polling (`g.input`)
@@ -534,6 +544,16 @@ class Game {
       frame.present
 
       g.tick = g.tick + 1
+
+      // On web, the main fiber holds the JS thread until it parks
+      // on an async bridge. A frame loop with no `.await` never
+      // parks, so on main-mode wasm the page freezes. A 0 ms
+      // setTimeout is the smallest park: it bounces through the
+      // scheduler, lets the JS event loop drain, and resumes us
+      // on the next macrotask. Native winit windows pace via
+      // their own event pump, so this gate strips on host builds.
+      #!wasm
+      Browser.setTimeout(0).await
     }
 
     surface.destroy
