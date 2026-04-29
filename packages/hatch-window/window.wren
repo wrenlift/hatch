@@ -18,4 +18,4 @@
 import "window_native" for WindowCore, Window
 
 #!wasm
-import "window_web" for Window
+import "window_web" for WindowCore, Window
