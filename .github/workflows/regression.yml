@@ -224,6 +224,8 @@ jobs:
           mode="${{ matrix.mode }}"
           total=0
           passed=0
+          skipped=0
+          skipped_pkgs=()
           failed_pkgs=()
 
           for dir in packages/*/; do
@@ -242,6 +244,8 @@ jobs:
             # comment above. Whitespace-separated list match.
             if [[ " $HATCH_CI_SKIP " == *" $pkg "* ]]; then
               echo "::warning title=$pkg::skipped (hardware-bound; HATCH_CI_SKIP)"
+              skipped=$((skipped + 1))
+              skipped_pkgs+=("$pkg (hardware-bound)")
               continue
             fi
 
@@ -258,6 +262,8 @@ jobs:
             if grep -q '^\[plugin_source\]' "$hf"; then
               if ! ls "$dir"libs/*.so >/dev/null 2>&1; then
                 echo "::warning title=$pkg::skipped (plugin-backed, no .so staged)"
+                skipped=$((skipped + 1))
+                skipped_pkgs+=("$pkg (plugin-backed, no .so staged)")
                 continue
               fi
             fi
@@ -290,8 +296,13 @@ jobs:
 
           echo ""
           echo "========================================"
-          echo " $mode: $passed / $total packages passed"
+          echo " $mode: $passed / $total ran ($skipped skipped)"
           echo "========================================"
+          if [ "$skipped" -gt 0 ]; then
+            echo ""
+            echo "Skipped packages:"
+            for p in "${skipped_pkgs[@]}"; do echo "  - $p"; done
+          fi
           if [ "${#failed_pkgs[@]}" -gt 0 ]; then
             echo ""
             echo "Failing packages:"
