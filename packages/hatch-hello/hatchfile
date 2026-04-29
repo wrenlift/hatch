@@ -1,0 +1,19 @@
+name        = "@hatch:hello"
+version     = "0.1.0"
+entry       = "hello"
+description = "Demo plugin that exercises the on-demand wasm plugin loader. Wasm-only — proves the .hatch bundle can carry a plugin .wasm and the runtime can instantiate it on install."
+
+native_search_paths = ["libs"]
+
+# Wasm-only plugin. The publish-pkg / publish-plugin workflow
+# matrix would normally produce per-platform dylibs; here we only
+# emit the wasm artefact because the loader path under test is
+# wasm-specific. Native builds would be added if/when this stops
+# being a phase-1 demo.
+[plugin_source]
+repo    = "https://github.com/wrenlift/WrenLift.git"
+rev     = "main"
+library = "wlift_hello"
+
+[native_libs]
+wlift_hello = { wasm = "libs/wlift_hello.wasm" }
