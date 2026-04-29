@@ -6,6 +6,7 @@
 name = "@hatch:assert"
 version = "0.2.0"
 git = "https://github.com/wrenlift/hatch.git"
+description = "Fluent assertion primitives for Wren test specs."
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-19T16:36:19.306943+00:00"
 updated_at = "2026-04-19T16:36:19.306943+00:00"
@@ -17,6 +18,24 @@ git = "https://github.com/wrenlift/hatch.git"
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-19T01:03:42.125747+00:00"
 updated_at = "2026-04-19T01:03:42.125747+00:00"
+
+[packages."@hatch:assets-0.1.0"]
+name = "@hatch:assets"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Content-addressable assets database with hot-reload. File-backed asset registry keyed by SHA-256 of contents, with mtime-driven change detection that piggybacks on the Hatch.watchFile signal pass \u2014 edit a shader / texture / config file in your workspace, see registered subscribers fire automatically."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-28T12:43:42.817671+00:00"
+updated_at = "2026-04-28T12:43:42.817671+00:00"
+
+[packages."@hatch:audio-0.1.0"]
+name = "@hatch:audio"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Audio playback for the WrenLift game framework. cpal-backed output stream + a tiny mixer; WAV decoding via hound. Single Audio.context() opens the device; Sound.load(bytes) decodes a WAV; audio.play(sound) schedules immediate playback against the global mixer."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-28T12:43:43.181081+00:00"
+updated_at = "2026-04-28T12:43:43.181081+00:00"
 
 [packages."@hatch:buffers-0.1.0"]
 name = "@hatch:buffers"
@@ -35,6 +54,15 @@ description = "Clap-style argument parser for Wren command-line tools."
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:03.289781+00:00"
 updated_at = "2026-04-20T16:29:03.289781+00:00"
+
+[packages."@hatch:crypto-0.2.0"]
+name = "@hatch:crypto"
+version = "0.2.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "AES-256-GCM authenticated encryption + Ed25519 sign/verify + CSPRNG."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-25T14:10:22.096193+00:00"
+updated_at = "2026-04-25T14:10:22.096193+00:00"
 
 [packages."@hatch:crypto-0.1.0"]
 name = "@hatch:crypto"
@@ -63,6 +91,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-23T22:18:18.276114+00:00"
 updated_at = "2026-04-23T22:18:18.276114+00:00"
 
+[packages."@hatch:ecs-0.1.0"]
+name = "@hatch:ecs"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Thin ECS for the WrenLift game framework. Pure Wren \u2014 entities are u53 ids, components are class instances stored in per-class maps, queries iterate entities that hold every requested component. No archetype graphs, no system scheduler, no relationships; the user writes the systems as plain methods on top of `world.query(...)` for as long as that's enough."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-28T12:43:43.3785+00:00"
+updated_at = "2026-04-28T12:43:43.3785+00:00"
+
 [packages."@hatch:events-0.2.0"]
 name = "@hatch:events"
 version = "0.2.0"
@@ -85,6 +122,7 @@ updated_at = "2026-04-20T23:42:13.029958+00:00"
 name = "@hatch:fmt"
 version = "0.1.0"
 git = "https://github.com/wrenlift/hatch.git"
+description = "ANSI color + padding + small numeric helpers for terminal output."
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-19T01:21:37.977631+00:00"
 updated_at = "2026-04-19T01:21:37.977631+00:00"
@@ -106,6 +144,24 @@ description = "Filesystem I/O \u2014 read, write, stat, list, walk."
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:03.569318+00:00"
 updated_at = "2026-04-20T16:29:03.569318+00:00"
+
+[packages."@hatch:game-0.1.0"]
+name = "@hatch:game"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Tiny game-loop scaffold for the WrenLift game framework. `Game.run(config) {|g| ... }` wires window + device + surface + per-frame encoder + present so the user code is just the actual game."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-28T12:43:44.455346+00:00"
+updated_at = "2026-04-28T12:43:44.455346+00:00"
+
+[packages."@hatch:gpu-0.1.0"]
+name = "@hatch:gpu"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "GPU primitives backed by wgpu \u2014 Device, Buffer, Texture, ShaderModule, RenderPipeline, CommandEncoder, RenderPass. Foundation for 2D/3D rendering and the @hatch:game framework."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-28T12:43:44.237622+00:00"
+updated_at = "2026-04-28T12:43:44.237622+00:00"
 
 [packages."@hatch:hash-0.1.0"]
 name = "@hatch:hash"
@@ -143,6 +199,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:03.93575+00:00"
 updated_at = "2026-04-20T16:29:03.93575+00:00"
 
+[packages."@hatch:image-0.1.0"]
+name = "@hatch:image"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Image encode + decode for the WrenLift game and tooling stack. PNG / JPG / BMP / WebP in, RGBA8 buffer out \u2014 feed `Image.decode(bytes)` straight to @hatch:gpu's `Device.uploadImage(image)`, or encode synthesized buffers back to a file format with `Image.encodePng(...)`."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-28T12:43:43.572525+00:00"
+updated_at = "2026-04-28T12:43:43.572525+00:00"
+
 [packages."@hatch:io-0.2.0"]
 name = "@hatch:io"
 version = "0.2.0"
@@ -179,6 +244,15 @@ owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:04.47264+00:00"
 updated_at = "2026-04-20T16:29:04.47264+00:00"
 
+[packages."@hatch:math-0.1.1"]
+name = "@hatch:math"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Vector + matrix + quaternion math \u2014 Vec2 / Vec3 / Vec4 / Mat4 / Quat, easings, and scalar helpers. Built for interactive apps and games."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-28T12:43:23.997054+00:00"
+updated_at = "2026-04-28T12:43:23.997054+00:00"
+
 [packages."@hatch:math-0.1.0"]
 name = "@hatch:math"
 version = "0.1.0"
@@ -205,6 +279,15 @@ description = "Filesystem path manipulation: join, split, parent, ext, normalize
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:29:04.839683+00:00"
 updated_at = "2026-04-20T16:29:04.839683+00:00"
+
+[packages."@hatch:physics-0.1.0"]
+name = "@hatch:physics"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Rapier-backed physics for the WrenLift game framework. World2D and World3D from one import \u2014 bodies, colliders, gravity, force/impulse, position + velocity reads. Bundles rapier2d + rapier3d in a single cdylib so games never have to choose between dimensions at the package level."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-28T12:43:43.786756+00:00"
+updated_at = "2026-04-28T12:43:43.786756+00:00"
 
 [packages."@hatch:proc-0.3.0"]
 name = "@hatch:proc"
@@ -269,10 +352,20 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-21T16:45:36.535754+00:00"
 updated_at = "2026-04-21T16:45:36.535754+00:00"
 
+[packages."@hatch:template-0.1.1"]
+name = "@hatch:template"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Jinja/Twig-style templating for HTML and XML with first-class htmx support \u2014 fragments, components, slots, conditionals, loops, response helpers."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-25T14:10:27.193352+00:00"
+updated_at = "2026-04-25T14:10:27.193352+00:00"
+
 [packages."@hatch:test-0.1.0"]
 name = "@hatch:test"
 version = "0.1.0"
 git = "https://github.com/wrenlift/hatch.git"
+description = "Tiny test runner for *.spec.wren files."
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-19T01:14:29.494179+00:00"
 updated_at = "2026-04-19T01:14:29.494179+00:00"
@@ -312,6 +405,24 @@ description = "UUID v4/v5/v7 generation, parsing, and byte conversion."
 owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
 created_at = "2026-04-20T16:27:14.724314+00:00"
 updated_at = "2026-04-20T16:27:14.724314+00:00"
+
+[packages."@hatch:web-0.1.0"]
+name = "@hatch:web"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Server-rendered, htmx-native web framework for Wren. Router, middleware, content-negotiated rendering via @hatch:template, HTTP/1.1 server on top of @hatch:socket."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-25T14:09:48.115122+00:00"
+updated_at = "2026-04-25T14:09:48.115122+00:00"
+
+[packages."@hatch:window-0.1.0"]
+name = "@hatch:window"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch.git"
+description = "Default window provider for the WrenLift game framework \u2014 winit-backed Window class with a polled event loop. Hands @hatch:gpu the raw-window-handle Map it needs to build a Surface, so any embedder can replace this package with their own window without touching the renderer."
+owner = "08504522-79cd-4c02-a0e7-0e1e3bf113fe"
+created_at = "2026-04-28T12:43:43.984051+00:00"
+updated_at = "2026-04-28T12:43:43.984051+00:00"
 
 [packages."@hatch:zip-0.1.0"]
 name = "@hatch:zip"
