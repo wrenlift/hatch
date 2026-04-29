@@ -15,15 +15,14 @@ native_search_paths = ["libs"]
 # `.data` accessor for batched buffer uploads, no duplicated math
 # API.
 #
-# @hatch:assets — backs LivePipeline / LiveShader hot reload.
-# Pipelines built from a watched shader path rebuild themselves
-# in place when the source file's content hash advances.
-#
-# Pin via path during local dev; hatch-bot rewrites these to
-# registry pins at publish time.
+# `LivePipeline` references `@hatch:assets` in its docs, but the
+# class itself just takes any duck-typed `db` with `.text(path)`
+# — we don't import @hatch:assets here, so users who never touch
+# LivePipeline don't pay the dep, and web users (who can't yet
+# load a filesystem-backed assets db) can use the rest of the
+# package without bringing in code that wouldn't run anyway.
 [dependencies]
 "@hatch:math"   = "0.1.1"
-"@hatch:assets" = "0.1.0"
 # Where the cdylib lives. Same shape as @hatch:sqlite — clone
 # `repo` at `rev`, run `cargo build -p wlift_gpu --release`
 # across the platform matrix, drop each dylib into `libs/`,
@@ -41,8 +40,10 @@ wlift_gpu = { macos = "libs/libwlift_gpu.dylib", linux = "libs/libwlift_gpu.so",
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }
 "@hatch:assert" = { path = "../hatch-assert" }
-# @hatch:fs + @hatch:hash are pulled in transitively by
-# @hatch:assets, but local `wlift gpu.spec.wren` runs only walk
-# spec-dependencies so spell them out here too.
+# `gpu.spec.wren` exercises the LivePipeline path — it imports
+# `@hatch:assets` directly. Declared here (not in [dependencies])
+# so the runtime package stays minimal: users who never touch
+# LivePipeline don't pull a filesystem-only dep through.
+"@hatch:assets" = { path = "../hatch-assets" }
 "@hatch:fs"     = { path = "../hatch-fs" }
 "@hatch:hash"   = { path = "../hatch-hash" }
