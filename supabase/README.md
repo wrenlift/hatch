@@ -11,6 +11,22 @@ service_role key flow.
 > relative to `pwd` — from the WrenLift repo root it won't find
 > anything and will warn `no such file or directory`.
 
+## Database GUC for the bot owner
+
+Both migrations under `supabase/migrations/` read the canonical
+hatch-bot UUID from the `app.hatch_bot_owner` database setting.
+Set it once per Supabase project before applying them:
+
+```sql
+ALTER DATABASE postgres
+  SET app.hatch_bot_owner = '00000000-0000-0000-0000-000000000000';
+```
+
+(Substitute the actual UUID — same value as the
+`HATCH_BOT_OWNER_UUID` Edge Function secret.) The setting persists
+across reconnects; the trigger and the reassignment migration
+both read it via `current_setting('app.hatch_bot_owner', true)`.
+
 ## Endpoints
 
 | path | method | purpose |
