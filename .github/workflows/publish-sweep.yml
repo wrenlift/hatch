@@ -1,0 +1,168 @@
+name: Sweep + publish missing packages
+
+# Walks every `packages/*/hatchfile`, computes the publish tag
+# `publish/<pkg-dir>@<version>` for each, and pushes any tag that
+# doesn't already exist. The pushed tags fire the existing
+# `publish-pkg.yml` (pure-Wren) and `publish-plugin.yml`
+# (plugin-backed) workflows — those already gate on
+# `[plugin_source]` so each tag fans out to exactly one of them.
+#
+# Why a separate sweep workflow:
+#
+#   * Bumping a `version =` line in any hatchfile and merging is
+#     the only ceremony for a release. No `git tag` dance, no
+#     remembering which packages need re-cutting after a
+#     dependency churn.
+#   * Idempotent: if every tag already exists, the run is a no-op.
+#   * Safe to schedule daily — same logic as a manual run.
+#
+# # PAT requirement
+#
+# Pushing a tag with the default `${{ secrets.GITHUB_TOKEN }}` does
+# *not* trigger downstream workflows (GitHub guards against
+# infinite loops). For the sweep to actually fire `publish-pkg.yml`
+# / `publish-plugin.yml`, we push with a fine-grained PAT that has
+# `Contents: write` on this repo. Store it as the
+# `RELEASE_TAG_PAT` secret. Without that secret the sweep job
+# fails fast with an actionable message — better than silently
+# pushing tags that no one ever publishes a release for.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List missing tags but don't push them"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+  schedule:
+    # Daily at 06:00 UTC. Picks up version bumps that landed
+    # between manual sweeps; cheap when nothing is missing.
+    - cron: "0 6 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "packages/*/hatchfile"
+
+permissions:
+  # `contents: read` is enough to *read* the hatchfiles + the tag
+  # list. The actual `git push` of new tags uses RELEASE_TAG_PAT,
+  # not GITHUB_TOKEN, so we don't need write here.
+  contents: read
+
+concurrency:
+  # Two sweeps racing each other could double-push the same tag.
+  # Serialise; cancel any in-flight sweep when a new push lands
+  # (newer hatchfile state always supersedes the older sweep).
+  group: publish-sweep
+  cancel-in-progress: true
+
+jobs:
+  sweep:
+    name: Sweep packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need every existing tag in `refs/tags/publish/*` so the
+          # tag-existence check is accurate. `0` fetches the full
+          # history; cheap on this repo's size.
+          fetch-depth: 0
+
+      - name: Discover missing publish tags
+        id: discover
+        shell: bash
+        run: |
+          set -eu
+          missing=()
+          skipped=()
+          while IFS= read -r hf; do
+            pkg_dir=$(basename "$(dirname "$hf")")
+            version=$(awk -F'"' '/^version *=/ {print $2; exit}' "$hf")
+            if [ -z "$version" ]; then
+              echo "::warning file=$hf::no version field, skipping $pkg_dir"
+              continue
+            fi
+            tag="publish/${pkg_dir}@${version}"
+            # `git rev-parse --verify` is the cheap local check;
+            # we already ran `fetch-depth: 0` so every tag is
+            # present. Quiet (`-q`) so unknown refs don't pollute
+            # the log.
+            if git rev-parse -q --verify "refs/tags/${tag}" > /dev/null 2>&1; then
+              skipped+=("$tag")
+            else
+              missing+=("$tag")
+            fi
+          done < <(find packages -mindepth 2 -maxdepth 2 -name hatchfile | sort)
+
+          echo "::group::skipped (tag already exists)"
+          for t in "${skipped[@]}"; do echo "$t"; done
+          echo "::endgroup::"
+
+          echo "::group::missing (will be tagged)"
+          for t in "${missing[@]}"; do echo "$t"; done
+          echo "::endgroup::"
+
+          # Emit as a multiline output so the next step can iterate.
+          {
+            echo "tags<<EOF"
+            for t in "${missing[@]}"; do echo "$t"; done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "count=${#missing[@]}" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo "### Sweep result" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Missing tags: **${{ steps.discover.outputs.count }}**" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.discover.outputs.count }}" != "0" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "${{ steps.discover.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check PAT presence
+        if: steps.discover.outputs.count != '0' && inputs.dry_run != 'true'
+        env:
+          PAT: ${{ secrets.RELEASE_TAG_PAT }}
+        shell: bash
+        run: |
+          if [ -z "$PAT" ]; then
+            echo "::error::RELEASE_TAG_PAT secret is unset; can't push tags that trigger downstream publishes."
+            echo "::error::Create a fine-grained PAT with 'Contents: write' on this repo and store it as RELEASE_TAG_PAT."
+            exit 1
+          fi
+
+      - name: Push missing tags
+        if: steps.discover.outputs.count != '0' && inputs.dry_run != 'true'
+        env:
+          GH_PAT: ${{ secrets.RELEASE_TAG_PAT }}
+        shell: bash
+        run: |
+          set -eu
+          git config user.name  "hatch-sweep[bot]"
+          git config user.email "hatch-sweep@users.noreply.github.com"
+          # PAT-authenticated remote so the tag push triggers the
+          # publish-pkg / publish-plugin workflows. `x-access-token`
+          # is the conventional username for token auth on GitHub
+          # HTTPS remotes.
+          git remote set-url origin \
+            "https://x-access-token:${GH_PAT}@github.com/${{ github.repository }}.git"
+
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            # Annotated tag — `softprops/action-gh-release` reads
+            # the tag message, and `git for-each-ref` shows it in
+            # tag listings. Cheap, more useful than a lightweight
+            # tag.
+            git tag -a "$tag" -m "$tag"
+            # Push one at a time so a failure on tag N doesn't
+            # leave tags 1..N-1 unpushed (atomic per-tag).
+            git push origin "$tag"
+            echo "::notice::pushed $tag"
+          done <<< "${{ steps.discover.outputs.tags }}"
