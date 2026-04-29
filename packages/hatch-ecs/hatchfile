@@ -1,7 +1,7 @@
 name        = "@hatch:ecs"
 version     = "0.1.0"
 entry       = "ecs"
-description = "Thin ECS for the WrenLift game framework. Pure Wren — entities are u53 ids, components are class instances stored in per-class maps, queries iterate entities that hold every requested component. No archetype graphs, no system scheduler, no relationships; the user writes the systems as plain methods on top of `world.query(...)` for as long as that's enough."
+description = "Entity-component system for `@hatch:game` (or any Wren program). Pure Wren — entities are u53 ids, components are class instances stored in per-class maps, queries iterate entities that hold every requested component. Systems are plain methods on top of `world.query(...)`."
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

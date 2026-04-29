@@ -1,7 +1,7 @@
 name        = "@hatch:hello"
 version     = "0.1.0"
 entry       = "hello"
-description = "Demo plugin that exercises the on-demand wasm plugin loader. Wasm-only — proves the .hatch bundle can carry a plugin .wasm and the runtime can instantiate it on install."
+description = "Reference plugin layout for wasm-only `@hatch:*` packages. A `Hello.greet(name)` foreign method backed by a tiny Rust cdylib — copy this directory as the starting point for your own on-demand plugin and replace the body with the real work."
 
 native_search_paths = ["libs"]
 

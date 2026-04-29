@@ -1,7 +1,7 @@
 name        = "@hatch:sqlite"
 version     = "0.1.0"
 entry       = "sqlite"
-description = "Embedded SQLite — first hatch package delivered as a dylib plugin."
+description = "Embedded SQLite. `Database.open(path)` returns a connection; prepared statements with named parameter binding, rows iterated as Maps, transactions, error handling. Backed by rusqlite (bundled libsqlite — no system dependency)."
 
 # Search path for spec / dev runs — the CI workflow drops
 # cross-built dylibs here before `hatch publish`.

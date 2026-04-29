@@ -1,7 +1,7 @@
 name        = "@hatch:audio"
 version     = "0.1.0"
 entry       = "audio"
-description = "Audio playback for the WrenLift game framework. cpal-backed output stream + a tiny mixer; WAV decoding via hound. Single Audio.context() opens the device; Sound.load(bytes) decodes a WAV; audio.play(sound) schedules immediate playback against the global mixer."
+description = "Audio playback. cpal-backed output stream + a tiny mixer; WAV decoding via hound. `Audio.context()` opens the device; `Sound.load(bytes)` decodes a WAV; `audio.play(sound)` schedules immediate playback against the global mixer. Wires into `@hatch:game` for free."
 
 native_search_paths = ["libs"]
 

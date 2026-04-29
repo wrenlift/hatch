@@ -1,7 +1,7 @@
 name        = "@hatch:physics"
 version     = "0.1.0"
 entry       = "physics"
-description = "Rapier-backed physics for the WrenLift game framework. World2D and World3D from one import — bodies, colliders, gravity, force/impulse, position + velocity reads. Bundles rapier2d + rapier3d in a single cdylib so games never have to choose between dimensions at the package level."
+description = "Rapier-backed physics. `World2D` and `World3D` from one import — bodies, colliders, gravity, force / impulse, position + velocity reads. Bundles rapier2d + rapier3d in a single cdylib so games never have to choose between dimensions at the package level. Wires into `@hatch:game` for a step-per-frame physics loop."
 
 native_search_paths = ["libs"]
 

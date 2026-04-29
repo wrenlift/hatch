@@ -1,7 +1,7 @@
 name        = "@hatch:game"
 version     = "0.2.4"
 entry       = "game"
-description = "The WrenLift game framework — `Game.run(MyGame)` and you're rendering. Wires `@hatch:window`, `@hatch:gpu`, `@hatch:time`, input, and a per-frame loop into a single subclass-and-go entry point; ships alongside `@hatch:ecs`, `@hatch:assets`, `@hatch:audio` (and friends) for the rest of a game's surface area. Native + web parity — same code drives a winit window or a page-attached canvas."
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering — subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web."
 
 [dependencies]
 "@hatch:window" = "0.2.4"
