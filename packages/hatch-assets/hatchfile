@@ -1,11 +1,19 @@
 name        = "@hatch:assets"
-version     = "0.1.0"
+version     = "0.2.0"
 entry       = "assets"
-description = "Content-addressable assets database with hot-reload. File-backed asset registry keyed by SHA-256 of contents, with mtime-driven change detection that piggybacks on the Hatch.watchFile signal pass — edit a shader / texture / config file in your workspace, see registered subscribers fire automatically."
+description = "Content-addressable assets database with hot-reload. Two backends behind one API — filesystem-backed on native (Fs.walk + content hashes + Hatch.watchFile), manifest-driven on web (fetch + lazy reads, page ships an `assets-manifest.json`). Edit a shader / texture / config file, see registered subscribers fire."
 
+# `@hatch:fs` + `@hatch:hash` back assets_native.wren on host
+# builds; `@hatch:json` parses the manifest on web. None of them
+# touch the other target's path, but the runtime imports the
+# whole package on either target — the modules just install with
+# their foreign-method bindings unbound when the matching plugin
+# isn't around. Cheap, and avoids duplicating package skeletons.
 [dependencies]
 "@hatch:fs"   = "0.1.0"
 "@hatch:hash" = "0.1.0"
+"@hatch:json" = "0.1.0"
+
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }
 "@hatch:assert" = { path = "../hatch-assert" }
