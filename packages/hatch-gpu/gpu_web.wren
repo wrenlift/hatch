@@ -9,8 +9,8 @@ foreign class Gpu {
   foreign static init_()
 
   // Bind a canvas to a GPU surface. `canvasHandle` comes from
-  // @hatch:window-web's `Window.create_`. Returns surface
-  // handle (Num), or `-1` on failure.
+  // @hatch:window's `Window.create_` on wasm builds. Returns
+  // surface handle (Num), or `-1` on failure.
   #!symbol = "wlift_gpu_attach_canvas"
   foreign static attachCanvas_(canvasHandle)
 

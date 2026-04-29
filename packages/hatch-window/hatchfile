@@ -11,7 +11,7 @@ rev   = "8f16a3daf5a60f2bfb4b4afcd70f1b7d4bc4df38"
 crate = "wlift_window"
 
 [native_libs]
-wlift_window = { macos = "libs/libwlift_window.dylib", linux = "libs/libwlift_window.so", windows = "libs/wlift_window.dll" }
+wlift_window = { macos = "libs/libwlift_window.dylib", linux = "libs/libwlift_window.so", windows = "libs/wlift_window.dll", wasm = "libs/wlift_window_web.wasm" }
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }
