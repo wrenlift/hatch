@@ -254,7 +254,8 @@ jobs:
         run: |
           cargo install --git "${{ needs.resolve.outputs.repo }}" \
                         --rev  "${{ needs.resolve.outputs.rev }}" \
-                        --bin  hatch --locked
+                        --bin  hatch --locked \
+                        wren_lift
 
       - name: Hatch publish
         env:

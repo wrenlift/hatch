@@ -174,7 +174,8 @@ jobs:
         run: |
           cargo install --git https://github.com/wrenlift/WrenLift.git \
                         --branch main \
-                        --bin hatch --locked
+                        --bin hatch --locked \
+                        wren_lift
         if: startsWith(github.ref, 'refs/tags/publish/')
 
       - name: Hatch publish (registry upsert)
