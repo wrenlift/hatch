@@ -1,7 +1,7 @@
 name        = "@hatch:ecs"
-version     = "0.1.0"
+version     = "0.2.0"
 entry       = "ecs"
-description = "Entity-component system for `@hatch:game` (or any Wren program). Pure Wren — entities are u53 ids, components are class instances stored in per-class maps, queries iterate entities that hold every requested component. Systems are plain methods on top of `world.query(...)`."
+description = "Entity-component-system for Wren. `World` storage + fluent `Query.with(C).without(C)` filters, component-instance bundles for one-call spawns, typed `Resources` and `Events<T>`, deferred `Commands` for safe mid-loop mutation, hierarchy via `setParent` / `childrenOf`, `onAdd` / `onRemove` lifecycle hooks, and a `Schedule` with `before` / `after` ordering for system dispatch. Pure Wren — composes with `@hatch:game`'s frame loop, runs anywhere Wren runs."
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }
