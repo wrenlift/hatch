@@ -28,4 +28,4 @@
 import "gpu_native" for GpuCore, Gpu, Device, Buffer, ShaderModule, Texture, TextureView, Sampler, BindGroupLayout, PipelineLayout, BindGroup, RenderPipeline, CommandEncoder, RenderPass, Camera2D, Renderer2D, Sprite, Camera3D, Light, Mesh, Material, Renderer3D, LivePipeline, Surface, SurfaceFrame
 
 #!wasm
-import "gpu_web" for Gpu
+import "gpu_web" for GpuCore, Gpu, Device, Buffer, ShaderModule, Texture, TextureView, Sampler, BindGroupLayout, PipelineLayout, BindGroup, RenderPipeline, CommandEncoder, RenderPass, Camera2D, Renderer2D, Sprite, Camera3D, Light, Mesh, Material, Renderer3D, LivePipeline, Surface, SurfaceFrame
