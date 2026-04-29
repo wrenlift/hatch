@@ -92,7 +92,46 @@ foreign class Gpu {
   #!symbol = "wlift_gpu_render_pass_end"
   foreign static renderPassEnd_(pass)
 
+  // ---- Textures + samplers ----
+  // GPUTextureUsage flags (numeric bitset):
+  //   1=COPY_SRC, 2=COPY_DST, 4=TEXTURE_BINDING,
+  //   8=STORAGE_BINDING, 16=RENDER_ATTACHMENT.
+  //
+  // Descriptor JSON shape:
+  //   {"width":Num,"height":Num,"format":"rgba8unorm",
+  //    "usage":Num,"dimension"?:"1d"|"2d"|"3d","depth"?:Num,
+  //    "mipLevelCount"?:Num,"sampleCount"?:Num}
+  #!symbol = "wlift_gpu_create_texture"
+  foreign static createTexture_(descriptorJson)
+
+  // Pass `null` for the descriptor to get the default whole-
+  // texture view in the texture's original format.
+  #!symbol = "wlift_gpu_create_texture_view"
+  foreign static createTextureView_(textureHandle, descriptorJson)
+
+  // Upload tightly-packed pixel bytes. Bytes is a Wren String /
+  // Bytes value; descriptor carries layout (bytesPerRow,
+  // rowsPerImage), origin, mip level, copy size.
+  //   {"bytesPerRow":Num,"rowsPerImage"?:Num,
+  //    "origin"?:{"x":Num,"y":Num,"z":Num},
+  //    "mipLevel"?:Num,"aspect"?:"all"|"depth-only"|"stencil-only",
+  //    "width"?:Num,"height"?:Num,"depth"?:Num}
+  #!symbol = "wlift_gpu_queue_write_texture"
+  foreign static queueWriteTexture_(textureHandle, bytes, descriptorJson)
+
+  // Pass `null` for a sensible default (linear filtering, clamp-
+  // to-edge addressing). Otherwise:
+  //   {"magFilter"?:"linear"|"nearest","minFilter"?,"mipmapFilter"?,
+  //    "addressModeU"?:"repeat"|"clamp-to-edge"|"mirror-repeat",
+  //    "addressModeV"?,"addressModeW"?,
+  //    "lodMinClamp"?,"lodMaxClamp"?,
+  //    "compare"?,"maxAnisotropy"?}
+  #!symbol = "wlift_gpu_create_sampler"
+  foreign static createSampler_(descriptorJson)
+
   // ---- Generic destroy ----
+  // Releases the registry entry. For GPUTexture / GPUBuffer the
+  // bridge also calls .destroy() on the underlying object.
   #!symbol = "wlift_gpu_destroy"
   foreign static destroy_(handle)
 }
