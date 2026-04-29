@@ -1,5 +1,5 @@
 name        = "@hatch:gpu"
-version     = "0.2.3"
+version     = "0.2.4"
 entry       = "gpu"
 description = "GPU primitives backed by wgpu — Device, Buffer, Texture, ShaderModule, RenderPipeline, CommandEncoder, RenderPass. Foundation for 2D/3D rendering and the @hatch:game framework."
 
