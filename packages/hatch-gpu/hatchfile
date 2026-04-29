@@ -1,5 +1,5 @@
 name        = "@hatch:gpu"
-version     = "0.2.2"
+version     = "0.2.3"
 entry       = "gpu"
 description = "GPU primitives backed by wgpu — Device, Buffer, Texture, ShaderModule, RenderPipeline, CommandEncoder, RenderPass. Foundation for 2D/3D rendering and the @hatch:game framework."
 
@@ -29,7 +29,7 @@ native_search_paths = ["libs"]
 # bundle via `hatch publish`.
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-rev   = "5fab4d65cda111fb29ba57d59df9bf22813dcc9a"
+rev   = "2254e95d622288184d64b1c3315d6b7e0ce52bb6"
 crate = "wlift_gpu"
 
 # Per-platform dylib paths. CI populates libs/ via the

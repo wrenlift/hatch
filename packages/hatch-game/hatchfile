@@ -1,11 +1,11 @@
 name        = "@hatch:game"
-version     = "0.2.2"
+version     = "0.2.3"
 entry       = "game"
 description = "Tiny game-loop scaffold for the WrenLift game framework. `Game.run(config) {|g| ... }` wires window + device + surface + per-frame encoder + present so the user code is just the actual game."
 
 [dependencies]
-"@hatch:window" = "0.2.2"
-"@hatch:gpu"    = "0.2.2"
+"@hatch:window" = "0.2.3"
+"@hatch:gpu"    = "0.2.3"
 "@hatch:time"   = "0.1.0"
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }
