@@ -1,11 +1,12 @@
 name: Sweep + publish missing packages
 
 # Walks every `packages/*/hatchfile`, computes the publish tag
-# `publish/<pkg-dir>@<version>` for each, and pushes any tag that
-# doesn't already exist. The pushed tags fire the existing
-# `publish-pkg.yml` (pure-Wren) and `publish-plugin.yml`
-# (plugin-backed) workflows — those already gate on
-# `[plugin_source]` so each tag fans out to exactly one of them.
+# `publish/<pkg-dir>@<version>` for each, and asks the hatch-bot
+# Edge Function to create any tag that doesn't already exist.
+# The pushed tags fire the existing `publish-pkg.yml` (pure-Wren)
+# and `publish-plugin.yml` (plugin-backed) workflows — those
+# already gate on `[plugin_source]` so each tag fans out to
+# exactly one of them.
 #
 # Why a separate sweep workflow:
 #
@@ -16,35 +17,35 @@ name: Sweep + publish missing packages
 #   * Idempotent: if every tag already exists, the run is a no-op.
 #   * Safe to schedule daily — same logic as a manual run.
 #
-# # GitHub App auth (why, not PAT)
+# # Why hatch-bot owns the tag push (vs. doing it from CI)
 #
-# Pushing a tag with the default `${{ secrets.GITHUB_TOKEN }}` does
-# *not* trigger downstream workflows (GitHub guards against
-# infinite loops). For the sweep to actually fire `publish-pkg.yml`
-# / `publish-plugin.yml`, we push with a token minted from a
-# GitHub App installation. App-minted tokens *do* trigger
-# downstream workflows.
+# Pushing a tag with the workflow's own `GITHUB_TOKEN` does *not*
+# trigger downstream workflows (GitHub guards against infinite
+# loops). Tag pushes from a GitHub App's installation token *do*
+# trigger them. The org has fine-grained PATs disabled, so we
+# don't have a clean PAT path.
 #
-# We use a GitHub App rather than a PAT because:
+# `hatch-bot/tag` (Supabase Edge Function) holds the App
+# credentials, mints a per-call installation token, and creates
+# `refs/tags/<tag>` via the GitHub API. CI just POSTs the tag
+# name + commit sha and presents `HATCH_BOT_SECRET` as a bearer.
+# Same secret model the publish path already uses — no new
+# vault entries.
 #
-#   * Org repos block fine-grained PATs by default; classic PATs
-#     have repo-wide scope and bind to a user identity that has
-#     to stick around forever.
-#   * App tokens are short-lived (1 h), scoped to just the perms
-#     the app declares, and don't disappear when a maintainer
-#     rotates accounts.
+# Required Edge Function env (set on the Supabase function, not
+# in CI):
 #
-# Setup once per org:
+#   HATCH_GH_APP_ID          — numeric App ID
+#   HATCH_GH_APP_PRIVATE_KEY — full PEM (PKCS#1 or PKCS#8 OK)
 #
-#   1. Create a GitHub App in the org with permissions
-#      `Contents: Read and write` and `Metadata: Read`.
-#   2. Install it on this repo only.
-#   3. Generate a private key, store it as `SWEEP_APP_PRIVATE_KEY`
-#      secret (entire PEM, including header/footer).
-#   4. Store the App's numeric ID as `SWEEP_APP_ID` secret.
+# (owner/repo default to `wrenlift/hatch` inside the function;
+# bodies can override if it ever serves another project.)
 #
-# The `Check app credentials` step below fails fast with an
-# actionable message if either secret is missing.
+# Required GitHub Actions config (already present for the
+# publish path):
+#
+#   vars.HATCH_BOT_URL       — e.g. `https://<proj>.supabase.co/functions/v1/hatch-bot`
+#   secrets.HATCH_BOT_SECRET — bearer
 
 on:
   workflow_dispatch:
@@ -65,15 +66,14 @@ on:
       - "packages/*/hatchfile"
 
 permissions:
-  # `contents: read` is enough to *read* the hatchfiles + the tag
-  # list. The actual `git push` of new tags uses the App-minted
-  # token, not GITHUB_TOKEN, so we don't need write here.
+  # Read-only — the actual tag creation goes through hatch-bot,
+  # not through the runner's git credentials.
   contents: read
 
 concurrency:
-  # Two sweeps racing each other could double-push the same tag.
-  # Serialise; cancel any in-flight sweep when a new push lands
-  # (newer hatchfile state always supersedes the older sweep).
+  # Two sweeps racing each other could double-POST the same tag.
+  # The hatch-bot endpoint treats a 422 (ref exists) as success,
+  # so this is just paranoia, but it also keeps logs clean.
   group: publish-sweep
   cancel-in-progress: true
 
@@ -82,47 +82,12 @@ jobs:
     name: Sweep packages
     runs-on: ubuntu-latest
     steps:
-      - name: Check app credentials
-        if: inputs.dry_run != 'true'
-        env:
-          APP_ID:  ${{ secrets.SWEEP_APP_ID }}
-          APP_KEY: ${{ secrets.SWEEP_APP_PRIVATE_KEY }}
-        shell: bash
-        run: |
-          if [ -z "$APP_ID" ] || [ -z "$APP_KEY" ]; then
-            echo "::error::SWEEP_APP_ID / SWEEP_APP_PRIVATE_KEY secrets are unset; can't mint a token to push release tags."
-            echo "::error::Create a GitHub App with 'Contents: Read and write', install it on this repo, and store the App ID + private key as those secrets."
-            exit 1
-          fi
-
-      - name: Mint installation token
-        id: app-token
-        if: inputs.dry_run != 'true'
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id:      ${{ secrets.SWEEP_APP_ID }}
-          private-key: ${{ secrets.SWEEP_APP_PRIVATE_KEY }}
-          # Repos this token is scoped to. Single-repo install,
-          # but stating it explicitly keeps the token's blast
-          # radius minimal even if the App later gets installed
-          # elsewhere.
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-
       - uses: actions/checkout@v4
         with:
           # Need every existing tag in `refs/tags/publish/*` so the
           # tag-existence check is accurate. `0` fetches the full
           # history; cheap on this repo's size.
           fetch-depth: 0
-          # Use the app-minted token for checkout — that plants the
-          # `http.https://github.com/.extraheader` config with the
-          # App's identity, so the downstream `git push` inherits
-          # it. Without this, push goes out as `github-actions[bot]`
-          # (extraheader outranks remote-URL credentials).
-          # Falls back to `github.token` for dry-run paths where
-          # the previous step was skipped.
-          token: ${{ steps.app-token.outputs.token || github.token }}
 
       - name: Discover missing publish tags
         id: discover
@@ -180,29 +145,50 @@ jobs:
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Push missing tags
+      - name: Check hatch-bot config
         if: steps.discover.outputs.count != '0' && inputs.dry_run != 'true'
+        env:
+          BOT_URL:    ${{ vars.HATCH_BOT_URL }}
+          BOT_SECRET: ${{ secrets.HATCH_BOT_SECRET }}
+        shell: bash
+        run: |
+          if [ -z "$BOT_URL" ] || [ -z "$BOT_SECRET" ]; then
+            echo "::error::HATCH_BOT_URL var / HATCH_BOT_SECRET secret unset; can't reach hatch-bot."
+            exit 1
+          fi
+
+      - name: Create missing tags via hatch-bot
+        if: steps.discover.outputs.count != '0' && inputs.dry_run != 'true'
+        env:
+          BOT_URL:    ${{ vars.HATCH_BOT_URL }}
+          BOT_SECRET: ${{ secrets.HATCH_BOT_SECRET }}
         shell: bash
         run: |
           set -eu
-          # Identify commits as the App's bot user. The numeric
-          # `app-slug[bot]` prefix avoids GitHub's "unverified"
-          # warning since the email matches the bot identity
-          # GitHub minted the token for.
-          git config user.name  "hatch-sweep[bot]"
-          git config user.email "${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
-          # No `git remote set-url` here — checkout above already
-          # configured `http.https://github.com/.extraheader` with
-          # the App-minted token, and that's what `git push` uses.
+          # Sweep tags from the commit that triggered this run
+          # (or main's tip for schedule / dispatch). The pushed
+          # tag points at this sha, so downstream workflows see
+          # the same code the sweep saw.
+          sha="${GITHUB_SHA}"
+          fail=0
           while IFS= read -r tag; do
             [ -z "$tag" ] && continue
-            # Annotated tag — `softprops/action-gh-release` reads
-            # the tag message, and `git for-each-ref` shows it in
-            # tag listings. Cheap, more useful than a lightweight
-            # tag.
-            git tag -a "$tag" -m "$tag"
-            # Push one at a time so a failure on tag N doesn't
-            # leave tags 1..N-1 unpushed (atomic per-tag).
-            git push origin "$tag"
-            echo "::notice::pushed $tag"
+            # `--fail-with-body` so non-2xx responses still print
+            # the body before curl exits non-zero — without it
+            # the error path is just "exit 22" with no detail.
+            payload=$(printf '{"tag":"%s","sha":"%s"}' "$tag" "$sha")
+            if ! resp=$(curl -sS --fail-with-body \
+                -X POST "${BOT_URL}/tag" \
+                -H "Authorization: Bearer ${BOT_SECRET}" \
+                -H "Content-Type: application/json" \
+                -d "$payload"); then
+              echo "::error::tagging $tag failed: $resp"
+              fail=1
+              continue
+            fi
+            echo "::notice::tagged $tag — $resp"
           done <<< "${{ steps.discover.outputs.tags }}"
+          # Exit non-zero if ANY tag failed, so the run is marked
+          # red and a maintainer notices. Successful tags already
+          # got their downstream workflow runs queued.
+          exit $fail

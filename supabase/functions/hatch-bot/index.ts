@@ -1,4 +1,4 @@
-// hatch-bot — package publish endpoint for hatch CLI + CI.
+// hatch-bot — package publish + release-tag endpoint for hatch CLI / CI.
 //
 // This function replaces the direct PostgREST publish path.
 // Supabase deprecated the legacy HS256 `JWT Secret` and moved
@@ -15,17 +15,34 @@
 //      RLS and the public/anon/secret key churn happen one
 //      layer away.
 //
-// Body shape (JSON) mirrors the Rust `PackageRecord`:
+// Endpoints
+// ---------
+//
+// `POST /publish` — body shape (JSON) mirrors `PackageRecord`:
 //
 //   { "name": "@hatch:foo", "version": "1.2.3",
 //     "git":  "https://github.com/…", "description": "...",
 //     "owner": "<uuid>" }          ← optional
 //
-// owner is optional; when present it's stored verbatim so
-// auditing / listing by publisher still works without a real
+// `POST /tag` — body shape:
+//
+//   { "tag": "publish/hatch-foo@1.2.3", "sha": "abc...",
+//     "owner": "wrenlift", "repo": "hatch" }   ← owner/repo optional
+//
+// Creates a lightweight ref `refs/tags/<tag>` pointing at `<sha>`,
+// using a GitHub App installation token minted from the App
+// credentials in the function's env. Tag pushes done this way
+// trigger downstream workflows (unlike pushes by the workflow's
+// own GITHUB_TOKEN). owner/repo default to the hardcoded
+// `wrenlift/hatch` since this function is project-specific;
+// pass them in the body to override.
+//
+// owner is optional on /publish; when present it's stored verbatim
+// so auditing / listing by publisher still works without a real
 // Supabase user row behind the request.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createAppAuth } from 'https://esm.sh/@octokit/auth-app@7'
 
 interface PackageRecord {
   name: string
@@ -68,22 +85,10 @@ function text(msg: string, status = 200): Response {
   return new Response(msg, { status, headers: { 'content-type': 'text/plain' } })
 }
 
-Deno.serve(async (req) => {
-  // --- Routing -------------------------------------------------
-  // `/` — health check so you can `curl …/hatch-bot` and see it's live.
-  // `/publish` — the actual write endpoint.
-  const url = new URL(req.url)
-  const path = url.pathname.replace(/^\/hatch-bot/, '') || '/'
-
-  if (path === '/' && req.method === 'GET') {
-    return json({ ok: true, service: 'hatch-bot', ts: new Date().toISOString() })
-  }
-
-  if (path !== '/publish' || req.method !== 'POST') {
-    return text('not found', 404)
-  }
-
-  // --- Auth ----------------------------------------------------
+// Shared bearer-auth gate. Returns null on success or the error
+// `Response` to short-circuit with. Centralised so /publish and
+// /tag use the same secret + the same envvar misconfig path.
+function checkAuth(req: Request): Response | null {
   const expected = Deno.env.get('HATCH_BOT_SECRET')
   if (!expected) {
     console.error('HATCH_BOT_SECRET is not set in function environment')
@@ -94,8 +99,10 @@ Deno.serve(async (req) => {
   if (presented !== expected) {
     return text('unauthorized', 401)
   }
+  return null
+}
 
-  // --- Body ----------------------------------------------------
+async function handlePublish(req: Request): Promise<Response> {
   let body: unknown
   try {
     body = await req.json()
@@ -151,4 +158,125 @@ Deno.serve(async (req) => {
   }
 
   return json({ published: `${record.name}@${record.version}` })
+}
+
+async function handleTag(req: Request): Promise<Response> {
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch (_) {
+    return text('invalid JSON body', 400)
+  }
+  if (typeof body !== 'object' || body === null) {
+    return text('body must be a JSON object', 400)
+  }
+  const b = body as Record<string, unknown>
+  if (typeof b.tag !== 'string' || !b.tag) return text("'tag' must be a non-empty string", 400)
+  if (typeof b.sha !== 'string' || !b.sha) return text("'sha' must be a non-empty string", 400)
+
+  // Default to this function's home repo. The bot is deployed
+  // per-project; if it ever serves a second project, callers
+  // can still override per-request.
+  const owner = typeof b.owner === 'string' && b.owner ? b.owner : 'wrenlift'
+  const repo  = typeof b.repo  === 'string' && b.repo  ? b.repo  : 'hatch'
+
+  const appId = Deno.env.get('HATCH_GH_APP_ID')
+  const privateKey = Deno.env.get('HATCH_GH_APP_PRIVATE_KEY')
+  if (!appId || !privateKey) {
+    console.error('HATCH_GH_APP_ID / HATCH_GH_APP_PRIVATE_KEY missing')
+    return text('server misconfigured: GitHub App credentials unset', 500)
+  }
+
+  // `@octokit/auth-app` handles JWT signing (RS256) AND the
+  // PKCS#1 → PKCS#8 dance Web Crypto needs — passing the raw PEM
+  // GitHub gives you Just Works. Cheap to construct per call;
+  // the underlying Octokit instance caches installation tokens
+  // by id but each invocation here is a fresh request so caching
+  // doesn't matter.
+  const auth = createAppAuth({ appId, privateKey })
+
+  // Look up the installation rather than hard-coding the id.
+  // Lets the App stay portable if it gets installed on more
+  // repos / orgs later without re-deploying this function.
+  const { token: appJwt } = await auth({ type: 'app' })
+  const instResp = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/installation`,
+    {
+      headers: {
+        Authorization: `Bearer ${appJwt}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    },
+  )
+  if (!instResp.ok) {
+    const detail = await instResp.text()
+    console.error('installation lookup failed', instResp.status, detail)
+    return json(
+      { error: 'installation lookup failed', status: instResp.status, detail },
+      502,
+    )
+  }
+  const inst = await instResp.json() as { id: number }
+
+  const { token } = await auth({ type: 'installation', installationId: inst.id })
+
+  // Create the ref. GitHub returns 422 when the ref already
+  // exists — treat that as success (sweep is idempotent and the
+  // caller's intent is "ensure this tag exists, pointing roughly
+  // here", not "fail unless I'm the original creator").
+  const refResp = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/git/refs`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ref: `refs/tags/${b.tag}`, sha: b.sha }),
+    },
+  )
+  if (refResp.status === 422) {
+    return json({ ok: true, tag: b.tag, status: 'exists' })
+  }
+  if (!refResp.ok) {
+    const detail = await refResp.text()
+    console.error('create ref failed', refResp.status, detail)
+    return json(
+      { error: 'create ref failed', status: refResp.status, detail },
+      502,
+    )
+  }
+  const created = await refResp.json() as { ref: string }
+  return json({ ok: true, tag: b.tag, status: 'created', ref: created.ref })
+}
+
+Deno.serve(async (req: Request) => {
+  // --- Routing -------------------------------------------------
+  // `/`        — health check so you can `curl …/hatch-bot`.
+  // `/publish` — package upsert against the Supabase `packages` table.
+  // `/tag`     — create `refs/tags/<tag>` on a configured repo via
+  //              an internal GitHub App installation token.
+  const url = new URL(req.url)
+  const path = url.pathname.replace(/^\/hatch-bot/, '') || '/'
+
+  if (path === '/' && req.method === 'GET') {
+    return json({ ok: true, service: 'hatch-bot', ts: new Date().toISOString() })
+  }
+
+  if (path === '/publish' && req.method === 'POST') {
+    const authErr = checkAuth(req)
+    if (authErr) return authErr
+    return handlePublish(req)
+  }
+
+  if (path === '/tag' && req.method === 'POST') {
+    const authErr = checkAuth(req)
+    if (authErr) return authErr
+    return handleTag(req)
+  }
+
+  return text('not found', 404)
 })
