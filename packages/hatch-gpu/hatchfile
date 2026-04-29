@@ -1,5 +1,5 @@
 name        = "@hatch:gpu"
-version     = "0.1.0"
+version     = "0.2.0"
 entry       = "gpu"
 description = "GPU primitives backed by wgpu — Device, Buffer, Texture, ShaderModule, RenderPipeline, CommandEncoder, RenderPass. Foundation for 2D/3D rendering and the @hatch:game framework."
 
@@ -22,15 +22,15 @@ native_search_paths = ["libs"]
 # Pin via path during local dev; hatch-bot rewrites these to
 # registry pins at publish time.
 [dependencies]
-"@hatch:math"   = { path = "../hatch-math" }
-"@hatch:assets" = { path = "../hatch-assets" }
+"@hatch:math"   = "0.1.1"
+"@hatch:assets" = "0.1.0"
 # Where the cdylib lives. Same shape as @hatch:sqlite — clone
 # `repo` at `rev`, run `cargo build -p wlift_gpu --release`
 # across the platform matrix, drop each dylib into `libs/`,
 # bundle via `hatch publish`.
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-rev   = "8f16a3daf5a60f2bfb4b4afcd70f1b7d4bc4df38"
+rev   = "3ee2791513a3e194c20e196cdf6a5f5ba04be558"
 crate = "wlift_gpu"
 
 # Per-platform dylib paths. CI populates libs/ via the

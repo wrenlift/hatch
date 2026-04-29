@@ -309,7 +309,16 @@ class Game {
       "surfaceFormat": "bgra8unorm",
       "clearColor":   [0.0, 0.0, 0.0, 1.0],
       "presentMode":  "fifo",
-      "depth":        false       // Bool or "depth32float" / "depth24plus"
+      "depth":        false,      // Bool or "depth32float" / "depth24plus"
+      // Web-only: DOM id of an existing `<canvas>` to attach to.
+      // When set, the runner skips the fresh-canvas path and the
+      // surface configures against the element's natural size
+      // instead of the `width` / `height` defaults. Ignored on
+      // native (winit always opens a fresh window). Lets pages
+      // embed a wlift game inside their own layout / styling
+      // without having to override `Game.run` to thread the
+      // descriptor manually.
+      "canvas":       null
     }
   }
 
@@ -354,22 +363,42 @@ class Game {
       for (k in override.keys) c[k] = override[k]
     }
 
-    var window = Window.create({
+    // Build the Window descriptor. On web, `c["canvas"]` (if set)
+    // routes through the page-owned-canvas attach path; on native
+    // the key is ignored and `width`/`height` open a fresh winit
+    // window. When attached, pull the natural element size out
+    // afterwards so the surface configure / first render see the
+    // page's actual layout dimensions instead of the descriptor's
+    // (possibly default) numbers.
+    var winDesc = {
       "title":     c["title"],
       "width":     c["width"],
       "height":    c["height"],
       "resizable": c["resizable"]
-    })
+    }
+    if (c["canvas"] is String) winDesc["canvas"] = c["canvas"]
+    var window = Window.create(winDesc)
+
+    var configW = c["width"]
+    var configH = c["height"]
+    if (c["canvas"] is String) {
+      var s = window.size
+      if (s is Map) {
+        configW = s["width"]
+        configH = s["height"]
+      }
+    }
+
     var device  = Gpu.requestDevice()
     var surface = device.createSurface(window.handle)
     var initial = surface.configure({
-      "width":       c["width"],
-      "height":      c["height"],
+      "width":       configW,
+      "height":      configH,
       "format":      c["surfaceFormat"],
       "presentMode": c["presentMode"]
     })
-    var sw = initial is Map ? initial["width"]  : c["width"]
-    var sh = initial is Map ? initial["height"] : c["height"]
+    var sw = initial is Map ? initial["width"]  : configW
+    var sh = initial is Map ? initial["height"] : configH
 
     // Resolve depth attachment config. true → "depth32float";
     // a string overrides; false / null → no depth attachment.
