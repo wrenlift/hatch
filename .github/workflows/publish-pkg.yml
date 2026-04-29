@@ -98,14 +98,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install hatch CLI
-        # The wlift binary lives in the `wrenlift/WrenLift` repo
-        # alongside the hatch crate. Pinning to a release tag (or
-        # `main` for now) keeps CI bytecode + format compatible
-        # with whatever the consumer ecosystem is currently
-        # speaking.
+        # The wlift binary lives in the `wrenlift/WrenLift` repo's
+        # `wren_lift` package; the workspace also contains the
+        # `wlift_wasm` package, so cargo needs `-p` to disambiguate.
+        # Pinning to `main` keeps CI bytecode + format compatible
+        # with whatever the consumer ecosystem currently speaks;
+        # pin to a tag once we cut wlift releases.
         run: |
           cargo install --git https://github.com/wrenlift/WrenLift.git \
                         --branch main \
+                        -p wren_lift \
                         --bin wlift --locked
 
       - name: Bundle (host-target)
