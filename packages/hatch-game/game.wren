@@ -54,7 +54,8 @@ import "@hatch:time"   for Clock
 
 // On web, the main fiber holds the JS thread until it parks on
 // an async bridge. The frame loop yields with
-// `Browser.setTimeout(0).await` so the JS event loop drains and
+// `Browser.nextFrame.await` (vsync-paced via requestAnimationFrame
+// on the page thread) so the JS event loop drains every frame and
 // the page stays responsive. The prelude's `Browser` class is
 // only auto-injected into the user's `run()` source — bundle
 // modules have to import it explicitly. Native builds strip
@@ -546,14 +547,15 @@ class Game {
       g.tick = g.tick + 1
 
       // On web, the main fiber holds the JS thread until it parks
-      // on an async bridge. A frame loop with no `.await` never
-      // parks, so on main-mode wasm the page freezes. A 0 ms
-      // setTimeout is the smallest park: it bounces through the
-      // scheduler, lets the JS event loop drain, and resumes us
-      // on the next macrotask. Native winit windows pace via
-      // their own event pump, so this gate strips on host builds.
+      // on an async bridge. `Browser.nextFrame` is the right
+      // primitive: backed by `requestAnimationFrame`, so vsync-
+      // paced, paint-aligned, and naturally throttled when the
+      // tab is backgrounded. Worker mode falls back to a ~16 ms
+      // timer because rAF is main-thread-only — see the bridge
+      // shim in worker.js. Native winit windows pace via their
+      // own event pump; this gate strips on host builds.
       #!wasm
-      Browser.setTimeout(0).await
+      Browser.nextFrame.await
     }
 
     surface.destroy
