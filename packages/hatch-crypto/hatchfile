@@ -4,5 +4,5 @@ entry       = "crypto"
 description = "AES-256-GCM authenticated encryption + Ed25519 sign/verify + CSPRNG."
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"

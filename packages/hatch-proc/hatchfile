@@ -4,8 +4,7 @@ entry       = "proc"
 description = "Subprocess spawn with lifecycle, streaming IO (blocking + fiber-cooperative), and pipelines."
 
 [dependencies]
-"@hatch:io" = { path = "../hatch-io" }
-
+"@hatch:io" = "0.2.0"
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"

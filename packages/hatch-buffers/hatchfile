@@ -4,7 +4,7 @@ entry       = "buffers"
 description = "Spec coverage for the built-in ByteArray / Float32Array / Float64Array types."
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
-"@hatch:crypto" = { path = "../hatch-crypto" }
-"@hatch:zip"    = { path = "../hatch-zip" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"
+"@hatch:crypto" = "0.2.0"
+"@hatch:zip"    = "0.1.0"

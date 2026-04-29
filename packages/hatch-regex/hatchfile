@@ -4,5 +4,5 @@ entry       = "regex"
 description = "Compiled regular expressions with capture groups, replace, and split."
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"

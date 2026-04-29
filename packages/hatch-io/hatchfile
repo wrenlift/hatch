@@ -4,5 +4,5 @@ entry       = "io"
 description = "Byte buffers plus Reader / Writer streams with fiber-cooperative `withTryFn`."
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"

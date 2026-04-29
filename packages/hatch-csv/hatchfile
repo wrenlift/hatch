@@ -4,5 +4,5 @@ entry       = "csv"
 description = "RFC 4180 CSV parser + serializer. Handles quoting, embedded newlines, header rows."
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"

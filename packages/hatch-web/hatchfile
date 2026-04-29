@@ -9,16 +9,15 @@ description = "Server-rendered, htmx-native web framework for Wren. Router, midd
 modules = ["css", "forms", "live", "web"]
 
 [dependencies]
-"@hatch:socket"   = { path = "../hatch-socket" }
-"@hatch:template" = { path = "../hatch-template" }
-"@hatch:log"      = { path = "../hatch-log" }
-"@hatch:hash"     = { path = "../hatch-hash" }
-"@hatch:json"     = { path = "../hatch-json" }
-"@hatch:crypto"   = { path = "../hatch-crypto" }
-"@hatch:fs"       = { path = "../hatch-fs" }
-"@hatch:time"     = { path = "../hatch-time" }
-
+"@hatch:socket"   = "0.1.0"
+"@hatch:template" = "0.1.1"
+"@hatch:log"      = "0.1.0"
+"@hatch:hash"     = "0.1.0"
+"@hatch:json"     = "0.1.0"
+"@hatch:crypto"   = "0.2.0"
+"@hatch:fs"       = "0.1.0"
+"@hatch:time"     = "0.1.0"
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
-"@hatch:http"   = { path = "../hatch-http" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"
+"@hatch:http"   = "0.3.0"

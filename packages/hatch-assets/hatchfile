@@ -4,13 +4,12 @@ entry       = "assets"
 description = "Content-addressable assets database with hot-reload. File-backed asset registry keyed by SHA-256 of contents, with mtime-driven change detection that piggybacks on the Hatch.watchFile signal pass — edit a shader / texture / config file in your workspace, see registered subscribers fire automatically."
 
 [dependencies]
-"@hatch:fs"   = { path = "../hatch-fs" }
-"@hatch:hash" = { path = "../hatch-hash" }
-
+"@hatch:fs"   = "0.1.0"
+"@hatch:hash" = "0.1.0"
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"
 # Runtime deps duplicated here so `wlift assets.spec.wren` can
 # pre-install everything it needs to load the module under test.
-"@hatch:fs"     = { path = "../hatch-fs" }
-"@hatch:hash"   = { path = "../hatch-hash" }
+"@hatch:fs"     = "0.1.0"
+"@hatch:hash"   = "0.1.0"

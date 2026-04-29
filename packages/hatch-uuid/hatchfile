@@ -4,5 +4,5 @@ entry       = "uuid"
 description = "UUID v4/v5/v7 generation, parsing, and byte conversion."
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"

@@ -4,8 +4,7 @@ entry       = "log"
 description = "Level-filtered structured logger with ANSI colors."
 
 [dependencies]
-"@hatch:fmt" = { path = "../hatch-fmt" }
-
+"@hatch:fmt" = "0.1.0"
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"

@@ -4,5 +4,5 @@ entry       = "fp"
 description = "Fluent + functional collection operations — map / filter / reduce / flatMap / groupBy / partition / zip / sortBy / scan / chunked / windowed / distinct and the usual suspects."
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"

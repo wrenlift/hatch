@@ -4,10 +4,9 @@ entry       = "http"
 description = "HTTP/1.1 client with TLS, streaming bodies, and fiber-cooperative reads."
 
 [dependencies]
-"@hatch:json" = { path = "../hatch-json" }
-"@hatch:url"  = { path = "../hatch-url" }
-"@hatch:io"   = { path = "../hatch-io" }
-
+"@hatch:json" = "0.1.0"
+"@hatch:url"  = "0.1.0"
+"@hatch:io"   = "0.2.0"
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"

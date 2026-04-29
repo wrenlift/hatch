@@ -22,9 +22,8 @@ native_search_paths = ["libs"]
 # Pin via path during local dev; hatch-bot rewrites these to
 # registry pins at publish time.
 [dependencies]
-"@hatch:math"   = { path = "../hatch-math" }
-"@hatch:assets" = { path = "../hatch-assets" }
-
+"@hatch:math"   = "0.1.1"
+"@hatch:assets" = "0.1.0"
 # Where the cdylib lives. Same shape as @hatch:sqlite — clone
 # `repo` at `rev`, run `cargo build -p wlift_gpu --release`
 # across the platform matrix, drop each dylib into `libs/`,
@@ -40,10 +39,10 @@ crate = "wlift_gpu"
 wlift_gpu = { macos = "libs/libwlift_gpu.dylib", linux = "libs/libwlift_gpu.so", windows = "libs/wlift_gpu.dll" }
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"
 # @hatch:fs + @hatch:hash are pulled in transitively by
 # @hatch:assets, but local `wlift gpu.spec.wren` runs only walk
 # spec-dependencies so spell them out here too.
-"@hatch:fs"     = { path = "../hatch-fs" }
-"@hatch:hash"   = { path = "../hatch-hash" }
+"@hatch:fs"     = "0.1.0"
+"@hatch:hash"   = "0.1.0"

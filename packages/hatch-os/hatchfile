@@ -4,5 +4,5 @@ entry       = "os"
 description = "Process-level primitives: platform, env vars, argv, exit, tty."
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"

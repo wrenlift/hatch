@@ -4,4 +4,4 @@ entry       = "test"
 description = "Tiny test runner for *.spec.wren files."
 
 [spec-dependencies]
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:assert" = "0.2.0"

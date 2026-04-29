@@ -14,5 +14,5 @@ crate = "wlift_physics"
 wlift_physics = { macos = "libs/libwlift_physics.dylib", linux = "libs/libwlift_physics.so", windows = "libs/wlift_physics.dll" }
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test"   = "0.1.0"
+"@hatch:assert" = "0.2.0"
