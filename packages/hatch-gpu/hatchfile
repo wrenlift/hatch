@@ -39,10 +39,10 @@ crate = "wlift_gpu"
 wlift_gpu = { macos = "libs/libwlift_gpu.dylib", linux = "libs/libwlift_gpu.so", windows = "libs/wlift_gpu.dll" }
 
 [spec-dependencies]
-"@hatch:test"   = "0.1.0"
-"@hatch:assert" = "0.2.0"
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
 # @hatch:fs + @hatch:hash are pulled in transitively by
 # @hatch:assets, but local `wlift gpu.spec.wren` runs only walk
 # spec-dependencies so spell them out here too.
-"@hatch:fs"     = "0.1.0"
-"@hatch:hash"   = "0.1.0"
+"@hatch:fs"     = { path = "../hatch-fs" }
+"@hatch:hash"   = { path = "../hatch-hash" }

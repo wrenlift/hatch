@@ -4,6 +4,6 @@ entry       = "fs"
 description = "Filesystem I/O — read, write, stat, list, walk."
 
 [spec-dependencies]
-"@hatch:test"   = "0.1.0"
-"@hatch:assert" = "0.2.0"
-"@hatch:path"   = "0.1.0"
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:path"   = { path = "../hatch-path" }

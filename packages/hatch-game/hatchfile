@@ -8,5 +8,5 @@ description = "Tiny game-loop scaffold for the WrenLift game framework. `Game.ru
 "@hatch:gpu"    = "0.1.0"
 "@hatch:time"   = "0.1.0"
 [spec-dependencies]
-"@hatch:test"   = "0.1.0"
-"@hatch:assert" = "0.2.0"
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }

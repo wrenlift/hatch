@@ -4,5 +4,5 @@ entry       = "socket"
 description = "TCP listeners + connections and UDP datagram sockets. Blocking and non-blocking variants suitable for fiber-cooperative schedulers."
 
 [spec-dependencies]
-"@hatch:test"   = "0.1.0"
-"@hatch:assert" = "0.2.0"
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }

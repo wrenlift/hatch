@@ -7,9 +7,9 @@ description = "Content-addressable assets database with hot-reload. File-backed 
 "@hatch:fs"   = "0.1.0"
 "@hatch:hash" = "0.1.0"
 [spec-dependencies]
-"@hatch:test"   = "0.1.0"
-"@hatch:assert" = "0.2.0"
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
 # Runtime deps duplicated here so `wlift assets.spec.wren` can
 # pre-install everything it needs to load the module under test.
-"@hatch:fs"     = "0.1.0"
-"@hatch:hash"   = "0.1.0"
+"@hatch:fs"     = { path = "../hatch-fs" }
+"@hatch:hash"   = { path = "../hatch-hash" }

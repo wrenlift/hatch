@@ -14,5 +14,5 @@ crate = "wlift_window"
 wlift_window = { macos = "libs/libwlift_window.dylib", linux = "libs/libwlift_window.so", windows = "libs/wlift_window.dll" }
 
 [spec-dependencies]
-"@hatch:test"   = "0.1.0"
-"@hatch:assert" = "0.2.0"
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }

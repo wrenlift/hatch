@@ -14,5 +14,5 @@ crate = "wlift_audio"
 wlift_audio = { macos = "libs/libwlift_audio.dylib", linux = "libs/libwlift_audio.so", windows = "libs/wlift_audio.dll" }
 
 [spec-dependencies]
-"@hatch:test"   = "0.1.0"
-"@hatch:assert" = "0.2.0"
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }

@@ -8,5 +8,5 @@ description = "HTTP/1.1 client with TLS, streaming bodies, and fiber-cooperative
 "@hatch:url"  = "0.1.0"
 "@hatch:io"   = "0.2.0"
 [spec-dependencies]
-"@hatch:test"   = "0.1.0"
-"@hatch:assert" = "0.2.0"
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
