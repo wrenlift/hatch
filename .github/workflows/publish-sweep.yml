@@ -69,6 +69,18 @@ jobs:
           # tag-existence check is accurate. `0` fetches the full
           # history; cheap on this repo's size.
           fetch-depth: 0
+          # Authenticate the checkout with the PAT, not the
+          # default `GITHUB_TOKEN`. checkout@v4 plants an
+          # `http.https://github.com/.extraheader` config that
+          # outranks any credential we'd later embed in
+          # `git remote set-url`, so a downstream `git push`
+          # would otherwise go out as `github-actions[bot]` and
+          # 403 on the protected `main` ruleset. Threading the
+          # PAT in here means push inherits the right identity
+          # without us touching git config later.
+          # `|| ''` so dry-run / schedule paths that don't need
+          # to push still complete cleanly without the secret.
+          token: ${{ secrets.RELEASE_TAG_PAT || github.token }}
 
       - name: Discover missing publish tags
         id: discover
@@ -140,20 +152,14 @@ jobs:
 
       - name: Push missing tags
         if: steps.discover.outputs.count != '0' && inputs.dry_run != 'true'
-        env:
-          GH_PAT: ${{ secrets.RELEASE_TAG_PAT }}
         shell: bash
         run: |
           set -eu
           git config user.name  "hatch-sweep[bot]"
           git config user.email "hatch-sweep@users.noreply.github.com"
-          # PAT-authenticated remote so the tag push triggers the
-          # publish-pkg / publish-plugin workflows. `x-access-token`
-          # is the conventional username for token auth on GitHub
-          # HTTPS remotes.
-          git remote set-url origin \
-            "https://x-access-token:${GH_PAT}@github.com/${{ github.repository }}.git"
-
+          # No `git remote set-url` here — checkout above already
+          # configured `http.https://github.com/.extraheader` with
+          # the PAT, and that's what `git push` will use.
           while IFS= read -r tag; do
             [ -z "$tag" ] && continue
             # Annotated tag — `softprops/action-gh-release` reads
