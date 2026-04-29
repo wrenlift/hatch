@@ -11,21 +11,27 @@ service_role key flow.
 > relative to `pwd` — from the WrenLift repo root it won't find
 > anything and will warn `no such file or directory`.
 
-## Database GUC for the bot owner
+## Hatch config — the bot UUID
 
-Both migrations under `supabase/migrations/` read the canonical
-hatch-bot UUID from the `app.hatch_bot_owner` database setting.
-Set it once per Supabase project before applying them:
+The migrations under `supabase/migrations/` all read the
+canonical hatch-bot UUID via the `hatch_bot_owner()` SQL
+helper, which selects from a `hatch_config` key/value table.
+The first migration (`…hatch_config_table.sql`) creates the
+table + helper; the remaining migrations consume them.
+
+After running the table migration, populate the `hatch_bot_owner`
+key once with your project's UUID — same value as the
+`HATCH_BOT_OWNER_UUID` Edge Function secret:
 
 ```sql
-ALTER DATABASE postgres
-  SET app.hatch_bot_owner = '00000000-0000-0000-0000-000000000000';
+INSERT INTO hatch_config (key, value, note) VALUES
+  ('hatch_bot_owner', '00000000-0000-0000-0000-000000000000', 'bot service account')
+ON CONFLICT (key) DO UPDATE SET value = excluded.value;
 ```
 
-(Substitute the actual UUID — same value as the
-`HATCH_BOT_OWNER_UUID` Edge Function secret.) The setting persists
-across reconnects; the trigger and the reassignment migration
-both read it via `current_setting('app.hatch_bot_owner', true)`.
+Run that in the Supabase SQL editor (the dashboard role has
+INSERT/UPDATE on the table; only direct SELECT is locked down
+behind the `SECURITY DEFINER` helper).
 
 ## Endpoints
 
