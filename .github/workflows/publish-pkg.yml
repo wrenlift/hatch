@@ -164,3 +164,28 @@ jobs:
             Two assets attached:
               - `${{ needs.resolve.outputs.package }}-${{ needs.resolve.outputs.version }}.hatch` — host-target (zstd-compressed)
               - `${{ needs.resolve.outputs.package }}-${{ needs.resolve.outputs.version }}-wasm32.hatch` — wasm-target (uncompressed)
+
+      - name: Install hatch CLI
+        # `hatch publish` POSTs the PackageRecord to hatch-bot's
+        # `/publish` endpoint. Plugin packages do this from
+        # publish-plugin.yml; the pure-Wren path needs the same
+        # registration step so the Supabase catalog row gets
+        # upserted when this asset lands on GitHub Releases.
+        run: |
+          cargo install --git https://github.com/wrenlift/WrenLift.git \
+                        --branch main \
+                        --bin hatch --locked
+        if: startsWith(github.ref, 'refs/tags/publish/')
+
+      - name: Hatch publish (registry upsert)
+        if: startsWith(github.ref, 'refs/tags/publish/')
+        env:
+          # Same secret model as publish-plugin.yml — the CLI
+          # detects HATCH_BOT_URL and POSTs as bearer. Stored as
+          # a GitHub Actions variable / secret on the repo.
+          HATCH_BOT_URL:    ${{ vars.HATCH_BOT_URL }}
+          HATCH_BOT_SECRET: ${{ secrets.HATCH_BOT_SECRET }}
+        run: |
+          set -eu
+          hatch login --token "$HATCH_BOT_SECRET"
+          hatch publish -C "hatch/packages/${{ needs.resolve.outputs.package }}"
