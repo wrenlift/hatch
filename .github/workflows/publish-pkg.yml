@@ -97,18 +97,17 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install hatch CLI
-        # The wlift binary lives in the `wrenlift/WrenLift` repo's
-        # `wren_lift` package; the workspace also contains the
-        # `wlift_wasm` package, so cargo needs the package name as
-        # a positional to disambiguate (`-p` is rejected by
-        # `cargo install`). Pinning to `main` keeps CI bytecode +
-        # format compatible with whatever the consumer ecosystem
-        # currently speaks; pin to a tag once we cut wlift releases.
+      - name: Install wlift + hatch CLIs
+        # Both binaries live in the `wren_lift` package — `wlift`
+        # bundles, `hatch` publishes to the registry. The
+        # workspace also contains `wlift_wasm` so cargo needs the
+        # package name as a positional to disambiguate. Pinning
+        # to `main` keeps CI bytecode + format compatible with
+        # whatever the consumer ecosystem currently speaks.
         run: |
           cargo install --git https://github.com/wrenlift/WrenLift.git \
                         --branch main \
-                        --bin wlift --locked \
+                        --bin wlift --bin hatch --locked \
                         wren_lift
 
       - name: Bundle (host-target)
@@ -150,12 +149,15 @@ jobs:
 
       - name: Hatch publish (registry)
         # Push the package metadata + bytes into the hatch-bot
-        # registry alongside the GitHub release. The CLI reads
-        # `~/.hatch/credentials` from `hatch login --token`.
+        # registry alongside the GitHub release. Best-effort —
+        # if the registry's down or the token isn't configured,
+        # we still want the GitHub release to land so the wasm
+        # playground can fetch the artifact.
         env:
           HATCH_BOT_URL:    ${{ vars.HATCH_BOT_URL }}
           HATCH_BOT_SECRET: ${{ secrets.HATCH_BOT_SECRET }}
         if: env.HATCH_BOT_SECRET != ''
+        continue-on-error: true
         run: |
           set -eu
           hatch login --token "$HATCH_BOT_SECRET"
