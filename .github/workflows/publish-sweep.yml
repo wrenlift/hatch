@@ -16,16 +16,35 @@ name: Sweep + publish missing packages
 #   * Idempotent: if every tag already exists, the run is a no-op.
 #   * Safe to schedule daily — same logic as a manual run.
 #
-# # PAT requirement
+# # GitHub App auth (why, not PAT)
 #
 # Pushing a tag with the default `${{ secrets.GITHUB_TOKEN }}` does
 # *not* trigger downstream workflows (GitHub guards against
 # infinite loops). For the sweep to actually fire `publish-pkg.yml`
-# / `publish-plugin.yml`, we push with a fine-grained PAT that has
-# `Contents: write` on this repo. Store it as the
-# `RELEASE_TAG_PAT` secret. Without that secret the sweep job
-# fails fast with an actionable message — better than silently
-# pushing tags that no one ever publishes a release for.
+# / `publish-plugin.yml`, we push with a token minted from a
+# GitHub App installation. App-minted tokens *do* trigger
+# downstream workflows.
+#
+# We use a GitHub App rather than a PAT because:
+#
+#   * Org repos block fine-grained PATs by default; classic PATs
+#     have repo-wide scope and bind to a user identity that has
+#     to stick around forever.
+#   * App tokens are short-lived (1 h), scoped to just the perms
+#     the app declares, and don't disappear when a maintainer
+#     rotates accounts.
+#
+# Setup once per org:
+#
+#   1. Create a GitHub App in the org with permissions
+#      `Contents: Read and write` and `Metadata: Read`.
+#   2. Install it on this repo only.
+#   3. Generate a private key, store it as `SWEEP_APP_PRIVATE_KEY`
+#      secret (entire PEM, including header/footer).
+#   4. Store the App's numeric ID as `SWEEP_APP_ID` secret.
+#
+# The `Check app credentials` step below fails fast with an
+# actionable message if either secret is missing.
 
 on:
   workflow_dispatch:
@@ -47,8 +66,8 @@ on:
 
 permissions:
   # `contents: read` is enough to *read* the hatchfiles + the tag
-  # list. The actual `git push` of new tags uses RELEASE_TAG_PAT,
-  # not GITHUB_TOKEN, so we don't need write here.
+  # list. The actual `git push` of new tags uses the App-minted
+  # token, not GITHUB_TOKEN, so we don't need write here.
   contents: read
 
 concurrency:
@@ -63,24 +82,47 @@ jobs:
     name: Sweep packages
     runs-on: ubuntu-latest
     steps:
+      - name: Check app credentials
+        if: inputs.dry_run != 'true'
+        env:
+          APP_ID:  ${{ secrets.SWEEP_APP_ID }}
+          APP_KEY: ${{ secrets.SWEEP_APP_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          if [ -z "$APP_ID" ] || [ -z "$APP_KEY" ]; then
+            echo "::error::SWEEP_APP_ID / SWEEP_APP_PRIVATE_KEY secrets are unset; can't mint a token to push release tags."
+            echo "::error::Create a GitHub App with 'Contents: Read and write', install it on this repo, and store the App ID + private key as those secrets."
+            exit 1
+          fi
+
+      - name: Mint installation token
+        id: app-token
+        if: inputs.dry_run != 'true'
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id:      ${{ secrets.SWEEP_APP_ID }}
+          private-key: ${{ secrets.SWEEP_APP_PRIVATE_KEY }}
+          # Repos this token is scoped to. Single-repo install,
+          # but stating it explicitly keeps the token's blast
+          # radius minimal even if the App later gets installed
+          # elsewhere.
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
       - uses: actions/checkout@v4
         with:
           # Need every existing tag in `refs/tags/publish/*` so the
           # tag-existence check is accurate. `0` fetches the full
           # history; cheap on this repo's size.
           fetch-depth: 0
-          # Authenticate the checkout with the PAT, not the
-          # default `GITHUB_TOKEN`. checkout@v4 plants an
-          # `http.https://github.com/.extraheader` config that
-          # outranks any credential we'd later embed in
-          # `git remote set-url`, so a downstream `git push`
-          # would otherwise go out as `github-actions[bot]` and
-          # 403 on the protected `main` ruleset. Threading the
-          # PAT in here means push inherits the right identity
-          # without us touching git config later.
-          # `|| ''` so dry-run / schedule paths that don't need
-          # to push still complete cleanly without the secret.
-          token: ${{ secrets.RELEASE_TAG_PAT || github.token }}
+          # Use the app-minted token for checkout — that plants the
+          # `http.https://github.com/.extraheader` config with the
+          # App's identity, so the downstream `git push` inherits
+          # it. Without this, push goes out as `github-actions[bot]`
+          # (extraheader outranks remote-URL credentials).
+          # Falls back to `github.token` for dry-run paths where
+          # the previous step was skipped.
+          token: ${{ steps.app-token.outputs.token || github.token }}
 
       - name: Discover missing publish tags
         id: discover
@@ -138,28 +180,20 @@ jobs:
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Check PAT presence
-        if: steps.discover.outputs.count != '0' && inputs.dry_run != 'true'
-        env:
-          PAT: ${{ secrets.RELEASE_TAG_PAT }}
-        shell: bash
-        run: |
-          if [ -z "$PAT" ]; then
-            echo "::error::RELEASE_TAG_PAT secret is unset; can't push tags that trigger downstream publishes."
-            echo "::error::Create a fine-grained PAT with 'Contents: write' on this repo and store it as RELEASE_TAG_PAT."
-            exit 1
-          fi
-
       - name: Push missing tags
         if: steps.discover.outputs.count != '0' && inputs.dry_run != 'true'
         shell: bash
         run: |
           set -eu
+          # Identify commits as the App's bot user. The numeric
+          # `app-slug[bot]` prefix avoids GitHub's "unverified"
+          # warning since the email matches the bot identity
+          # GitHub minted the token for.
           git config user.name  "hatch-sweep[bot]"
-          git config user.email "hatch-sweep@users.noreply.github.com"
+          git config user.email "${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
           # No `git remote set-url` here — checkout above already
           # configured `http.https://github.com/.extraheader` with
-          # the PAT, and that's what `git push` will use.
+          # the App-minted token, and that's what `git push` uses.
           while IFS= read -r tag; do
             [ -z "$tag" ] && continue
             # Annotated tag — `softprops/action-gh-release` reads
