@@ -1,0 +1,179 @@
+name: Publish pure-Wren package
+
+# Builds + publishes any hatch package that *doesn't* declare a
+# `[plugin_source]` (those are handled by `publish-plugin.yml`,
+# which has the per-target dylib build matrix). For pure-Wren
+# packages there's nothing to compile per-platform — the .wlbc
+# bytecode is target-independent — so we just bundle and ship.
+#
+# Trigger: same as `publish-plugin.yml` so the operator
+# experience is one tag pattern regardless of package shape:
+#
+#   workflow_dispatch with `package` = `hatch-foo`, OR
+#   git tag `publish/<pkg>@<version>`.
+#
+# Builds two release assets per package version:
+#
+#   <pkg-dir>-<ver>.hatch         # default-target, host-loadable
+#   <pkg-dir>-<ver>-wasm32.hatch  # uncompressed, wasm-loadable
+#
+# Both attach to the same `publish/<pkg>@<version>` GitHub release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package directory under `packages/` (e.g. `hatch-assert`)"
+        required: true
+        type: string
+  push:
+    tags:
+      - 'publish/*@*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  resolve:
+    name: Resolve target
+    runs-on: ubuntu-latest
+    outputs:
+      package:    ${{ steps.out.outputs.package }}
+      version:    ${{ steps.out.outputs.version }}
+      pure_wren:  ${{ steps.out.outputs.pure_wren }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read hatchfile
+        id: out
+        shell: bash
+        run: |
+          set -eu
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            pkg_dir="${{ inputs.package }}"
+          else
+            tag="${{ github.ref_name }}"
+            rest="${tag#publish/}"
+            pkg_dir="${rest%@*}"
+          fi
+          hatchfile="packages/${pkg_dir}/hatchfile"
+          if [ ! -f "$hatchfile" ]; then
+            echo "::error::no hatchfile at $hatchfile" && exit 1
+          fi
+
+          version=$(awk -F'"' '/^version *=/ {print $2; exit}' "$hatchfile")
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag="${{ github.ref_name }}"
+            version="${tag##*@}"
+          fi
+
+          # `[plugin_source]` presence flips the gate — if it's
+          # there, this package is `publish-plugin.yml`'s job
+          # and we exit clean. The two workflows fire on the
+          # same tag pattern, so we don't want to double-publish
+          # or have a dylib-less release accidentally shadow
+          # the real one.
+          if grep -q '^\[plugin_source\]' "$hatchfile"; then
+            echo "::notice::$pkg_dir has [plugin_source] — handled by publish-plugin.yml"
+            echo "pure_wren=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "pure_wren=true"  >> "$GITHUB_OUTPUT"
+          fi
+          echo "package=$pkg_dir" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Bundle ${{ needs.resolve.outputs.package }}
+    needs: resolve
+    if: needs.resolve.outputs.pure_wren == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: hatch
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install hatch CLI
+        # The wlift binary lives in the `wrenlift/WrenLift` repo
+        # alongside the hatch crate. Pinning to a release tag (or
+        # `main` for now) keeps CI bytecode + format compatible
+        # with whatever the consumer ecosystem is currently
+        # speaking.
+        run: |
+          cargo install --git https://github.com/wrenlift/WrenLift.git \
+                        --branch main \
+                        --bin wlift --locked
+
+      - name: Bundle (host-target)
+        # Default target — compressed payload. Loaded by `wlift
+        # foo.hatch` on any host platform.
+        run: |
+          set -eu
+          pkg="${{ needs.resolve.outputs.package }}"
+          ver="${{ needs.resolve.outputs.version }}"
+          mkdir -p hatch/dist
+          wlift "hatch/packages/${pkg}" \
+            --bundle "hatch/dist/${pkg}-${ver}.hatch"
+
+      - name: Bundle (wasm32 target)
+        # Uncompressed payload, target stamped as wasm32-unknown-
+        # unknown. Loadable by `wlift_wasm`'s `runWithHatches`
+        # path in the playground (which can't decompress zstd).
+        run: |
+          set -eu
+          pkg="${{ needs.resolve.outputs.package }}"
+          ver="${{ needs.resolve.outputs.version }}"
+          wlift "hatch/packages/${pkg}" \
+            --bundle "hatch/dist/${pkg}-${ver}-wasm32.hatch" \
+            --bundle-target wasm32-unknown-unknown
+
+      - name: Sanity check
+        # `--inspect` parses the bundle back. If the asset is
+        # malformed CI catches it before the release is cut.
+        run: |
+          set -eu
+          pkg="${{ needs.resolve.outputs.package }}"
+          ver="${{ needs.resolve.outputs.version }}"
+          echo "::group::host-target inspect"
+          wlift "hatch/dist/${pkg}-${ver}.hatch" --inspect
+          echo "::endgroup::"
+          echo "::group::wasm32-target inspect"
+          wlift "hatch/dist/${pkg}-${ver}-wasm32.hatch" --inspect
+          echo "::endgroup::"
+
+      - name: Hatch publish (registry)
+        # Push the package metadata + bytes into the hatch-bot
+        # registry alongside the GitHub release. The CLI reads
+        # `~/.hatch/credentials` from `hatch login --token`.
+        env:
+          HATCH_BOT_URL:    ${{ vars.HATCH_BOT_URL }}
+          HATCH_BOT_SECRET: ${{ secrets.HATCH_BOT_SECRET }}
+        if: env.HATCH_BOT_SECRET != ''
+        run: |
+          set -eu
+          hatch login --token "$HATCH_BOT_SECRET"
+          hatch publish -C "hatch/packages/${{ needs.resolve.outputs.package }}"
+
+      - name: Attach to GitHub release
+        # Single release per `publish/<pkg>@<ver>` tag carries
+        # both target variants. The browser playground can fetch
+        # the wasm32 asset at the URL its default fetcher
+        # constructs once `release_url` is aligned to this
+        # naming convention.
+        if: startsWith(github.ref, 'refs/tags/publish/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ needs.resolve.outputs.package }}@${{ needs.resolve.outputs.version }}
+          files: |
+            hatch/dist/${{ needs.resolve.outputs.package }}-${{ needs.resolve.outputs.version }}.hatch
+            hatch/dist/${{ needs.resolve.outputs.package }}-${{ needs.resolve.outputs.version }}-wasm32.hatch
+          body: |
+            Pure-Wren package built from `packages/${{ needs.resolve.outputs.package }}`.
+            Two assets attached:
+              - `${{ needs.resolve.outputs.package }}-${{ needs.resolve.outputs.version }}.hatch` — host-target (zstd-compressed)
+              - `${{ needs.resolve.outputs.package }}-${{ needs.resolve.outputs.version }}-wasm32.hatch` — wasm-target (uncompressed)
