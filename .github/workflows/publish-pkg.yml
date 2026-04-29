@@ -97,17 +97,15 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install wlift + hatch CLIs
-        # Both binaries live in the `wren_lift` package — `wlift`
-        # bundles, `hatch` publishes to the registry. The
-        # workspace also contains `wlift_wasm` so cargo needs the
-        # package name as a positional to disambiguate. Pinning
-        # to `main` keeps CI bytecode + format compatible with
-        # whatever the consumer ecosystem currently speaks.
+      - name: Install wlift CLI
+        # `wlift` is what produces the .hatch artifact. Registry
+        # upload is *not* this workflow's job — a scheduled job
+        # in the hatch repo handles Supabase publish — so we
+        # don't need the `hatch` binary here.
         run: |
           cargo install --git https://github.com/wrenlift/WrenLift.git \
                         --branch main \
-                        --bin wlift --bin hatch --locked \
+                        --bin wlift --locked \
                         wren_lift
 
       - name: Bundle (host-target)
@@ -146,22 +144,6 @@ jobs:
           echo "::group::wasm32-target inspect"
           wlift "hatch/dist/${pkg}-${ver}-wasm32.hatch" --inspect
           echo "::endgroup::"
-
-      - name: Hatch publish (registry)
-        # Push the package metadata + bytes into the hatch-bot
-        # registry alongside the GitHub release. Best-effort —
-        # if the registry's down or the token isn't configured,
-        # we still want the GitHub release to land so the wasm
-        # playground can fetch the artifact.
-        env:
-          HATCH_BOT_URL:    ${{ vars.HATCH_BOT_URL }}
-          HATCH_BOT_SECRET: ${{ secrets.HATCH_BOT_SECRET }}
-        if: env.HATCH_BOT_SECRET != ''
-        continue-on-error: true
-        run: |
-          set -eu
-          hatch login --token "$HATCH_BOT_SECRET"
-          hatch publish -C "hatch/packages/${{ needs.resolve.outputs.package }}"
 
       - name: Attach to GitHub release
         # Single release per `publish/<pkg>@<ver>` tag carries
