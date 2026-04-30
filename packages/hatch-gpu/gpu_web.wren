@@ -189,16 +189,25 @@ class Json_ {
 // Static module entry — `Gpu.requestDevice({...})`. Mirrors
 // gpu_native.wren's static class.
 // ---------------------------------------------------------------
+/// Static module entry. `Gpu.requestDevice({...})` returns the
+/// process-wide [Device]; everything else (textures, buffers,
+/// pipelines, surfaces) is built off of the device.
 class Gpu {
-  // `descriptor` is accepted for parity with the native API; web
-  // ignores `backends` / `powerPreference` (the JS-side adapter
-  // request happens at plugin install with no Wren-visible knobs).
-  // Aborts the fiber if WebGPU isn't available.
+  /// Request a GPU device. `descriptor` is accepted for parity
+  /// with the native API; on web, `backends` / `powerPreference`
+  /// are ignored (the JS adapter request happens at plugin
+  /// install). Aborts the fiber when WebGPU isn't available.
+  ///
+  /// @param {Map} descriptor
+  /// @returns {Device}
   static requestDevice(descriptor) {
     if (!(descriptor is Map)) Fiber.abort("Gpu.requestDevice: descriptor must be a Map.")
     if (!GpuWeb_.init()) Fiber.abort("Gpu.requestDevice: WebGPU not available in this browser.")
     return Device.new_(0)
   }
+
+  /// Request a GPU device with default options.
+  /// @returns {Device}
   static requestDevice() { Gpu.requestDevice({}) }
 }
 
@@ -583,12 +592,21 @@ class GpuCore {
 // below is target-agnostic.
 // ---------------------------------------------------------------
 
+/// GPU device — the root of every GPU resource. Build one with
+/// [Gpu.requestDevice], then create [Buffer]s, [Texture]s,
+/// [Sampler]s, [ShaderModule]s, [BindGroupLayout]s,
+/// [PipelineLayout]s, [BindGroup]s, [RenderPipeline]s,
+/// [CommandEncoder]s, and [Surface]s off of it.
 class Device {
   construct new_(id) {
     _id = id
     _lastFrame = -1
   }
+  /// Foreign-handle id (internal).
+  /// @returns {Num}
   id { _id }
+  /// Device info string (driver / adapter description).
+  /// @returns {String}
   info { GpuCore.deviceInfo(_id) }
 
   // Web-only — the most-recently-acquired SurfaceFrame's handle.
@@ -600,27 +618,52 @@ class Device {
   lastFrame_           { _lastFrame }
   setLastFrame_(f)     { _lastFrame = f }
 
+  /// Allocate a [Buffer] from a descriptor (`size`, `usage`,
+  /// optional `mappedAtCreation`).
+  ///
+  /// @param {Map} descriptor
+  /// @returns {Buffer}
   createBuffer(descriptor) {
     if (!(descriptor is Map)) Fiber.abort("Device.createBuffer: descriptor must be a Map.")
     var bid = GpuCore.bufferCreate(_id, descriptor)
     return Buffer.new_(bid, descriptor["size"])
   }
 
+  /// Compile a WGSL [ShaderModule]. `descriptor.code` is the
+  /// shader source string.
+  ///
+  /// @param {Map} descriptor
+  /// @returns {ShaderModule}
   createShaderModule(descriptor) {
     if (!(descriptor is Map)) Fiber.abort("Device.createShaderModule: descriptor must be a Map.")
     var sid = GpuCore.shaderCreate(_id, descriptor)
     return ShaderModule.new_(sid)
   }
 
+  /// Allocate a [Texture] from a descriptor (`width`, `height`,
+  /// `format`, `usage`).
+  ///
+  /// @param {Map} descriptor
+  /// @returns {Texture}
   createTexture(descriptor) {
     if (!(descriptor is Map)) Fiber.abort("Device.createTexture: descriptor must be a Map.")
     var tid = GpuCore.textureCreate(_id, descriptor)
     return Texture.new_(tid, descriptor)
   }
 
-  // Build a texture from a decoded image (anything with .width /
-  // .height / .pixels). Same shape as native.
+  /// Build a [Texture] from a decoded image (anything with
+  /// `.width` / `.height` / `.pixels`).
+  ///
+  /// @param {Object} image
+  /// @returns {Texture}
   uploadImage(image) { uploadImage(image, {}) }
+
+  /// Same as `uploadImage(image)` with an `options` Map for
+  /// `format` (default `"rgba8unorm-srgb"`) and `extraUsage`.
+  ///
+  /// @param {Object} image
+  /// @param {Map} options
+  /// @returns {Texture}
   uploadImage(image, options) {
     var format = options.containsKey("format") ? options["format"] : "rgba8unorm-srgb"
     var extraUsage = options.containsKey("extraUsage") ? options["extraUsage"] : []
@@ -641,10 +684,22 @@ class Device {
     return tex
   }
 
+  /// Upload pixel bytes into a [Texture]. `descriptor` carries
+  /// `width` / `height` / `bytesPerRow`; the texture must have
+  /// been created with `"copy-dst"` in its `usage`.
+  ///
+  /// @param {Texture} texture
+  /// @param {ByteArray} bytes
+  /// @param {Map} descriptor
   writeTexture(texture, bytes, descriptor) {
     GpuCore.queueWriteTexture(texture.id, bytes, descriptor)
   }
 
+  /// Allocate a [Sampler] from a descriptor (`magFilter`,
+  /// `minFilter`, `addressModeU`, …).
+  ///
+  /// @param {Map} descriptor
+  /// @returns {Sampler}
   createSampler(descriptor) {
     if (!(descriptor is Map)) descriptor = {}
     var sid = GpuCore.samplerCreate(_id, descriptor)
@@ -680,13 +735,27 @@ class Device {
     return BindGroup.new_(bid)
   }
 
+  /// Compile a [RenderPipeline] from a descriptor (vertex /
+  /// fragment shader entry points, primitive state, blend / cull
+  /// modes, target formats, …).
+  ///
+  /// @param {Map} descriptor
+  /// @returns {RenderPipeline}
   createRenderPipeline(descriptor) {
     var dec = RenderPipeline.normalize_(descriptor)
     var pid = GpuCore.renderPipelineCreate(_id, dec)
     return RenderPipeline.new_(pid)
   }
 
+  /// Build a fresh [CommandEncoder] for this frame.
+  /// @returns {CommandEncoder}
   createCommandEncoder() { createCommandEncoder({}) }
+
+  /// Build a [CommandEncoder] from an explicit descriptor
+  /// (currently a no-op on web; accepted for API parity).
+  ///
+  /// @param {Map} descriptor
+  /// @returns {CommandEncoder}
   createCommandEncoder(descriptor) {
     var enc = CommandEncoder.new_(0, this)
     // Capture the live surface frame so `enc.beginRenderPass`
@@ -695,12 +764,23 @@ class Device {
     return enc
   }
 
+  /// Submit one or more finished [CommandEncoder]s to the GPU
+  /// queue. Encoders must have been closed via `enc.finish`.
+  ///
+  /// @param {List} encoders
   submit(encoders) {
     var ids = []
     for (e in encoders) ids.add(e.frameHandle_)
     GpuCore.queueSubmit(_id, ids)
   }
 
+  /// Build a [Surface] backed by a window or canvas. `handle` is
+  /// either a `Num` (DOM canvas id from
+  /// `wlift_dom_create_canvas`) or a `Map` describing an
+  /// already-created surface.
+  ///
+  /// @param {Object} handle
+  /// @returns {Surface}
   createSurface(handle) {
     if (!(handle is Map) && !(handle is Num)) {
       Fiber.abort("Device.createSurface: handle must be a Num (canvas) or Map.")
@@ -709,6 +789,8 @@ class Device {
     return Surface.new_(sid, this)
   }
 
+  /// Release the device. After destroy, all derived resources
+  /// (buffers, textures, pipelines …) are also invalid.
   destroy {
     GpuCore.deviceDestroy(_id)
     _id = -1
@@ -873,6 +955,10 @@ class RenderPipeline {
   }
 }
 
+/// Records GPU commands. Build one per frame via
+/// [Device.createCommandEncoder], open a render pass with
+/// [CommandEncoder.beginRenderPass], record draws, call `finish`,
+/// then submit through `device.submit([enc])`.
 class CommandEncoder {
   construct new_(id, device) {
     _id = id
@@ -880,7 +966,11 @@ class CommandEncoder {
     _frame = -1
   }
 
+  /// Foreign-handle id. Internal — passed to GPU bridge calls.
+  /// @returns {Num}
   id     { _id }
+  /// The owning [Device].
+  /// @returns {Device}
   device { _device }
 
   // Web detail: the frame handle lives on the encoder so
@@ -889,17 +979,45 @@ class CommandEncoder {
   frameHandle_     { _frame }
   attachFrame_(f)  { _frame = f }
 
+  /// Open a render pass against the given descriptor (colour /
+  /// depth attachments, clear values, …) and return a
+  /// [RenderPass] for recording draws.
+  ///
+  /// ## Example
+  ///
+  /// ```wren
+  /// var pass = enc.beginRenderPass({
+  ///   "colorAttachments": [{
+  ///     "view":       frame.view,
+  ///     "loadOp":     "clear",
+  ///     "clearValue": { "r": 0, "g": 0, "b": 0, "a": 1 },
+  ///     "storeOp":    "store"
+  ///   }]
+  /// })
+  /// ```
+  ///
+  /// @param {Map} descriptor
+  /// @returns {RenderPass}
   beginRenderPass(descriptor) { return RenderPass.new_(this, descriptor) }
 
+  /// Copy texels from a [Texture] into a [Buffer].
+  ///
+  /// @param {Texture} texture
+  /// @param {Buffer} buffer
+  /// @param {Map} descriptor
   copyTextureToBuffer(texture, buffer, descriptor) {
     GpuCore.encoderCopyTextureToBuffer(_id, texture.id, buffer.id, descriptor)
   }
 
+  /// Close recording. Returns `this` so callers can chain
+  /// `device.submit([enc.finish])` on a single line.
+  /// @returns {CommandEncoder}
   finish {
     GpuCore.encoderFinish(_id)
     return this
   }
 
+  /// Release the encoder's GPU resources.
   destroy {
     GpuCore.encoderDestroy(_id)
     _id = -1
@@ -973,16 +1091,28 @@ class RenderPass {
   }
 }
 
+/// Render target backed by a window or canvas. Configure once
+/// (size + format), then call [Surface.acquire] each frame to
+/// get the next frame's view.
 class Surface {
   construct new_(id, device) {
     _id     = id
     _device = device
   }
 
+  /// Foreign-handle id (internal).
+  /// @returns {Num}
   id { _id }
 
+  /// Apply a configuration descriptor (`width`, `height`,
+  /// `format`, `presentMode`, …). Call after window resize.
+  /// @param {Map} descriptor
   configure(descriptor) { GpuCore.surfaceConfigure(_id, descriptor) }
 
+  /// Acquire the next frame for rendering. Returns a
+  /// [SurfaceFrame] with the texture view to attach in the
+  /// render-pass descriptor.
+  /// @returns {SurfaceFrame}
   acquire() {
     var pair = GpuCore.surfaceAcquire(_id)
     // Stamp the device so a subsequent `createCommandEncoder()`
@@ -992,25 +1122,38 @@ class Surface {
     return SurfaceFrame.new_(pair["frame"], pair["view"])
   }
 
+  /// Release the surface.
   destroy {
     GpuCore.surfaceDestroy(_id)
     _id = -1
   }
 }
 
+/// One frame's worth of [Surface] state — texture view + handle.
+/// Returned by [Surface.acquire]; pass `view` into the colour
+/// attachment of [CommandEncoder.beginRenderPass].
 class SurfaceFrame {
   construct new_(frameId, viewId) {
     _id   = frameId
     _view = TextureView.new_(viewId, null, 0, 0)
   }
 
+  /// Foreign-handle id (internal).
+  /// @returns {Num}
   id   { _id }
+  /// `TextureView` to bind into a render pass's colour attachment.
+  /// @returns {TextureView}
   view { _view }
 
   // Web detail: `device.submit([encoder])` already calls
   // endFrame internally, so present is a no-op when the user
   // followed that flow. Calling it explicitly is still safe and
   // matches native's contract (where it schedules the swap).
+
+  /// Present the frame. On web, `device.submit([encoder])`
+  /// already presents internally; calling this explicitly is
+  /// safe and matches the native contract (where it schedules
+  /// the swap).
   present {
     if (_id >= 0) {
       GpuCore.surfacePresentFrame(_id)
@@ -1026,7 +1169,18 @@ class SurfaceFrame {
 // own, so the same code runs on both targets.
 // ---------------------------------------------------------------
 
+/// Orthographic camera for 2D scenes. `(0, 0)` is the top-left
+/// of the design-space rectangle the camera describes; `(width,
+/// height)` is the bottom-right. Set `origin` to scroll.
+///
+/// Pair with [Camera2D.fitContain] (or [Camera2D.contain] which
+/// builds + fits in one call) to letterbox the design rect into
+/// a differently-sized surface without distorting aspect ratio.
 class Camera2D {
+  /// Build a camera with the given design-space dimensions.
+  ///
+  /// @param {Num} width
+  /// @param {Num} height
   construct new(width, height) {
     _width  = width
     _height = height
@@ -1035,17 +1189,40 @@ class Camera2D {
     _padY   = 0
   }
 
+  /// Build a camera and fit it into a surface in one call. The
+  /// design rect (`designW × designH`) is letterboxed to keep
+  /// its aspect ratio when the surface aspect differs.
+  ///
+  /// @param {Num} designW
+  /// @param {Num} designH
+  /// @param {Num} surfaceW
+  /// @param {Num} surfaceH
+  /// @returns {Camera2D}
   static contain(designW, designH, surfaceW, surfaceH) {
     var c = Camera2D.new(designW, designH)
     c.fitContain(surfaceW, surfaceH)
     return c
   }
 
+  /// Design-space width in pixels.
+  /// @returns {Num}
   width   { _width }
+  /// Design-space height in pixels.
+  /// @returns {Num}
   height  { _height }
+  /// Top-left scroll offset, as a `Vec3` (z is ignored for 2D).
+  /// Move it to pan the camera.
+  /// @returns {Vec3}
   origin  { _origin }
   origin=(v) { _origin = v }
 
+  /// Recompute letterbox padding so the design rect fits inside
+  /// `(surfaceW × surfaceH)` while preserving aspect ratio.
+  /// Call after window resizes — `Game.resize` is the typical
+  /// home for this.
+  ///
+  /// @param {Num} surfaceW
+  /// @param {Num} surfaceH
   fitContain(surfaceW, surfaceH) {
     if (surfaceH == 0 || _height == 0) {
       _padX = 0
@@ -1063,11 +1240,17 @@ class Camera2D {
     }
   }
 
+  /// Drop letterbox padding so the design rect stretches to
+  /// fill the surface (aspect ratio not preserved).
   fitStretch() {
     _padX = 0
     _padY = 0
   }
 
+  /// View-projection matrix for this frame. Pass to
+  /// [Renderer2D.beginFrame] (or any 2D renderer that consumes
+  /// a `viewProj` uniform).
+  /// @returns {Mat4}
   viewProj {
     var l = _origin.x - _padX
     var r = _origin.x + _width + _padX
@@ -1077,6 +1260,26 @@ class Camera2D {
   }
 }
 
+/// Sprite batcher. Builds one big vertex buffer per frame and
+/// flushes it as a single draw call, so per-frame cost is
+/// dominated by the number of *texture switches*, not the
+/// number of sprites.
+///
+/// Pair with a [Camera2D] for the view-projection matrix:
+///
+/// ```wren
+/// _renderer = Renderer2D.new(g.device, g.surfaceFormat)
+/// _camera   = Camera2D.contain(640, 480, g.width, g.height)
+///
+/// // in draw(g):
+/// _renderer.beginFrame(_camera)
+/// sprite.draw(_renderer)        // queues into the batch
+/// _renderer.flush(g.pass)       // single GPU draw call
+/// ```
+///
+/// Capacity is `MAX_SPRITES_` (4096). Calling [Renderer2D.drawSprite]
+/// past the cap aborts the fiber — flush more often, or split
+/// the scene into multiple passes.
 class Renderer2D {
   static SPRITE_WGSL_ {
     return "
@@ -1115,7 +1318,18 @@ class Renderer2D {
   static FLOATS_PER_VERTEX_  { 8 }
   static VERTS_PER_SPRITE_   { 6 }
 
+  /// Build a 2D sprite batcher targeting a colour-only attachment.
+  ///
+  /// @param {Device} device
+  /// @param {String} surfaceFormat — e.g. `"bgra8unorm"`.
   construct new(device, surfaceFormat) { init_(device, surfaceFormat, null) }
+
+  /// Build a 2D batcher that also writes to a depth attachment.
+  /// Use when overlaying 2D HUDs on top of a 3D scene.
+  ///
+  /// @param {Device} device
+  /// @param {String} surfaceFormat
+  /// @param {String} depthFormat — e.g. `"depth32float"`.
   construct new(device, surfaceFormat, depthFormat) { init_(device, surfaceFormat, depthFormat) }
 
   init_(device, surfaceFormat, depthFormat) {
@@ -1209,6 +1423,11 @@ class Renderer2D {
     _bindGroups   = {}
   }
 
+  /// Reset the per-frame batch and upload `camera.viewProj`'s
+  /// matrix into the uniform buffer. Call once per frame, before
+  /// any `drawSprite*` calls.
+  ///
+  /// @param {Camera2D} camera
   beginFrame(camera) {
     var d = camera.viewProj.data
     _cameraScratch[0]  = d[0]
@@ -1234,15 +1453,52 @@ class Renderer2D {
     _curBindGroup = null
   }
 
+  /// Queue an axis-aligned, full-texture sprite at `(x, y)` with
+  /// the given size. Position is the top-left corner.
+  ///
+  /// @param {Texture} texture
+  /// @param {Num} x
+  /// @param {Num} y
+  /// @param {Num} w
+  /// @param {Num} h
   drawSprite(texture, x, y, w, h) {
     drawSprite_(texture, x, y, w, h, 0, 0, 1, 1, 1, 1, 1, 1)
   }
+
+  /// Queue an axis-aligned sprite with custom UV bounds —
+  /// useful for atlas slicing.
+  ///
+  /// @param {Texture} texture
+  /// @param {Num} x
+  /// @param {Num} y
+  /// @param {Num} w
+  /// @param {Num} h
+  /// @param {Num} u0
+  /// @param {Num} v0
+  /// @param {Num} u1
+  /// @param {Num} v1
   drawSpriteUV(texture, x, y, w, h, u0, v0, u1, v1) {
     drawSprite_(texture, x, y, w, h, u0, v0, u1, v1, 1, 1, 1, 1)
   }
+
+  /// Queue an axis-aligned sprite with a per-vertex tint.
+  /// `(r, g, b, a)` are floats in `[0, 1]`.
+  ///
+  /// @param {Texture} texture
+  /// @param {Num} x
+  /// @param {Num} y
+  /// @param {Num} w
+  /// @param {Num} h
+  /// @param {Num} r
+  /// @param {Num} g
+  /// @param {Num} b
+  /// @param {Num} a
   drawSpriteTinted(texture, x, y, w, h, r, g, b, a) {
     drawSprite_(texture, x, y, w, h, 0, 0, 1, 1, r, g, b, a)
   }
+
+  /// Queue a [Sprite] instance (delegates to `sprite.draw(this)`).
+  /// @param {Sprite} sprite
   draw(sprite) { sprite.draw(this) }
 
   drawSprite_(texture, x, y, w, h, u0, v0, u1, v1, r, g, b, a) {
@@ -1326,6 +1582,10 @@ class Renderer2D {
     return bg
   }
 
+  /// Submit the queued batch to `pass` as a single draw call,
+  /// then reset for the next frame. No-op when nothing is queued.
+  ///
+  /// @param {RenderPass} pass
   flush(pass) {
     if (_spriteCount == 0) return
     _vbo.writeFloats(0, _floats)
@@ -1339,6 +1599,9 @@ class Renderer2D {
     _curTexture = null
   }
 
+  /// Release the GPU resources held by this renderer (vertex /
+  /// uniform buffers, sampler, pipeline, layouts). Call when the
+  /// renderer goes out of scope; not called automatically.
   destroy {
     _vbo.destroy
     _ubo.destroy
@@ -1349,7 +1612,28 @@ class Renderer2D {
   }
 }
 
+/// Mutable sprite state — `(texture, x, y, w, h)` plus tint /
+/// scale / anchor / rotation / UV. Reuse one `Sprite` across
+/// many frames; mutate its fields between draws. The renderer
+/// batches by texture, so swapping `_quad`'s position + UV per
+/// call keeps everything in a single draw call.
+///
+/// ```wren
+/// _quad = Sprite.new(_atlas)
+/// _quad.anchor(0.5, 0.5)
+///
+/// // each frame:
+/// _quad.x = enemy.x
+/// _quad.y = enemy.y
+/// _quad.uv(u0, v0, u1, v1)
+/// _quad.draw(_renderer)
+/// ```
 class Sprite {
+  /// Build a sprite for `texture`, with width/height initialised
+  /// to the texture's natural size. Anchor defaults to top-left;
+  /// call [Sprite.anchor] to recentre.
+  ///
+  /// @param {Texture} texture
   construct new(texture) {
     _tex      = texture
     _x        = 0
@@ -1372,56 +1656,111 @@ class Sprite {
     _rotation = 0
   }
 
+  /// The bound `Texture`. Reassign to swap atlases mid-frame.
+  /// @returns {Texture}
   texture  { _tex }
   texture=(t) { _tex = t }
+  /// Anchor-relative X position in surface pixels.
+  /// @returns {Num}
   x        { _x }
   x=(v)    { _x = v }
+  /// Anchor-relative Y position in surface pixels.
+  /// @returns {Num}
   y        { _y }
   y=(v)    { _y = v }
+  /// Pre-scale width.
+  /// @returns {Num}
   width    { _w }
   width=(v) { _w = v }
+  /// Pre-scale height.
+  /// @returns {Num}
   height   { _h }
   height=(v) { _h = v }
+  /// Multiplier on `width`. @returns {Num}
   scaleX   { _scaleX }
   scaleX=(v) { _scaleX = v }
+  /// Multiplier on `height`. @returns {Num}
   scaleY   { _scaleY }
   scaleY=(v) { _scaleY = v }
+  /// Set both `scaleX` and `scaleY` to the same value.
+  /// @param {Num} v
   scale=(v) {
     _scaleX = v
     _scaleY = v
   }
+  /// Anchor X in `[0, 1]` — `0` = left edge, `0.5` = centre, `1` = right.
+  /// @returns {Num}
   anchorX  { _anchorX }
+  /// Anchor Y in `[0, 1]` — `0` = top, `0.5` = centre, `1` = bottom.
+  /// @returns {Num}
   anchorY  { _anchorY }
+  /// Set the anchor in one call.
+  /// @param {Num} ax
+  /// @param {Num} ay
   anchor(ax, ay) {
     _anchorX = ax
     _anchorY = ay
   }
+  /// Per-vertex tint as an `[r, g, b, a]` list, each in `[0, 1]`.
+  /// @returns {List}
   tint     { [_tintR, _tintG, _tintB, _tintA] }
+  /// Replace the tint from a 4-element list. Allocates the list on
+  /// every read of `tint`; prefer [Sprite.setTint] in hot paths.
+  /// @param {List} rgba
   tint=(rgba) {
     _tintR = rgba[0]
     _tintG = rgba[1]
     _tintB = rgba[2]
     _tintA = rgba[3]
   }
+  /// Set all four tint channels in a single call without
+  /// allocating an intermediate list. Prefer this in hot per-
+  /// frame draw loops; reserve `tint = [r,g,b,a]` for setup /
+  /// cold-path code where readability beats an alloc.
+  ///
+  /// @param {Num} r
+  /// @param {Num} g
+  /// @param {Num} b
+  /// @param {Num} a
   setTint(r, g, b, a) {
     _tintR = r
     _tintG = g
     _tintB = b
     _tintA = a
   }
+  /// Alpha channel of the tint. `1.0` is fully opaque.
+  /// @returns {Num}
   alpha    { _tintA }
   alpha=(a) { _tintA = a }
+  /// Set custom UV bounds for atlas slicing. `(u0, v0)` is the
+  /// top-left, `(u1, v1)` is the bottom-right, both in `[0, 1]`.
+  ///
+  /// @param {Num} u0
+  /// @param {Num} v0
+  /// @param {Num} u1
+  /// @param {Num} v1
   uv(u0, v0, u1, v1) {
     _u0 = u0
     _v0 = v0
     _u1 = u1
     _v1 = v1
   }
+  /// Visibility gate. `false` skips this sprite during `draw`.
+  /// @returns {Bool}
   visible  { _visible }
   visible=(v) { _visible = v }
+  /// Rotation in radians, around the anchor. `0` keeps the
+  /// sprite axis-aligned (faster path).
+  /// @returns {Num}
   rotation   { _rotation }
   rotation=(r) { _rotation = r }
 
+  /// Queue this sprite into `renderer`'s batch. Picks the
+  /// fast axis-aligned path when `rotation == 0` and the UV /
+  /// tint are at defaults; otherwise routes through the rotated
+  /// or tinted path.
+  ///
+  /// @param {Renderer2D} renderer
   draw(renderer) {
     if (!_visible) return
     var dw = _w * _scaleX

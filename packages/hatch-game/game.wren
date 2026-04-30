@@ -63,17 +63,21 @@ import "@hatch:time"   for Clock
 #!wasm
 import "wlift_prelude" for Browser
 
-// Aggregated keyboard / mouse state. Updated each frame by
-// Game.run from the window's event stream. Both event-style
-// (`g.events`, the raw list) and state-style polling (`g.input`)
-// are available — pick whichever fits the situation.
-//
-//   if (g.input.isDown("Space")) jump()
-//   if (g.input.justPressed("Escape")) g.requestQuit
-//
-// Key names match winit's `physical_key` Debug formatting (e.g.
-// `KeyA`, `Space`, `Escape`, `ArrowLeft`). Mouse buttons are
-// `left`, `right`, `middle`, `other`.
+/// Aggregated keyboard / mouse state. Updated each frame by
+/// `Game.run` from the window's event stream. Both event-style
+/// (`g.events`, the raw list) and state-style polling (`g.input`)
+/// are available — pick whichever fits the situation.
+///
+/// ## Example
+///
+/// ```wren
+/// if (g.input.isDown("Space")) jump()
+/// if (g.input.justPressed("Escape")) g.requestQuit
+/// ```
+///
+/// Key names match winit's `physical_key` Debug formatting (e.g.
+/// `KeyA`, `Space`, `Escape`, `ArrowLeft`). Mouse buttons are
+/// `left`, `right`, `middle`, `other`.
 class Input {
   construct new_() {
     _down       = {}    // key string → true while held
@@ -132,49 +136,88 @@ class Input {
     return s
   }
 
-  // True while `key` is held — works between key-down and key-up.
+  /// True while `key` is held — between key-down and key-up.
+  ///
+  /// @param {String} key — winit-style key code (`"KeyA"`, `"Space"`, …).
+  /// @returns {Bool}
   isDown(key) { _down.containsKey(key) }
 
-  // True only on the single frame `key` first transitioned to
-  // pressed. Reset by the next beginFrame_.
+  /// True only on the single frame `key` first transitioned to
+  /// pressed. Reset by the next frame.
+  ///
+  /// @param {String} key
+  /// @returns {Bool}
   justPressed(key) { _pressed.containsKey(key) }
 
-  // True only on the single frame `key` was released.
+  /// True only on the single frame `key` was released.
+  ///
+  /// @param {String} key
+  /// @returns {Bool}
   justReleased(key) { _released.containsKey(key) }
 
-  // Mouse state — same model as keyboard. `button` is one of
-  // "left" / "right" / "middle" / "other".
-  mouseDown(button)        { _mouseDown.containsKey(button) }
-  mouseJustPressed(button) { _mouseHit.containsKey(button) }
+  /// Mouse-button held state. `button` is one of
+  /// `"left"` / `"right"` / `"middle"` / `"other"`.
+  ///
+  /// @param {String} button
+  /// @returns {Bool}
+  mouseDown(button)         { _mouseDown.containsKey(button) }
+
+  /// True only on the single frame `button` first transitioned to
+  /// pressed.
+  ///
+  /// @param {String} button
+  /// @returns {Bool}
+  mouseJustPressed(button)  { _mouseHit.containsKey(button) }
+
+  /// True only on the single frame `button` was released.
+  ///
+  /// @param {String} button
+  /// @returns {Bool}
   mouseJustReleased(button) { _mouseRel.containsKey(button) }
+
+  /// Mouse X in surface pixels. Origin is the top-left.
+  ///
+  /// @returns {Num}
   mouseX { _mouseX }
+
+  /// Mouse Y in surface pixels. Origin is the top-left.
+  ///
+  /// @returns {Num}
   mouseY { _mouseY }
 }
 
-// Render-target dimensions in pixels. Lifecycle:
-//   - constructed once at Game.run startup from the configured
-//     surface size (post-clamp, see Surface.configure)
-//   - replaced atomically when the framework re-configures the
-//     surface on a window resize
-//
-// Frequently the only thing a Camera2D / Camera3D constructor
-// needs, so renderers and game code can pass `g.viewport` around
-// instead of unpacking `(g.width, g.height)` everywhere.
+/// Render-target dimensions in pixels.
+///
+/// Constructed once at `Game.run` startup from the configured
+/// surface size (post-clamp), and replaced atomically when the
+/// framework re-configures the surface on a window resize.
+///
+/// Frequently the only thing a `Camera2D` / `Camera3D` constructor
+/// needs, so renderers and game code can pass `g.viewport` around
+/// instead of unpacking `(g.width, g.height)` everywhere.
 class Viewport {
   construct new_(w, h) {
     _width  = w
     _height = h
   }
+  /// Width in surface pixels.
+  /// @returns {Num}
   width  { _width }
+  /// Height in surface pixels.
+  /// @returns {Num}
   height { _height }
+  /// Width / height. Returns 1.0 when the height is zero so
+  /// callers can do `camera.aspect = g.viewport.aspect` without
+  /// guarding against division by zero on the first frame.
+  /// @returns {Num}
   aspect { _height == 0 ? 1.0 : (_width / _height) }
   toString { "Viewport(%(_width)x%(_height))" }
 }
 
-// Per-frame state passed to the user's setup / update / draw.
-// Wraps the long-lived pieces (window, device, surface) plus a
-// scratchpad Map so users can stash frame-to-frame state without
-// closing over locals or building their own struct.
+/// Per-frame state passed to the user's `setup` / `update` / `draw`.
+/// Wraps the long-lived pieces (window, device, surface) plus a
+/// scratchpad Map so users can stash frame-to-frame state without
+/// closing over locals or building their own struct.
 class GameState {
   construct new_(window, device, surfaceFormat) {
     _window  = window
@@ -196,55 +239,74 @@ class GameState {
     _startTime = 0
   }
 
-  // Aggregated keyboard / mouse state for this frame. See `Input`
-  // above — `g.input.isDown("Space")`, `g.input.mouseX`, etc.
+  /// Aggregated keyboard / mouse state for this frame.
+  /// See [Input] — `g.input.isDown("Space")`, `g.input.mouseX`, etc.
+  /// @returns {Input}
   input { _input }
 
-  // Depth attachment (`null` if the loop wasn't configured with
-  // `"depth": true`). The framework attaches this automatically
-  // when present; renderers like Renderer3D pass `g.depthFormat`
-  // when they build their pipeline.
+  /// Depth attachment format string (`null` if the loop wasn't
+  /// configured with `"depth": true`). Renderers like Renderer3D
+  /// thread this into their pipeline build.
+  /// @returns {String}
   depthFormat       { _depthFormat }
   depthFormat=(v)   { _depthFormat = v }
+  /// Bound depth `TextureView` for this frame. Framework-managed.
   depthView         { _depthView }
   depthView=(v)     { _depthView = v }
 
+  /// The active `Window`.
   window        { _window }
+  /// The GPU `Device` for this run.
   device        { _device }
+  /// The active `Surface`. Set after the first configure.
   surface       { _surface }
   surface=(s)   { _surface = s }
+  /// Surface texture format string (e.g. `"bgra8unorm"`).
+  /// @returns {String}
   surfaceFormat { _surfaceFormat }
 
+  /// Active `RenderPass` for this frame. `null` outside `draw`.
   pass          { _pass }
   pass=(p)      { _pass = p }
 
+  /// Raw OS event list for this frame — only useful when state-
+  /// polling via `g.input` doesn't fit. Each entry is a `Map`.
+  /// @returns {List}
   events        { _events }
   events=(e)    { _events = e }
 
-  // Seconds since the previous frame. Zero on the first frame
-  // (before any time has elapsed) — guard division accordingly.
+  /// Seconds since the previous frame. Zero on the first frame
+  /// (before any time has elapsed) — guard division accordingly.
+  /// @returns {Num}
   dt            { _dt }
   dt=(v)        { _dt = v }
 
-  // Total elapsed seconds since Game.run started.
+  /// Total elapsed seconds since `Game.run` started.
+  /// @returns {Num}
   elapsed       { _elapsed }
   elapsed=(v)   { _elapsed = v }
 
-  // Frame index, monotonically increasing from 0.
+  /// Frame index, monotonically increasing from 0.
+  /// @returns {Num}
   tick          { _tick }
   tick=(v)      { _tick = v }
 
-  // Surface dimensions in actual pixels — what wgpu draws into.
-  // The framework keeps these in sync with the configured surface
-  // (which may be clamped on resize past the GPU's max texture
-  // dimension), so a Camera2D / Camera3D built from `g.width` /
-  // `g.height` always matches the render target. Distinct from
-  // `g.window.size`, which reports the OS window's pre-clamp size.
-  //
-  // `g.viewport` returns a `Viewport` value with .width / .height
-  // / .aspect for callers that want to thread one object through.
+  /// Surface dimensions in actual pixels — what wgpu draws into.
+  /// The framework keeps these in sync with the configured
+  /// surface (which may be clamped on resize past the GPU's max
+  /// texture dimension), so a `Camera2D` / `Camera3D` built from
+  /// `g.width` / `g.height` always matches the render target.
+  /// Distinct from `g.window.size`, which reports the OS window's
+  /// pre-clamp size.
+  /// @returns {Num}
   width    { _viewport.width }
+  /// Surface height in pixels. See [GameState.width].
+  /// @returns {Num}
   height   { _viewport.height }
+  /// `Viewport` value with `.width` / `.height` / `.aspect` —
+  /// the convenient single-object form for callers that want
+  /// to thread one parameter through.
+  /// @returns {Viewport}
   viewport { _viewport }
   // Internal: replace the viewport. Called by Game.run on startup
   // and on every resize event after the surface has been
@@ -261,48 +323,86 @@ class GameState {
   startTime_      { _startTime }
   startTime_=(v)  { _startTime = v }
 
-  // Scratchpad. `g.set("renderer", r)` from setup, `g.get("renderer")`
-  // from draw — keeps the user out of closure-state-management.
+  /// Scratchpad write — `g.set("renderer", r)` in `setup`,
+  /// `g.get("renderer")` in `draw`. Keeps frame-to-frame state
+  /// out of closure capture.
+  ///
+  /// @param {String} key
+  /// @param {Object} value
   set(key, value) { _userData[key] = value }
+  /// Scratchpad read. Returns `null` when the key isn't set.
+  /// @param {String} key
+  /// @returns {Object}
   get(key)        { _userData[key] }
+  /// True when `key` has been set on the scratchpad.
+  /// @param {String} key
+  /// @returns {Bool}
   has(key)        { _userData.containsKey(key) }
 
-  // Set from anywhere to break the loop on the next frame
-  // boundary. `Game.run` returns shortly after.
+  /// Mark the loop for shutdown. `Game.run` returns at the next
+  /// frame boundary.
   requestQuit { _quit = true }
+  /// True once any code path has called `requestQuit`.
+  /// @returns {Bool}
   quitRequested { _quit }
 }
 
-// Base class for user games. Subclass it, override
-// `config` / `setup` / `update` / `draw` (each optional), and
-// hand the subclass to `Game.run`. Default implementations are
-// no-ops so a stub subclass with only `draw` runs cleanly.
+/// Base class for user games. Subclass it, override
+/// `config` / `setup` / `update` / `draw` (each optional), and
+/// hand the subclass to `Game.run`. Default implementations are
+/// no-ops so a stub subclass with only `draw` runs cleanly.
 class Game {
   construct new() {}
 
-  // Window / surface configuration. Override in your subclass:
-  //
-  //   class MyGame is Game {
-  //     config { {"title": "...", "width": 800, "height": 600} }
-  //   }
-  //
-  // Defaults below merge in for any key the override leaves out.
+  /// Window / surface configuration. Override in your subclass.
+  ///
+  /// ## Example
+  ///
+  /// ```wren
+  /// class MyGame is Game {
+  ///   config { {"title": "...", "width": 800, "height": 600} }
+  /// }
+  /// ```
+  ///
+  /// `Game.DEFAULTS_` merges in for any key the override omits.
+  ///
+  /// @returns {Map}
   config { {} }
 
-  // Lifecycle hooks. `g` is the per-frame `GameState` — see the
-  // class above for getters (g.dt, g.input, g.pass, etc.).
+  /// One-time initialisation hook. Called after the window /
+  /// device / surface are ready, before the first frame.
+  ///
+  /// @param {GameState} g
   setup(g)  {}
+
+  /// Per-frame update hook. Called once per vsync after input
+  /// state has been refreshed and before `draw`.
+  ///
+  /// @param {GameState} g
   update(g) {}
+
+  /// Per-frame render hook. `g.pass` is bound to the active
+  /// `RenderPass`; flush any batches before returning.
+  ///
+  /// @param {GameState} g
   draw(g)   {}
 
-  // Fired after the surface (and optional depth attachment) have
-  // been re-allocated to match the new size. Override to rebuild
-  // anything tied to viewport dimensions — typically a Camera2D /
-  // Camera3D — so projections track the window.
-  //
-  //   resize(g, w, h) {
-  //     _camera = Camera2D.new(w, h)
-  //   }
+  /// Fired after the surface (and optional depth attachment) have
+  /// been re-allocated to match the new size. Override to rebuild
+  /// anything tied to viewport dimensions — typically a `Camera2D`
+  /// / `Camera3D` — so projections track the window.
+  ///
+  /// ## Example
+  ///
+  /// ```wren
+  /// resize(g, w, h) {
+  ///   _camera = Camera2D.new(w, h)
+  /// }
+  /// ```
+  ///
+  /// @param {GameState} g
+  /// @param {Num} width
+  /// @param {Num} height
   resize(g, width, height) {}
 
   // Defaults applied for keys the user's `config` override omits.
@@ -333,18 +433,10 @@ class Game {
     }
   }
 
-  // Static entry point. Constructs an instance of `klass`,
-  // resolves its config, opens window + device + surface, and
-  // drives the loop until the window closes or `g.requestQuit`
-  // is called.
-  //
-  //   class MyGame is Game { ... }
-  //   Game.run(MyGame)
   // Walk every queued OS event, route input through `g.input`,
   // and honour close requests. Resize events are intentionally
   // *not* handled here — `Game.run` polls `Window.size` directly
-  // every frame. See the call site for why polling beats
-  // event-driven resizes on macOS.
+  // every frame.
   //
   // Indexed `while` loop, NOT `for (e in events)` — the for-in
   // body forms a closure for outer-scope locals, and the
@@ -361,6 +453,19 @@ class Game {
     }
   }
 
+  /// Static entry point. Instantiates `klass`, resolves its
+  /// `config`, opens window + device + surface, and drives the
+  /// loop until the window closes or any code path calls
+  /// `g.requestQuit`.
+  ///
+  /// ## Example
+  ///
+  /// ```wren
+  /// class MyGame is Game { ... }
+  /// Game.run(MyGame)
+  /// ```
+  ///
+  /// @param {Class} klass — a class extending `Game`.
   static run(klass) {
     if (!(klass is Class)) {
       Fiber.abort("Game.run: argument must be a Class extending Game.")
