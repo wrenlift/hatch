@@ -658,7 +658,8 @@ class Http_ {
       query = qIdx + 1 < target.count ? target[(qIdx + 1)..(target.count - 1)] : ""
     }
 
-    // Body (Content-Length only for now).
+    // Body — Content-Length framing only. Chunked transfer-
+    // encoding is planned.
     var body = ""
     var clen = 0
     for (k in headers.keys) {

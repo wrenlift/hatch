@@ -2143,10 +2143,10 @@ class Renderer3D {
   }
 }
 
-// LivePipeline on the web is a simple wrapper for now; the asset
-// hot-reload hook needs the parked-fiber + watch path to round-
-// trip from the browser's filesystem proxy, which lands in a
-// follow-up. The constructor builds once and keeps the shape so
+// LivePipeline on the web is a one-shot wrapper today; live
+// hot-reload is planned and needs the parked-fiber + watch path
+// to round-trip from the browser's filesystem proxy. The
+// constructor builds once and keeps the shape so
 // portable code referencing `LivePipeline` doesn't break.
 class LivePipeline {
   construct new(device, db, shaderPath, descriptor) {

@@ -23,8 +23,8 @@
 //   Fmt.enabled = false
 //   Fmt.green("x")    // → "x"  (no escape codes)
 //
-// No TTY auto-detection today (needs FFI; will land alongside
-// `@hatch:os`). For now, callers flip the flag themselves.
+// TTY auto-detection is planned (needs FFI; lands alongside
+// `@hatch:os`); until then, callers flip the flag themselves.
 
 class Fmt {
   // -- Global toggle ------------------------------------------------------

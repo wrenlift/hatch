@@ -464,7 +464,10 @@ class World {
     // isn't registered yet.
     var p = _entities.containsKey(e) ? _entities[e] : null
     _entities.remove(e)
-    if (p != null) {} // placeholder for future children-of-removed-parent logic
+    // Cascading children-of-removed-parent cleanup is planned
+    // — `p` is captured here so a future pass can rewalk the
+    // hierarchy without changing this signature.
+    if (p != null) {}
   }
 
   // -- Component CRUD -----------------------------------------

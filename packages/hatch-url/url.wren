@@ -338,8 +338,9 @@ class Url {
   // fall back to a best-effort UTF-8 interpretation for higher
   // bytes by letting the codepoint round-trip.
   static bytesToString_(bytes) {
-    // Pure-Wren UTF-8 decoding for the BMP. Good enough for HTTP
-    // paths and query strings, which are the common cases.
+    // Pure-Wren UTF-8 decoding for the BMP — the common case
+    // for HTTP paths and query strings. Astral-plane codepoints
+    // are passed through one byte at a time.
     var i = 0
     var n = bytes.count
     var parts = []
