@@ -1151,7 +1151,25 @@ class Renderer2D {
       },
       "fragment": {
         "module": shader, "entryPoint": "fs_main",
-        "targets": [{ "format": surfaceFormat }]
+        "targets": [{
+          "format": surfaceFormat,
+          // Standard alpha-blend (src-over). Without this the
+          // colour target writes RGB verbatim regardless of the
+          // fragment's alpha — soft sprites (gradient glows,
+          // anti-aliased edges) read as hard discs.
+          "blend": {
+            "color": {
+              "srcFactor": "src-alpha",
+              "dstFactor": "one-minus-src-alpha",
+              "operation": "add"
+            },
+            "alpha": {
+              "srcFactor": "one",
+              "dstFactor": "one-minus-src-alpha",
+              "operation": "add"
+            }
+          }
+        }]
       },
       "primitive": { "topology": "triangle-list", "cullMode": "none" },
       "label": "renderer2d-pipeline"
@@ -1248,6 +1266,41 @@ class Renderer2D {
     _spriteCount = _spriteCount + 1
   }
 
+  // Rotated quad. (cx, cy) is the centre; w/h are full width and
+  // height; rot is in radians. Local-space corners (-hw,-hh),
+  // (hw,-hh), (hw,hh), (-hw,hh) are rotated then translated to
+  // (cx, cy). Same vertex layout as drawSprite_ so it batches in
+  // the same flush call.
+  drawSpriteRotated_(texture, cx, cy, w, h, rot, u0, v0, u1, v1, r, g, b, a) {
+    if (_curTexture != null && _curTexture.id != texture.id) {
+      Fiber.abort("Renderer2D: texture switches require an explicit flush(pass).")
+    }
+    _curTexture = texture
+    if (_spriteCount >= Renderer2D.MAX_SPRITES_) {
+      Fiber.abort("Renderer2D: batch full (%(_spriteCount) sprites). Call flush(pass) sooner.")
+    }
+    var hw = w / 2
+    var hh = h / 2
+    var co = rot.cos
+    var si = rot.sin
+    var x0 = cx + (-hw)*co - (-hh)*si
+    var y0 = cy + (-hw)*si + (-hh)*co
+    var x1 = cx + ( hw)*co - (-hh)*si
+    var y1 = cy + ( hw)*si + (-hh)*co
+    var x2 = cx + ( hw)*co - ( hh)*si
+    var y2 = cy + ( hw)*si + ( hh)*co
+    var x3 = cx + (-hw)*co - ( hh)*si
+    var y3 = cy + (-hw)*si + ( hh)*co
+    var f = _floats
+    pushVertex_(f, x0, y0, u0, v0, r, g, b, a)
+    pushVertex_(f, x3, y3, u0, v1, r, g, b, a)
+    pushVertex_(f, x2, y2, u1, v1, r, g, b, a)
+    pushVertex_(f, x0, y0, u0, v0, r, g, b, a)
+    pushVertex_(f, x2, y2, u1, v1, r, g, b, a)
+    pushVertex_(f, x1, y1, u1, v0, r, g, b, a)
+    _spriteCount = _spriteCount + 1
+  }
+
   pushVertex_(f, px, py, u, v, r, g, b, a) {
     f.add(px)
     f.add(py)
@@ -1316,6 +1369,7 @@ class Sprite {
     _u1       = 1
     _v1       = 1
     _visible  = true
+    _rotation = 0
   }
 
   texture  { _tex }
@@ -1365,11 +1419,24 @@ class Sprite {
   }
   visible  { _visible }
   visible=(v) { _visible = v }
+  rotation   { _rotation }
+  rotation=(r) { _rotation = r }
 
   draw(renderer) {
     if (!_visible) return
     var dw = _w * _scaleX
     var dh = _h * _scaleY
+    if (_rotation != 0) {
+      // Rotated path. The rotation pivot is the visual centre of
+      // the sprite; we offset by (anchor - 0.5) so the pivot
+      // matches the axis-aligned anchor convention.
+      var ox = (0.5 - _anchorX) * dw
+      var oy = (0.5 - _anchorY) * dh
+      renderer.drawSpriteRotated_(_tex, _x + ox, _y + oy, dw, dh, _rotation,
+                                  _u0, _v0, _u1, _v1,
+                                  _tintR, _tintG, _tintB, _tintA)
+      return
+    }
     var dx = _x - _anchorX * dw
     var dy = _y - _anchorY * dh
     if (_u0 == 0 && _v0 == 0 && _u1 == 1 && _v1 == 1 &&

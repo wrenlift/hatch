@@ -1,5 +1,5 @@
 name        = "@hatch:gpu"
-version     = "0.2.4"
+version     = "0.2.5"
 entry       = "gpu"
 description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, CommandEncoder, RenderPass on the bottom; Camera2D/3D, Renderer2D (sprite batcher), Renderer3D (lit), Mesh, Material on top. wgpu on native, WebGPU on web — same Wren API both targets."
 
