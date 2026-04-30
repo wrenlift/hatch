@@ -32,30 +32,30 @@
 class FP {
   // -- Identity / constant / no-op ---------------------------------------
 
-  // A no-op function that returns its argument unchanged. Useful
-  // as a default where a key-extractor is expected.
-  //
-  //   FP.distinctBy([1, 2, 2, 3], FP.identity)  //= [1, 2, 3]
+  /// A no-op function that returns its argument unchanged. Useful
+  /// as a default where a key-extractor is expected.
+  ///
+  ///   FP.distinctBy([1, 2, 2, 3], FP.identity)  //= [1, 2, 3]
   static identity { Fn.new {|x| x } }
 
-  // Returns a function that ignores its argument and always yields
-  // `value`. Handy for `.map(FP.constant(0))` to zero out a list.
+  /// Returns a function that ignores its argument and always yields
+  /// `value`. Handy for `.map(FP.constant(0))` to zero out a list.
   static constant(value) { Fn.new {|_| value } }
 
-  // Returns an empty function — takes one arg, returns null. The
-  // sensible default for `.tap` when you only want a debug print.
+  /// Returns an empty function — takes one arg, returns null. The
+  /// sensible default for `.tap` when you only want a debug print.
   static noop { Fn.new {|_| null } }
 
   // -- Constructors ------------------------------------------------------
 
-  // Build a list of `value` repeated `n` times. Equivalent to
-  // `List.filled(n, value)` but reads naturally alongside other
-  // FP constructors.
+  /// Build a list of `value` repeated `n` times. Equivalent to
+  /// `List.filled(n, value)` but reads naturally alongside other
+  /// FP constructors.
   static repeat(value, n) { List.filled(n, value) }
 
-  // Build a list by applying `fn(i)` for `i` in `0...n`.
-  //
-  //   FP.generate(5, Fn.new {|i| i * i })    //= [0, 1, 4, 9, 16]
+  /// Build a list by applying `fn(i)` for `i` in `0...n`.
+  ///
+  ///   FP.generate(5, Fn.new {|i| i * i })    //= [0, 1, 4, 9, 16]
   static generate(n, fn) {
     var out = []
     var i = 0
@@ -68,16 +68,16 @@ class FP {
 
   // -- Basic transforms --------------------------------------------------
 
-  // Alias for `seq.where(fn)`. Reads better in some chains.
+  /// Alias for `seq.where(fn)`. Reads better in some chains.
   static filter(seq, fn) { seq.where(fn) }
 
-  // Each element produces a sub-sequence; flatten one level.
-  //
-  //   FP.flatMap([[1, 2], [3], [4, 5]], Fn.new {|xs| xs })
-  //   //= [1, 2, 3, 4, 5]
-  //
-  // `fn` may return any Sequence (List, Range, String, another
-  // wrapper). We iterate each result and concatenate.
+  /// Each element produces a sub-sequence; flatten one level.
+  ///
+  ///   FP.flatMap([[1, 2], [3], [4, 5]], Fn.new {|xs| xs })
+  ///   //= [1, 2, 3, 4, 5]
+  ///
+  /// `fn` may return any Sequence (List, Range, String, another
+  /// wrapper). We iterate each result and concatenate.
   static flatMap(seq, fn) {
     var out = []
     for (x in seq) {
@@ -94,13 +94,13 @@ class FP {
     return out
   }
 
-  // Run `fn` on each element for its side effect; return the list
-  // of the same elements unchanged. Chain-friendly.
-  //
-  //   Pipe.of([1, 2, 3])
-  //     .tap (Fn.new {|x| System.print(x) })
-  //     .map (Fn.new {|x| x * 2 })
-  //     .toList
+  /// Run `fn` on each element for its side effect; return the list
+  /// of the same elements unchanged. Chain-friendly.
+  ///
+  ///   Pipe.of([1, 2, 3])
+  ///     .tap (Fn.new {|x| System.print(x) })
+  ///     .map (Fn.new {|x| x * 2 })
+  ///     .toList
   static tap(seq, fn) {
     var out = []
     for (x in seq) {
@@ -112,12 +112,12 @@ class FP {
 
   // -- Grouping / splitting ----------------------------------------------
 
-  // Bucket elements by `keyFn(element)`. Returns a Map from key
-  // to a List of elements with that key. Preserves per-bucket
-  // insertion order.
-  //
-  //   FP.groupBy(["apple", "ant", "bee"], Fn.new {|s| s[0] })
-  //   //= { "a": ["apple", "ant"], "b": ["bee"] }
+  /// Bucket elements by `keyFn(element)`. Returns a Map from key
+  /// to a List of elements with that key. Preserves per-bucket
+  /// insertion order.
+  ///
+  ///   FP.groupBy(["apple", "ant", "bee"], Fn.new {|s| s[0] })
+  ///   //= { "a": ["apple", "ant"], "b": ["bee"] }
   static groupBy(seq, keyFn) {
     var out = {}
     for (x in seq) {
@@ -128,11 +128,11 @@ class FP {
     return out
   }
 
-  // Split into `[matches, rest]` using a boolean predicate. Single
-  // pass, preserves order within each side.
-  //
-  //   FP.partition([1, 2, 3, 4], Fn.new {|n| n > 2 })
-  //   //= [[3, 4], [1, 2]]
+  /// Split into `[matches, rest]` using a boolean predicate. Single
+  /// pass, preserves order within each side.
+  ///
+  ///   FP.partition([1, 2, 3, 4], Fn.new {|n| n > 2 })
+  ///   //= [[3, 4], [1, 2]]
   static partition(seq, pred) {
     var yes = []
     var no = []
@@ -142,10 +142,10 @@ class FP {
     return [yes, no]
   }
 
-  // Break into fixed-size chunks. The last chunk may be shorter
-  // if the total isn't divisible by `n`.
-  //
-  //   FP.chunked([1, 2, 3, 4, 5], 2)  //= [[1, 2], [3, 4], [5]]
+  /// Break into fixed-size chunks. The last chunk may be shorter
+  /// if the total isn't divisible by `n`.
+  ///
+  ///   FP.chunked([1, 2, 3, 4, 5], 2)  //= [[1, 2], [3, 4], [5]]
   static chunked(seq, n) {
     if (!(n is Num) || n < 1) Fiber.abort("FP.chunked: size must be >= 1")
     var out = []
@@ -161,11 +161,11 @@ class FP {
     return out
   }
 
-  // Sliding windows of length `size`, advancing by `step` each
-  // time. Defaults to a step of 1 (standard overlap-1 window).
-  //
-  //   FP.windowed([1, 2, 3, 4], 2)          //= [[1,2], [2,3], [3,4]]
-  //   FP.windowed([1, 2, 3, 4, 5], 2, 2)    //= [[1,2], [3,4]]
+  /// Sliding windows of length `size`, advancing by `step` each
+  /// time. Defaults to a step of 1 (standard overlap-1 window).
+  ///
+  ///   FP.windowed([1, 2, 3, 4], 2)          //= [[1,2], [2,3], [3,4]]
+  ///   FP.windowed([1, 2, 3, 4, 5], 2, 2)    //= [[1,2], [3,4]]
   static windowed(seq, size) { windowed(seq, size, 1) }
   static windowed(seq, size, step) {
     if (!(size is Num) || size < 1) Fiber.abort("FP.windowed: size must be >= 1")
@@ -182,10 +182,10 @@ class FP {
 
   // -- Pairing -----------------------------------------------------------
 
-  // Pairwise zip. Length = min(a, b). Each pair is a 2-element
-  // list `[a_i, b_i]`.
-  //
-  //   FP.zip([1, 2, 3], ["a", "b"])   //= [[1, "a"], [2, "b"]]
+  /// Pairwise zip. Length = min(a, b). Each pair is a 2-element
+  /// list `[a_i, b_i]`.
+  ///
+  ///   FP.zip([1, 2, 3], ["a", "b"])   //= [[1, "a"], [2, "b"]]
   static zip(a, b) {
     var la = a is List ? a : a.toList
     var lb = b is List ? b : b.toList
@@ -199,9 +199,9 @@ class FP {
     return out
   }
 
-  // Combine two sequences pairwise with `fn(a_i, b_i)`. Like
-  // `zip(a, b).map {|p| fn(p[0], p[1])}` but skips the
-  // intermediate pair allocation.
+  /// Combine two sequences pairwise with `fn(a_i, b_i)`. Like
+  /// `zip(a, b).map {|p| fn(p[0], p[1])}` but skips the
+  /// intermediate pair allocation.
   static zipWith(a, b, fn) {
     var la = a is List ? a : a.toList
     var lb = b is List ? b : b.toList
@@ -215,9 +215,9 @@ class FP {
     return out
   }
 
-  // Invert of `zip`. Given `[[a0, b0], [a1, b1], ...]` returns
-  // `[[a0, a1, ...], [b0, b1, ...]]`. Inner lists must all be
-  // 2-element.
+  /// Invert of `zip`. Given `[[a0, b0], [a1, b1], ...]` returns
+  /// `[[a0, a1, ...], [b0, b1, ...]]`. Inner lists must all be
+  /// 2-element.
   static unzip(pairs) {
     var a = []
     var b = []
@@ -228,8 +228,8 @@ class FP {
     return [a, b]
   }
 
-  // Attach a running index. `[x0, x1, ...]` becomes
-  // `[[0, x0], [1, x1], ...]`.
+  /// Attach a running index. `[x0, x1, ...]` becomes
+  /// `[[0, x0], [1, x1], ...]`.
   static withIndex(seq) {
     var out = []
     var i = 0
@@ -242,34 +242,34 @@ class FP {
 
   // -- Sorting -----------------------------------------------------------
 
-  // Copy + sort with the default comparator. `Num` / `String`
-  // compare the obvious way; mixed types fall back to Wren's
-  // built-in `<` which may abort.
+  /// Copy + sort with the default comparator. `Num` / `String`
+  /// compare the obvious way; mixed types fall back to Wren's
+  /// built-in `<` which may abort.
   static sorted(seq) {
     var out = seq is List ? seq.toList : seq.toList
     out.sort()
     return out
   }
 
-  // Copy + sort using `fn(a, b) -> Bool` — `true` means `a <= b`
-  // (stable with that convention).
+  /// Copy + sort using `fn(a, b) -> Bool` — `true` means `a <= b`
+  /// (stable with that convention).
   static sortedWith(seq, cmp) {
     var out = seq is List ? seq.toList : seq.toList
     out.sort(cmp)
     return out
   }
 
-  // Copy + sort by a key extractor. The default order is
-  // ascending; pass `descending: true` via `sortedByDesc` for
-  // the other direction.
+  /// Copy + sort by a key extractor. The default order is
+  /// ascending; pass `descending: true` via `sortedByDesc` for
+  /// the other direction.
   static sortedBy(seq, keyFn) {
     var out = seq is List ? seq.toList : seq.toList
     out.sort(Fn.new {|a, b| keyFn.call(a) < keyFn.call(b) })
     return out
   }
 
-  // Descending variant — handy shorthand so callers don't have
-  // to remember which side of the comparator to flip.
+  /// Descending variant — handy shorthand so callers don't have
+  /// to remember which side of the comparator to flip.
   static sortedByDesc(seq, keyFn) {
     var out = seq is List ? seq.toList : seq.toList
     out.sort(Fn.new {|a, b| keyFn.call(a) > keyFn.call(b) })
@@ -278,11 +278,11 @@ class FP {
 
   // -- Scans / bounded iteration -----------------------------------------
 
-  // Prefix reductions: returns a list of intermediate
-  // accumulators, including the initial one.
-  //
-  //   FP.scan([1, 2, 3, 4], 0, Fn.new {|acc, x| acc + x })
-  //   //= [0, 1, 3, 6, 10]
+  /// Prefix reductions: returns a list of intermediate
+  /// accumulators, including the initial one.
+  ///
+  ///   FP.scan([1, 2, 3, 4], 0, Fn.new {|acc, x| acc + x })
+  ///   //= [0, 1, 3, 6, 10]
   static scan(seq, init, fn) {
     var out = [init]
     var acc = init
@@ -293,10 +293,10 @@ class FP {
     return out
   }
 
-  // Stop taking as soon as `pred(x)` is false.
-  //
-  //   FP.takeWhile([1, 2, 3, 0, 5], Fn.new {|n| n > 0 })
-  //   //= [1, 2, 3]
+  /// Stop taking as soon as `pred(x)` is false.
+  ///
+  ///   FP.takeWhile([1, 2, 3, 0, 5], Fn.new {|n| n > 0 })
+  ///   //= [1, 2, 3]
   static takeWhile(seq, pred) {
     var out = []
     for (x in seq) {
@@ -306,12 +306,12 @@ class FP {
     return out
   }
 
-  // Skip while `pred(x)` is true; take the remainder once the
-  // predicate first flips to false (even if it later returns to
-  // true).
-  //
-  //   FP.dropWhile([1, 2, 3, 0, 5], Fn.new {|n| n > 0 })
-  //   //= [0, 5]
+  /// Skip while `pred(x)` is true; take the remainder once the
+  /// predicate first flips to false (even if it later returns to
+  /// true).
+  ///
+  ///   FP.dropWhile([1, 2, 3, 0, 5], Fn.new {|n| n > 0 })
+  ///   //= [0, 5]
   static dropWhile(seq, fn) {
     var list = seq is List ? seq : seq.toList
     var start = 0
@@ -329,8 +329,8 @@ class FP {
 
   // -- Deduplication -----------------------------------------------------
 
-  // Remove consecutive duplicates and keep the first occurrence
-  // of each value overall. Compares with Wren's `==`.
+  /// Remove consecutive duplicates and keep the first occurrence
+  /// of each value overall. Compares with Wren's `==`.
   static distinct(seq) {
     var seen = []
     var out = []
@@ -343,11 +343,11 @@ class FP {
     return out
   }
 
-  // Deduplicate by a key extractor. Uses a `Map` so `keyFn` must
-  // return a hashable (String / Num / Bool / null are safe).
-  //
-  //   FP.distinctBy(["apple", "ant", "bee"], Fn.new {|s| s[0] })
-  //   //= ["apple", "bee"]
+  /// Deduplicate by a key extractor. Uses a `Map` so `keyFn` must
+  /// return a hashable (String / Num / Bool / null are safe).
+  ///
+  ///   FP.distinctBy(["apple", "ant", "bee"], Fn.new {|s| s[0] })
+  ///   //= ["apple", "bee"]
   static distinctBy(seq, keyFn) {
     var seen = {}
     var out = []
@@ -363,14 +363,14 @@ class FP {
 
   // -- Element access ----------------------------------------------------
 
-  // First element, or null on empty. Preserves the semantics
-  // already on `Sequence` without forcing a full `.toList`.
+  /// First element, or null on empty. Preserves the semantics
+  /// already on `Sequence` without forcing a full `.toList`.
   static first(seq) {
     for (x in seq) return x
     return null
   }
 
-  // First element matching a predicate (or null).
+  /// First element matching a predicate (or null).
   static firstWhere(seq, pred) {
     for (x in seq) {
       if (pred.call(x)) return x
@@ -378,8 +378,8 @@ class FP {
     return null
   }
 
-  // Last element (O(n) for anything but a List — we walk the
-  // iterator to the end). Null on empty.
+  /// Last element (O(n) for anything but a List — we walk the
+  /// iterator to the end). Null on empty.
   static last(seq) {
     var result = null
     var seen = false
@@ -390,7 +390,7 @@ class FP {
     return seen ? result : null
   }
 
-  // Last element matching a predicate.
+  /// Last element matching a predicate.
   static lastWhere(seq, pred) {
     var result = null
     for (x in seq) {
@@ -425,9 +425,9 @@ class FP {
     return best
   }
 
-  // Extrema with a key extractor. Returns the ELEMENT whose key
-  // is smallest/largest; the key itself is discarded. Null on
-  // empty input.
+  /// Extrema with a key extractor. Returns the ELEMENT whose key
+  /// is smallest/largest; the key itself is discarded. Null on
+  /// empty input.
   static minBy(seq, keyFn) {
     var best = null
     var bestKey = null
@@ -460,14 +460,14 @@ class FP {
 
   // -- Arithmetic --------------------------------------------------------
 
-  // Sum of a numeric sequence. Returns 0 for empty.
+  /// Sum of a numeric sequence. Returns 0 for empty.
   static sum(seq) {
     var s = 0
     for (x in seq) s = s + x
     return s
   }
 
-  // Sum of `fn(x)` over the sequence.
+  /// Sum of `fn(x)` over the sequence.
   static sumBy(seq, fn) {
     var s = 0
     for (x in seq) s = s + fn.call(x)
@@ -476,7 +476,7 @@ class FP {
 
   // -- Concatenation / reverse ------------------------------------------
 
-  // Concatenate two sequences end-to-end into a new list.
+  /// Concatenate two sequences end-to-end into a new list.
   static concat(a, b) {
     var out = []
     for (x in a) out.add(x)
@@ -484,7 +484,7 @@ class FP {
     return out
   }
 
-  // Reverse order. O(n) — materialises into a list.
+  /// Reverse order. O(n) — materialises into a list.
   static reversed(seq) {
     var list = seq is List ? seq : seq.toList
     var out = []
@@ -498,13 +498,13 @@ class FP {
 
   // -- Map construction --------------------------------------------------
 
-  // Build a Map by running each element through `fn` and
-  // expecting `[key, value]` pairs.
-  //
-  //   FP.toMap([1, 2, 3], Fn.new {|n| [n.toString, n * n] })
-  //   //= { "1": 1, "2": 4, "3": 9 }
-  //
-  // Later pairs with the same key overwrite earlier ones.
+  /// Build a Map by running each element through `fn` and
+  /// expecting `[key, value]` pairs.
+  ///
+  ///   FP.toMap([1, 2, 3], Fn.new {|n| [n.toString, n * n] })
+  ///   //= { "1": 1, "2": 4, "3": 9 }
+  ///
+  /// Later pairs with the same key overwrite earlier ones.
   static toMap(seq, fn) {
     var out = {}
     for (x in seq) {
@@ -515,25 +515,25 @@ class FP {
   }
 }
 
-// Fluent wrapper — every non-terminal method rewraps into a new
-// `Pipe` so chains compose.
-//
-//   Pipe.of([1, 2, 3, 4])
-//     .where   (Fn.new {|n| n % 2 == 0 })
-//     .map     (Fn.new {|n| n * 10 })
-//     .toList                               //= [20, 40]
-//
-// Terminals: toList, reduce(_), reduce(_,_), sum, count,
-// first(_), last(_), toMap(_), each(_), any(_), all(_),
-// contains(_), isEmpty, join(), join(_), min, max, unwrap.
-//
-// Everything else returns a fresh `Pipe`, so `.tap` / `.map` /
-// `.where` etc. can interleave without materialising a separate
-// variable for each step.
+/// Fluent wrapper — every non-terminal method rewraps into a new
+/// `Pipe` so chains compose.
+///
+///   Pipe.of([1, 2, 3, 4])
+///     .where   (Fn.new {|n| n % 2 == 0 })
+///     .map     (Fn.new {|n| n * 10 })
+///     .toList                               //= [20, 40]
+///
+/// Terminals: toList, reduce(_), reduce(_,_), sum, count,
+/// first(_), last(_), toMap(_), each(_), any(_), all(_),
+/// contains(_), isEmpty, join(), join(_), min, max, unwrap.
+///
+/// Everything else returns a fresh `Pipe`, so `.tap` / `.map` /
+/// `.where` etc. can interleave without materialising a separate
+/// variable for each step.
 class Pipe {
   construct of(seq) { _seq = seq }
 
-  // Escape hatch: hand back the current sequence unwrapped.
+  /// Escape hatch: hand back the current sequence unwrapped.
   unwrap { _seq }
 
   // -- Terminals (return a concrete value) -------------------------------

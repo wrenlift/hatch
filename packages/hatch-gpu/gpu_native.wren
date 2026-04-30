@@ -1590,26 +1590,26 @@ class Sprite {
   toString { "Sprite(%(_tex), %(_x), %(_y), %(_w)x%(_h))" }
 }
 
-// -- 3D camera ---------------------------------------------------
-//
-// Either a perspective frustum or an ortho box. The camera owns
-// its own eye / target / up + projection params; `viewProj`
-// composes them into a Mat4 ready for the renderer's uniform.
-//
-//   var cam = Camera3D.perspective(60, w / h, 0.1, 100)
-//   cam.lookAt(Vec3.new(3, 3, 5), Vec3.zero, Vec3.unitY)
-//
-// `fovY` is in DEGREES for the perspective variant. The
-// orthographic variant takes half-extents and matches Mat4.ortho.
+/// -- 3D camera ---------------------------------------------------
+///
+/// Either a perspective frustum or an ortho box. The camera owns
+/// its own eye / target / up + projection params; `viewProj`
+/// composes them into a Mat4 ready for the renderer's uniform.
+///
+///   var cam = Camera3D.perspective(60, w / h, 0.1, 100)
+///   cam.lookAt(Vec3.new(3, 3, 5), Vec3.zero, Vec3.unitY)
+///
+/// `fovY` is in DEGREES for the perspective variant. The
+/// orthographic variant takes half-extents and matches Mat4.ortho.
 class Camera3D {
-  // Perspective: vertical FOV in degrees, aspect, near, far.
+  /// Perspective: vertical FOV in degrees, aspect, near, far.
   static perspective(fovY, aspect, near, far) {
     var c = Camera3D.new_()
     c.setProjection_(Mat4.perspective(fovY * 3.141592653589793 / 180, aspect, near, far))
     return c
   }
 
-  // Orthographic: full width / height, near / far.
+  /// Orthographic: full width / height, near / far.
   static orthographic(width, height, near, far) {
     var c = Camera3D.new_()
     var hw = width / 2
@@ -1629,8 +1629,8 @@ class Camera3D {
 
   setProjection_(m) { _proj = m }
 
-  // Build the view matrix from eye → target. Idempotent — call
-  // every frame if the camera moves.
+  /// Build the view matrix from eye → target. Idempotent — call
+  /// every frame if the camera moves.
   lookAt(eye, target, up) {
     _eye = eye
     _target = target
@@ -1638,8 +1638,8 @@ class Camera3D {
     _viewDirty = true
   }
 
-  // Re-aim the projection without rebuilding the camera (e.g.
-  // after a window resize).
+  /// Re-aim the projection without rebuilding the camera (e.g.
+  /// after a window resize).
   setPerspective(fovY, aspect, near, far) {
     _proj = Mat4.perspective(fovY * 3.141592653589793 / 180, aspect, near, far)
   }
@@ -1648,8 +1648,8 @@ class Camera3D {
   target { _target }
   up     { _up }
 
-  // Compute view-projection. Lazily rebuilds the view matrix
-  // when eye/target/up change.
+  /// Compute view-projection. Lazily rebuilds the view matrix
+  /// when eye/target/up change.
   viewProj {
     if (_viewDirty) {
       _view = Mat4.lookAt(_eye, _target, _up)
@@ -1659,12 +1659,12 @@ class Camera3D {
   }
 }
 
-// -- Light -------------------------------------------------------
-//
-// One directional light + ambient term, encoded as the Renderer3D
-// expects. Set `direction` as the vector light *travels in* (i.e.
-// from sun → ground); the shader negates it before dotting with
-// the surface normal.
+/// -- Light -------------------------------------------------------
+///
+/// One directional light + ambient term, encoded as the Renderer3D
+/// expects. Set `direction` as the vector light *travels in* (i.e.
+/// from sun → ground); the shader negates it before dotting with
+/// the surface normal.
 class Light {
   construct new() {
     _direction = Vec3.new(-0.3, -1.0, -0.5)
@@ -1679,15 +1679,15 @@ class Light {
   ambient=(v)     { _ambient = v }
 }
 
-// -- Mesh --------------------------------------------------------
-//
-// Vertex layout: position vec3 + normal vec3 + uv vec2, 32 bytes
-// total. Indices are u32 so meshes with > 65k vertices work.
-//
-// Build meshes via the static helpers (`Mesh.cube`, etc.) for
-// procedural primitives, or call `Mesh.fromArrays(device,
-// vertices, indices)` to upload your own buffers — typically
-// from a glTF / OBJ loader.
+/// -- Mesh --------------------------------------------------------
+///
+/// Vertex layout: position vec3 + normal vec3 + uv vec2, 32 bytes
+/// total. Indices are u32 so meshes with > 65k vertices work.
+///
+/// Build meshes via the static helpers (`Mesh.cube`, etc.) for
+/// procedural primitives, or call `Mesh.fromArrays(device,
+/// vertices, indices)` to upload your own buffers — typically
+/// from a glTF / OBJ loader.
 class Mesh {
   construct new_(device, vertexBuffer, indexBuffer, indexCount) {
     _device = device
@@ -1700,10 +1700,10 @@ class Mesh {
   indexBuffer  { _ibo }
   indexCount   { _indexCount }
 
-  // Build a Mesh from interleaved-vertex data + indices. `vertices`
-  // is a flat List of Nums in pos.xyz / normal.xyz / uv.xy order
-  // (8 floats per vertex). `indices` is a List<Num> of 0-based
-  // u32 vertex indices.
+  /// Build a Mesh from interleaved-vertex data + indices. `vertices`
+  /// is a flat List of Nums in pos.xyz / normal.xyz / uv.xy order
+  /// (8 floats per vertex). `indices` is a List<Num> of 0-based
+  /// u32 vertex indices.
   static fromArrays(device, vertices, indices) {
     var vbo = device.createBuffer({
       "size":  vertices.count * 4,
@@ -1718,9 +1718,9 @@ class Mesh {
     return Mesh.new_(device, vbo, ibo, indices.count)
   }
 
-  // Axis-aligned cube centred on origin. Side length = 2 * half
-  // (default 1 — total side length 2). Vertices are duplicated
-  // per face so face-normals stay flat (no normal averaging).
+  /// Axis-aligned cube centred on origin. Side length = 2 * half
+  /// (default 1 — total side length 2). Vertices are duplicated
+  /// per face so face-normals stay flat (no normal averaging).
   static cube(device) { cube(device, 1) }
   static cube(device, half) {
     var h = half
@@ -1779,7 +1779,7 @@ class Mesh {
     return Mesh.fromArrays(device, v, indices)
   }
 
-  // Flat plane on the X-Z axis (Y up), centred on origin.
+  /// Flat plane on the X-Z axis (Y up), centred on origin.
   static plane(device, size) {
     var h = size / 2
     var v = [
@@ -1798,11 +1798,11 @@ class Mesh {
   }
 }
 
-// -- Material ----------------------------------------------------
-//
-// v0 supports a flat tint colour. Texture maps land alongside the
-// glTF loader in a follow-up; the Renderer3D shader is shaped so
-// adding `albedoMap` is a small change.
+/// -- Material ----------------------------------------------------
+///
+/// v0 supports a flat tint colour. Texture maps land alongside the
+/// glTF loader in a follow-up; the Renderer3D shader is shaped so
+/// adding `albedoMap` is a small change.
 class Material {
   construct new() {
     _color = Vec4.new(0.8, 0.8, 0.85, 1.0)
@@ -1814,19 +1814,19 @@ class Material {
   color=(c) { _color = c }
 }
 
-// -- Renderer3D --------------------------------------------------
-//
-// One pipeline + one scene-uniform buffer + per-draw model + tint
-// uploads. Each `renderer.draw(mesh, material, modelMatrix)`
-// rewrites the per-draw uniform and emits one indexed draw call.
-//
-//   var renderer = Renderer3D.new(device, surfaceFormat, depthFormat)
-//   renderer.beginFrame(pass, camera, light)
-//   renderer.draw(cubeMesh, redMaterial, Mat4.translation(0, 0, 0))
-//   renderer.draw(planeMesh, greenMaterial, Mat4.translation(0, -1, 0))
-//
-// The renderer doesn't own the depth target — the caller passes
-// one as part of the render-pass descriptor (see the demo).
+/// -- Renderer3D --------------------------------------------------
+///
+/// One pipeline + one scene-uniform buffer + per-draw model + tint
+/// uploads. Each `renderer.draw(mesh, material, modelMatrix)`
+/// rewrites the per-draw uniform and emits one indexed draw call.
+///
+///   var renderer = Renderer3D.new(device, surfaceFormat, depthFormat)
+///   renderer.beginFrame(pass, camera, light)
+///   renderer.draw(cubeMesh, redMaterial, Mat4.translation(0, 0, 0))
+///   renderer.draw(planeMesh, greenMaterial, Mat4.translation(0, -1, 0))
+///
+/// The renderer doesn't own the depth target — the caller passes
+/// one as part of the render-pass descriptor (see the demo).
 class Renderer3D {
   // Default lit shader. Single uniform block with view-projection,
   // model, tint, and one directional light.
@@ -1940,8 +1940,8 @@ class Renderer3D {
     _pass      = null
   }
 
-  // Begin a frame. Stores the active pass + scene uniforms;
-  // each subsequent draw rewrites the model + tint slots.
+  /// Begin a frame. Stores the active pass + scene uniforms;
+  /// each subsequent draw rewrites the model + tint slots.
   beginFrame(pass, camera, light) {
     _pass = pass
     _vp = camera.viewProj
@@ -1950,9 +1950,9 @@ class Renderer3D {
     pass.setBindGroup(0, _bindGroup)
   }
 
-  // Issue one draw. `model` is a Mat4 transform. The renderer
-  // uploads (vp, model, normal_mat, tint, light) into the single
-  // uniform block, then dispatches an indexed draw.
+  /// Issue one draw. `model` is a Mat4 transform. The renderer
+  /// uploads (vp, model, normal_mat, tint, light) into the single
+  /// uniform block, then dispatches an indexed draw.
   draw(mesh, material, model) {
     if (_pass == null) Fiber.abort("Renderer3D.draw: call beginFrame first.")
 
@@ -2034,27 +2034,27 @@ class Renderer3D {
   }
 }
 
-// -- Hot-reloaded pipeline ---------------------------------------
-//
-// Reads its WGSL from a `@hatch:assets` database; rebuilds the
-// underlying RenderPipeline in place whenever the shader file's
-// content hash advances. From the caller's perspective it
-// behaves exactly like a normal RenderPipeline — bind it via
-// `pass.setPipeline(livePipeline)` and the .id getter resolves
-// to the current internal pipeline at record time.
-//
-//   var assets   = Assets.open("assets")
-//   var pipeline = LivePipeline.new(device, assets,
-//                                   "shaders/triangle.wgsl", {
-//     "vertex":   { "entryPoint": "vs_main" },
-//     "fragment": { "entryPoint": "fs_main",
-//                   "targets": [{"format": "rgba8unorm"}] },
-//     "primitive": { "topology": "triangle-list" }
-//   })
-//
-// Edits to the shader file fire the rebuild between frames; in-
-// flight render passes that already captured the old id finish
-// against the old code, the next pass picks up the new one.
+/// -- Hot-reloaded pipeline ---------------------------------------
+///
+/// Reads its WGSL from a `@hatch:assets` database; rebuilds the
+/// underlying RenderPipeline in place whenever the shader file's
+/// content hash advances. From the caller's perspective it
+/// behaves exactly like a normal RenderPipeline — bind it via
+/// `pass.setPipeline(livePipeline)` and the .id getter resolves
+/// to the current internal pipeline at record time.
+///
+///   var assets   = Assets.open("assets")
+///   var pipeline = LivePipeline.new(device, assets,
+///                                   "shaders/triangle.wgsl", {
+///     "vertex":   { "entryPoint": "vs_main" },
+///     "fragment": { "entryPoint": "fs_main",
+///                   "targets": [{"format": "rgba8unorm"}] },
+///     "primitive": { "topology": "triangle-list" }
+///   })
+///
+/// Edits to the shader file fire the rebuild between frames; in-
+/// flight render passes that already captured the old id finish
+/// against the old code, the next pass picks up the new one.
 class LivePipeline {
   construct new(device, db, shaderPath, descriptor) {
     _device     = device
@@ -2068,14 +2068,14 @@ class LivePipeline {
     db.on(shaderPath) {|asset| self.rebuild_() }
   }
 
-  // Forwards setPipeline / debug callers — always points at the
-  // freshest internal pipeline.
+  /// Forwards setPipeline / debug callers — always points at the
+  /// freshest internal pipeline.
   id { _pipeline.id }
 
-  // Drop watchers + the underlying pipeline + shader. The
-  // assets db's on() registration leaks intentionally — the
-  // user is expected to keep the LivePipeline alive for the
-  // lifetime of the application.
+  /// Drop watchers + the underlying pipeline + shader. The
+  /// assets db's on() registration leaks intentionally — the
+  /// user is expected to keep the LivePipeline alive for the
+  /// lifetime of the application.
   destroy {
     if (_pipeline != null) _pipeline.destroy
     if (_shader != null) _shader.destroy

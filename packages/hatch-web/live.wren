@@ -49,9 +49,9 @@ class Scheduler_ {
     _fibers = []
   }
 
-  // Returns the Fiber so the caller can inspect .error after run
-  // if needed. Don't call .try() on it yourself — the scheduler owns
-  // the run.
+  /// Returns the Fiber so the caller can inspect .error after run
+  /// if needed. Don't call .try() on it yourself — the scheduler owns
+  /// the run.
   spawn(fn) {
     var f = Fiber.new(fn)
     _fibers.add(f)
@@ -61,9 +61,9 @@ class Scheduler_ {
   count    { _fibers.count }
   isEmpty  { _fibers.count == 0 }
 
-  // Drive every active fiber one tick. Fibers that complete or
-  // abort are dropped. Swallows errors with an eprint-equivalent so
-  // one broken handler doesn't kill the server.
+  /// Drive every active fiber one tick. Fibers that complete or
+  /// abort are dropped. Swallows errors with an eprint-equivalent so
+  /// one broken handler doesn't kill the server.
   tick {
     var i = 0
     while (i < _fibers.count) {
@@ -160,9 +160,9 @@ class Subscription_ {
     return true
   }
 
-  // Cooperative receive: yield until a message is queued, then
-  // return the head. Returns null when the subscription has been
-  // closed.
+  /// Cooperative receive: yield until a message is queued, then
+  /// return the head. Returns null when the subscription has been
+  /// closed.
   receive {
     while (!_closed) {
       if (_queue.count > 0) {
@@ -199,22 +199,22 @@ class Channel {
   name { _name }
   subscriberCount { _subs.count }
 
-  // Attach a new subscriber. Returns a Subscription the caller
-  // drives via `receive`.
+  /// Attach a new subscriber. Returns a Subscription the caller
+  /// drives via `receive`.
   subscribe {
     var sub = Subscription_.new_(this)
     _subs.add(sub)
     return sub
   }
 
-  // Fan-out a message to every attached subscriber. Subscribers
-  // whose queue overflows the limit (almost certainly stale —
-  // their serve fiber died without close) are reaped here. Without
-  // this, a closed browser tab leaves a Subscription accumulating
-  // every broadcast forever; over a busy stream that's an unbounded
-  // memory leak.
-  //
-  //   chat.broadcast("event:message\ndata:hello\n\n")
+  /// Fan-out a message to every attached subscriber. Subscribers
+  /// whose queue overflows the limit (almost certainly stale —
+  /// their serve fiber died without close) are reaped here. Without
+  /// this, a closed browser tab leaves a Subscription accumulating
+  /// every broadcast forever; over a busy stream that's an unbounded
+  /// memory leak.
+  ///
+  ///   chat.broadcast("event:message\ndata:hello\n\n")
   broadcast(msg) {
     var dead = null
     for (sub in _subs) {
@@ -267,11 +267,11 @@ class SseStream {
 }
 
 class Sse {
-  // Sugar so `import "./live" for Sse` is enough to start streaming.
+  /// Sugar so `import "./live" for Sse` is enough to start streaming.
   static stream(writerFn) { SseStream.stream(writerFn) }
 
-  // Format one SSE frame. Caller writes the result to the socket.
-  // Accepts the same shapes as `emit` above.
+  /// Format one SSE frame. Caller writes the result to the socket.
+  /// Accepts the same shapes as `emit` above.
   static frame(payload) {
     if (payload is String) {
       if (payload.count > 0 && payload[0] == ":") {

@@ -37,9 +37,9 @@ class Fs {
   static readText(path) { FS.readText(path) }
   static writeText(path, contents) { FS.writeText(path, contents) }
 
-  // Lines: split on `\n`, drop the trailing empty element if the
-  // file ends in a newline (so a file with content "a\nb\n" yields
-  // `["a", "b"]`, not `["a", "b", ""]`).
+  /// Lines: split on `\n`, drop the trailing empty element if the
+  /// file ends in a newline (so a file with content "a\nb\n" yields
+  /// `["a", "b"]`, not `["a", "b", ""]`).
   static readLines(path) {
     var text = FS.readText(path)
     if (text == "") return []
@@ -50,8 +50,8 @@ class Fs {
     return parts
   }
 
-  // writeLines joins with `\n` and appends a final newline so the
-  // file is a well-behaved text file in the POSIX sense.
+  /// writeLines joins with `\n` and appends a final newline so the
+  /// file is a well-behaved text file in the POSIX sense.
   static writeLines(path, lines) {
     if (!(lines is List)) {
       Fiber.abort("Fs.writeLines: expected a list of strings")
@@ -82,9 +82,9 @@ class Fs {
   static removeTree(path) { FS.removeTree(path) }
   static rename(from, to) { FS.rename(from, to) }
 
-  // walk(path) → flat list of path strings relative to `path`,
-  // recursive, sorted per-level. Skips nothing — callers that want
-  // to exclude (e.g.) `.git/` filter the returned list.
+  /// walk(path) → flat list of path strings relative to `path`,
+  /// recursive, sorted per-level. Skips nothing — callers that want
+  /// to exclude (e.g.) `.git/` filter the returned list.
   static walk(path) {
     var results = []
     walkInto_(path, "", results)

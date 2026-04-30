@@ -93,24 +93,24 @@ class Process {
 
   alive { ProcCore.alive(_id) }
 
-  // Non-blocking: Result if the child exited, null if still
-  // running. Idempotent after the first non-null return —
-  // repeat calls re-emit the same Result.
+  /// Non-blocking: Result if the child exited, null if still
+  /// running. Idempotent after the first non-null return —
+  /// repeat calls re-emit the same Result.
   tryWait { Result.from_(ProcCore.tryWait(_id)) }
 
-  // Block until the child exits, return the Result. Waits even
-  // if called multiple times (the second call hits the cached
-  // result inside the runtime).
+  /// Block until the child exits, return the Result. Waits even
+  /// if called multiple times (the second call hits the cached
+  /// result inside the runtime).
   wait { Result.from_(ProcCore.wait(_id)) }
 
-  // Send SIGKILL (POSIX) / TerminateProcess (Windows). Doesn't
-  // wait for the process to actually exit — follow with `wait`
-  // to reap.
+  /// Send SIGKILL (POSIX) / TerminateProcess (Windows). Doesn't
+  /// wait for the process to actually exit — follow with `wait`
+  /// to reap.
   kill { ProcCore.kill(_id) }
 
-  // Drop the registry entry. Call after consuming the result if
-  // you're spawning lots of short-lived processes in a long-
-  // running host — otherwise entries accumulate until VM exit.
+  /// Drop the registry entry. Call after consuming the result if
+  /// you're spawning lots of short-lived processes in a long-
+  /// running host — otherwise entries accumulate until VM exit.
   forget { ProcCore.forget(_id) }
 
   // --- IPC -------------------------------------------------------------
@@ -124,21 +124,21 @@ class Process {
 
   // --- Streaming (via @hatch:io) ---------------------------------------
 
-  // A `Reader` that pulls stdout bytes as they arrive. Use for
-  // long-running processes whose output you want to consume
-  // incrementally (line by line, chunk by chunk).
-  //
-  //   var p = Proc.run(["tail", "-f", "/var/log/app.log"])
-  //   var r = p.stdoutReader
-  //   var line = r.readLine
-  //   while (line != null) {
-  //     System.print(line)
-  //     line = r.readLine
-  //   }
-  //
-  // Calling `wait` on the process while a reader is active is
-  // safe — the remaining bytes will be drained and the final
-  // `Result.stdout` reflects everything that passed through.
+  /// A `Reader` that pulls stdout bytes as they arrive. Use for
+  /// long-running processes whose output you want to consume
+  /// incrementally (line by line, chunk by chunk).
+  ///
+  ///   var p = Proc.run(["tail", "-f", "/var/log/app.log"])
+  ///   var r = p.stdoutReader
+  ///   var line = r.readLine
+  ///   while (line != null) {
+  ///     System.print(line)
+  ///     line = r.readLine
+  ///   }
+  ///
+  /// Calling `wait` on the process while a reader is active is
+  /// safe — the remaining bytes will be drained and the final
+  /// `Result.stdout` reflects everything that passed through.
   stdoutReader {
     var pid = _id
     return Reader.withFn {|max| ProcCore.readStdoutBytes(pid, max) }
@@ -149,17 +149,17 @@ class Process {
     return Reader.withFn {|max| ProcCore.readStderrBytes(pid, max) }
   }
 
-  // Fiber-cooperative stdout reader. Use inside `Fiber.new { ... }`
-  // to drain output without blocking sibling fibers:
-  //
-  //   var fib = Fiber.new {
-  //     var r = p.stdoutAsync
-  //     var line = r.readLine
-  //     while (line != null) {
-  //       // ...
-  //       line = r.readLine
-  //     }
-  //   }
+  /// Fiber-cooperative stdout reader. Use inside `Fiber.new { ... }`
+  /// to drain output without blocking sibling fibers:
+  ///
+  ///   var fib = Fiber.new {
+  ///     var r = p.stdoutAsync
+  ///     var line = r.readLine
+  ///     while (line != null) {
+  ///       // ...
+  ///       line = r.readLine
+  ///     }
+  ///   }
   stdoutAsync {
     var pid = _id
     return Reader.withTryFn {|max| ProcCore.tryReadStdoutBytes(pid, max) }
@@ -170,16 +170,16 @@ class Process {
     return Reader.withTryFn {|max| ProcCore.tryReadStderrBytes(pid, max) }
   }
 
-  // A `Writer` that feeds stdin. Accepts Buffer / String / List<Num>.
-  // `close` (or `flush` if that's all you want) sends EOF via
-  // `closeStdin`.
-  //
-  //   var p = Proc.run(["cat"])
-  //   var w = p.stdinWriter
-  //   w.write("hello\n")
-  //   w.write(Buffer.fromBytes([0xC3, 0xA9]))
-  //   w.close
-  //   System.print(p.wait.stdout)
+  /// A `Writer` that feeds stdin. Accepts Buffer / String / List<Num>.
+  /// `close` (or `flush` if that's all you want) sends EOF via
+  /// `closeStdin`.
+  ///
+  ///   var p = Proc.run(["cat"])
+  ///   var w = p.stdinWriter
+  ///   w.write("hello\n")
+  ///   w.write(Buffer.fromBytes([0xC3, 0xA9]))
+  ///   w.close
+  ///   System.print(p.wait.stdout)
   stdinWriter {
     var pid = _id
     var w = Writer.withFn {|bytes| ProcCore.writeStdinBytes(pid, bytes) }
@@ -191,8 +191,8 @@ class Process {
 }
 
 class Proc {
-  // Spawn a process and return a handle. Doesn't block — the
-  // child runs in the background until you `wait` on it.
+  /// Spawn a process and return a handle. Doesn't block — the
+  /// child runs in the background until you `wait` on it.
   static run(argv)          { run(argv, {}) }
   static run(argv, options) {
     if (!(argv is List)) Fiber.abort("Proc.run: argv must be a list")
@@ -219,8 +219,8 @@ class Proc {
     return Process.from_(id)
   }
 
-  // Blocking shortcut: spawn + wait, returns Result directly.
-  // Useful when you don't care about the handle.
+  /// Blocking shortcut: spawn + wait, returns Result directly.
+  /// Useful when you don't care about the handle.
   static exec(argv)          { exec(argv, {}) }
   static exec(argv, options) {
     if (!(argv is List)) Fiber.abort("Proc.exec: argv must be a list")
@@ -238,16 +238,16 @@ class Proc {
     return Result.from_(raw)
   }
 
-  // Shell pipeline. Explicit opt-in so callers don't pick up
-  // shell parsing by accident. Equivalent to `sh -c "…"`.
+  /// Shell pipeline. Explicit opt-in so callers don't pick up
+  /// shell parsing by accident. Equivalent to `sh -c "…"`.
   static shell(cmd)          { shell(cmd, {}) }
   static shell(cmd, options) {
     if (!(cmd is String)) Fiber.abort("Proc.shell: cmd must be a string")
     return exec(["sh", "-c", cmd], options)
   }
 
-  // "Run this and abort if it failed" — ergonomic for mechanical
-  // shell-outs where non-zero is a real bug.
+  /// "Run this and abort if it failed" — ergonomic for mechanical
+  /// shell-outs where non-zero is a real bug.
   static check(argv)          { check(argv, {}) }
   static check(argv, options) {
     var r = exec(argv, options)
@@ -260,17 +260,17 @@ class Proc {
   }
 }
 
-// Multi-stage pipeline. Each stage's stdout feeds the next
-// stage's stdin. The final stage captures; intermediate stages
-// stream through without buffering in Wren.
+/// Multi-stage pipeline. Each stage's stdout feeds the next
+/// stage's stdin. The final stage captures; intermediate stages
+/// stream through without buffering in Wren.
 class Pipeline {
   construct new_(processes) {
     _processes = processes
   }
 
-  // Build and start a pipeline from a list of argv lists.
-  // Returns a Pipeline that has already spawned every stage —
-  // call `wait` to collect the final result.
+  /// Build and start a pipeline from a list of argv lists.
+  /// Returns a Pipeline that has already spawned every stage —
+  /// call `wait` to collect the final result.
   static of(stages) {
     if (!(stages is List) || stages.count == 0) {
       Fiber.abort("Pipeline.of: expected a non-empty list of argv lists")
@@ -292,10 +292,10 @@ class Pipeline {
 
   processes { _processes }
 
-  // Wait on the final stage, returning its Result. Earlier
-  // stages are expected to finish on their own once the last
-  // one drains their stdout — we reap them too so their
-  // registry entries don't leak.
+  /// Wait on the final stage, returning its Result. Earlier
+  /// stages are expected to finish on their own once the last
+  /// one drains their stdout — we reap them too so their
+  /// registry entries don't leak.
   wait {
     var last = _processes[_processes.count - 1]
     var result = last.wait
@@ -310,7 +310,7 @@ class Pipeline {
     return result
   }
 
-  // Kill every stage in the pipeline.
+  /// Kill every stage in the pipeline.
   kill {
     var i = 0
     while (i < _processes.count) {

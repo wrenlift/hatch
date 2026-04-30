@@ -71,8 +71,8 @@ class Regex {
     return Regex.new_(id, pattern)
   }
 
-  // `Regex.escape(text)` — returns a pattern that matches `text`
-  // literally. Useful for embedding user-supplied strings.
+  /// `Regex.escape(text)` — returns a pattern that matches `text`
+  /// literally. Useful for embedding user-supplied strings.
   static escape(text) {
     if (!(text is String)) Fiber.abort("Regex.escape: text must be a string")
     return RegexCore.escape(text)
@@ -81,8 +81,8 @@ class Regex {
   id      { _id }
   pattern { _pattern }
 
-  // Free the underlying compiled automaton. Safe to call twice.
-  // Any further use of this Regex will abort.
+  /// Free the underlying compiled automaton. Safe to call twice.
+  /// Any further use of this Regex will abort.
   free {
     if (_id == null) return
     RegexCore.free(_id)
@@ -95,7 +95,7 @@ class Regex {
     return RegexCore.isMatch(_id, haystack)
   }
 
-  // First match as a `Match`, or null.
+  /// First match as a `Match`, or null.
   find(haystack) {
     checkAlive_()
     if (!(haystack is String)) Fiber.abort("Regex.find: haystack must be a string")
@@ -104,8 +104,8 @@ class Regex {
     return Match.new_(raw)
   }
 
-  // All matches, left-to-right. Returns `List<Match>` (possibly
-  // empty).
+  /// All matches, left-to-right. Returns `List<Match>` (possibly
+  /// empty).
   findAll(haystack) {
     checkAlive_()
     if (!(haystack is String)) Fiber.abort("Regex.findAll: haystack must be a string")
@@ -119,8 +119,8 @@ class Regex {
     return out
   }
 
-  // Replace the FIRST match. Replacement may reference captures
-  // with $1 / $name / $$ (literal $).
+  /// Replace the FIRST match. Replacement may reference captures
+  /// with $1 / $name / $$ (literal $).
   replace(haystack, replacement) {
     checkAlive_()
     if (!(haystack is String)) Fiber.abort("Regex.replace: haystack must be a string")
@@ -128,7 +128,7 @@ class Regex {
     return RegexCore.replace(_id, haystack, replacement)
   }
 
-  // Replace ALL matches.
+  /// Replace ALL matches.
   replaceAll(haystack, replacement) {
     checkAlive_()
     if (!(haystack is String)) Fiber.abort("Regex.replaceAll: haystack must be a string")
@@ -136,14 +136,14 @@ class Regex {
     return RegexCore.replaceAll(_id, haystack, replacement)
   }
 
-  // Split `haystack` on every match.
+  /// Split `haystack` on every match.
   split(haystack) {
     checkAlive_()
     if (!(haystack is String)) Fiber.abort("Regex.split: haystack must be a string")
     return RegexCore.split(_id, haystack)
   }
 
-  // Split with a max piece count. `n = 0` → no limit.
+  /// Split with a max piece count. `n = 0` → no limit.
   splitN(haystack, n) {
     checkAlive_()
     if (!(haystack is String)) Fiber.abort("Regex.splitN: haystack must be a string")

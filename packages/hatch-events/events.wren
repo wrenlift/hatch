@@ -50,13 +50,13 @@ class Signal {
 
   name { _name }
 
-  // Active listener count, including any that are flagged for
-  // one-shot removal but haven't fired yet.
+  /// Active listener count, including any that are flagged for
+  /// one-shot removal but haven't fired yet.
   listenerCount { _listeners.count }
 
-  // Register a listener. Returns a disconnect closure — calling
-  // it removes the listener. `disconnect(fn)` with the same Fn
-  // reference is equivalent.
+  /// Register a listener. Returns a disconnect closure — calling
+  /// it removes the listener. `disconnect(fn)` with the same Fn
+  /// reference is equivalent.
   connect(fn) {
     if (!(fn is Fn)) Fiber.abort("Signal.connect: listener must be a Fn")
     _listeners.add([fn, false])
@@ -64,8 +64,8 @@ class Signal {
     return Fn.new { self.disconnect(fn) }
   }
 
-  // Register a one-shot listener. Fires at most once, then is
-  // removed automatically.
+  /// Register a one-shot listener. Fires at most once, then is
+  /// removed automatically.
   connectOnce(fn) {
     if (!(fn is Fn)) Fiber.abort("Signal.connectOnce: listener must be a Fn")
     _listeners.add([fn, true])
@@ -73,7 +73,7 @@ class Signal {
     return Fn.new { self.disconnect(fn) }
   }
 
-  // Remove a listener by reference. No-op if absent.
+  /// Remove a listener by reference. No-op if absent.
   disconnect(fn) {
     var i = 0
     while (i < _listeners.count) {
@@ -85,7 +85,7 @@ class Signal {
     }
   }
 
-  // Remove every listener.
+  /// Remove every listener.
   disconnectAll {
     _listeners.clear()
   }
@@ -99,8 +99,8 @@ class Signal {
   emit(a, b)      { emit_([a, b]) }
   emit(a, b, c)   { emit_([a, b, c]) }
 
-  // Fire with a list of 0..3 arguments. Anything longer aborts —
-  // wrap your arguments in a struct-like Map or List instead.
+  /// Fire with a list of 0..3 arguments. Anything longer aborts —
+  /// wrap your arguments in a struct-like Map or List instead.
   emitMany(args) {
     if (!(args is List)) Fiber.abort("Signal.emitMany: args must be a list")
     if (args.count > 3) Fiber.abort("Signal.emitMany: supports up to 3 args; pass a List/Map for more")
@@ -150,20 +150,20 @@ class EventEmitter {
     _listeners = {}   // event name → List of [fn, once_flag]
   }
 
-  // Names of every event with at least one listener.
+  /// Names of every event with at least one listener.
   eventNames {
     var out = []
     for (entry in _listeners) out.add(entry.key)
     return out
   }
 
-  // How many listeners (counting once-pending ones) for `event`.
+  /// How many listeners (counting once-pending ones) for `event`.
   listenerCount(event) {
     if (!_listeners.containsKey(event)) return 0
     return _listeners[event].count
   }
 
-  // Register a listener. Returns a disconnect closure.
+  /// Register a listener. Returns a disconnect closure.
   on(event, fn) {
     if (!(event is String)) Fiber.abort("EventEmitter.on: event must be a string")
     if (!(fn is Fn))        Fiber.abort("EventEmitter.on: listener must be a Fn")
@@ -172,7 +172,7 @@ class EventEmitter {
     return Fn.new { self.off(event, fn) }
   }
 
-  // One-shot listener. Fires at most once, removes itself.
+  /// One-shot listener. Fires at most once, removes itself.
   once(event, fn) {
     if (!(event is String)) Fiber.abort("EventEmitter.once: event must be a string")
     if (!(fn is Fn))        Fiber.abort("EventEmitter.once: listener must be a Fn")
@@ -181,7 +181,7 @@ class EventEmitter {
     return Fn.new { self.off(event, fn) }
   }
 
-  // Remove a specific listener by reference.
+  /// Remove a specific listener by reference.
   off(event, fn) {
     if (!_listeners.containsKey(event)) return
     var list = _listeners[event]
@@ -196,8 +196,8 @@ class EventEmitter {
     }
   }
 
-  // `offAll(event)` clears one event's listeners. `offAll` with
-  // no argument clears everything.
+  /// `offAll(event)` clears one event's listeners. `offAll` with
+  /// no argument clears everything.
   offAll(event) {
     _listeners.remove(event)
   }
@@ -260,29 +260,29 @@ class EventEmitter {
 
 // --- Scheduler ---------------------------------------------------------------
 
-// Round-robin runner for cooperatively-yielding fibers. Each
-// fiber runs until it calls `Fiber.yield()` or finishes; the
-// scheduler then moves on to the next. Best paired with the
-// `Reader.withTryFn` from @hatch:io so IO-bound fibers release
-// the runner while waiting on bytes.
-//
-//   import "@hatch:events" for Scheduler
-//
-//   var fibers = [
-//     Fiber.new { Http.getStream(url1).bodyAsync.readAll.toString },
-//     Fiber.new { Http.getStream(url2).bodyAsync.readAll.toString },
-//     Fiber.new { Http.getStream(url3).bodyAsync.readAll.toString },
-//   ]
-//   var results = Scheduler.runAll(fibers)
-//
-// Returns a list of results aligned with the input: each slot
-// holds the fiber's return value, or — on abort — the error
-// string. Fibers that don't yield (CPU-bound) run to completion
-// before the scheduler sees the next one.
+/// Round-robin runner for cooperatively-yielding fibers. Each
+/// fiber runs until it calls `Fiber.yield()` or finishes; the
+/// scheduler then moves on to the next. Best paired with the
+/// `Reader.withTryFn` from @hatch:io so IO-bound fibers release
+/// the runner while waiting on bytes.
+///
+///   import "@hatch:events" for Scheduler
+///
+///   var fibers = [
+///     Fiber.new { Http.getStream(url1).bodyAsync.readAll.toString },
+///     Fiber.new { Http.getStream(url2).bodyAsync.readAll.toString },
+///     Fiber.new { Http.getStream(url3).bodyAsync.readAll.toString },
+///   ]
+///   var results = Scheduler.runAll(fibers)
+///
+/// Returns a list of results aligned with the input: each slot
+/// holds the fiber's return value, or — on abort — the error
+/// string. Fibers that don't yield (CPU-bound) run to completion
+/// before the scheduler sees the next one.
 class Scheduler {
-  // Drive every fiber in `fibers` until all are done. Returns a
-  // list of per-fiber results (value on success, error string on
-  // abort).
+  /// Drive every fiber in `fibers` until all are done. Returns a
+  /// list of per-fiber results (value on success, error string on
+  /// abort).
   static runAll(fibers) {
     if (!(fibers is List)) Fiber.abort("Scheduler.runAll: fibers must be a list")
     var results = []
@@ -311,13 +311,13 @@ class Scheduler {
     return results
   }
 
-  // Fire-and-forget: start a background fiber that the caller is
-  // expected to eventually include in a `runAll` batch. Returns
-  // the Fiber so callers can attach a result handler.
-  //
-  // Useful when you're composing work dynamically — build up a
-  // list of Fibers across the app, then call `runAll` once at a
-  // top-level drain point.
+  /// Fire-and-forget: start a background fiber that the caller is
+  /// expected to eventually include in a `runAll` batch. Returns
+  /// the Fiber so callers can attach a result handler.
+  ///
+  /// Useful when you're composing work dynamically — build up a
+  /// list of Fibers across the app, then call `runAll` once at a
+  /// top-level drain point.
   static spawn(fn) {
     if (!(fn is Fn)) Fiber.abort("Scheduler.spawn: fn must be a Fn")
     return Fiber.new(fn)

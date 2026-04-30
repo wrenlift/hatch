@@ -29,9 +29,9 @@
 class Test {
   // --- Registration ------------------------------------------------------
 
-  // `describe(name) { body }` in Wren calls `describe(name, Fn.new { body })`.
-  // The body runs during registration; `Test.it` calls inside it
-  // record cases against the current group name.
+  /// `describe(name) { body }` in Wren calls `describe(name, Fn.new { body })`.
+  /// The body runs during registration; `Test.it` calls inside it
+  /// record cases against the current group name.
   static describe(name, body) {
     if (!(body is Fn)) Fiber.abort("Test.describe expects a block body")
     var prev = currentGroup_
@@ -47,9 +47,9 @@ class Test {
 
   // --- Execution ---------------------------------------------------------
 
-  // Run every registered case. Prints a summary; aborts the fiber
-  // with a non-null error on any failure so the exit code reflects
-  // the result.
+  /// Run every registered case. Prints a summary; aborts the fiber
+  /// with a non-null error on any failure so the exit code reflects
+  /// the result.
   static run() {
     var passed = 0
     var failed = 0

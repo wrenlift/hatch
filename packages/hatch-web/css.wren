@@ -126,7 +126,7 @@ class Tw_ {
     return shades[shade]
   }
 
-  // The big case-switch. Returns Map<property, value> or null.
+  /// The big case-switch. Returns Map<property, value> or null.
   static expand(token) {
     if (token == null || token.count == 0) return null
     var parts = token.split("-")
@@ -300,15 +300,15 @@ class Style {
     _cssCache = null
   }
 
-  // Add Tailwind-dialect utilities to the base rule.
-  //
-  //   var s = Css.tw("flex items-center gap-2 p-4")
-  //
-  // Prefixes on individual tokens route into the right bucket:
-  //   "hover:bg-blue-600"   → :hover pseudo
-  //   "focus:ring-blue-300" → :focus pseudo
-  //   "md:px-8"             → @media (min-width: 768px)
-  // States and media can nest: "md:hover:bg-blue-700".
+  /// Add Tailwind-dialect utilities to the base rule.
+  ///
+  ///   var s = Css.tw("flex items-center gap-2 p-4")
+  ///
+  /// Prefixes on individual tokens route into the right bucket:
+  ///   "hover:bg-blue-600"   → :hover pseudo
+  ///   "focus:ring-blue-300" → :focus pseudo
+  ///   "md:px-8"             → @media (min-width: 768px)
+  /// States and media can nest: "md:hover:bg-blue-700".
   tw(classes) {
     var next = Style.clone_(this)
     if (classes == null || classes.count == 0) return next
@@ -318,30 +318,30 @@ class Style {
     return next
   }
 
-  // Register arbitrary CSS declarations on the base rule.
-  //
-  //   Css.raw({"border-image": "url(...)", "-webkit-appearance": "none"})
-  //
-  // Wren has no schema for CSS values — this is the escape hatch for
-  // anything Tailwind dialect doesn't cover.
+  /// Register arbitrary CSS declarations on the base rule.
+  ///
+  ///   Css.raw({"border-image": "url(...)", "-webkit-appearance": "none"})
+  ///
+  /// Wren has no schema for CSS values — this is the escape hatch for
+  /// anything Tailwind dialect doesn't cover.
   raw(decls) {
     var next = Style.clone_(this)
     for (k in decls.keys) next.baseMerge_(k, decls[k])
     return next
   }
 
-  // Pseudo-state sugar. Each takes either a Tailwind-dialect string or
-  // a nested Style (whose base decls are folded into the pseudo's).
+  /// Pseudo-state sugar. Each takes either a Tailwind-dialect string or
+  /// a nested Style (whose base decls are folded into the pseudo's).
   hover(arg)     { pseudo_(":hover", arg) }
   focus(arg)     { pseudo_(":focus", arg) }
   active(arg)    { pseudo_(":active", arg) }
   disabled(arg)  { pseudo_(":disabled", arg) }
   visited(arg)   { pseudo_(":visited", arg) }
 
-  // Responsive sugar. Breakpoints follow Tailwind defaults. The
-  // bucket key stores just the media condition; the final emit
-  // prepends "@media " so mixing chain-method and prefix-token
-  // usage compiles to the same rule.
+  /// Responsive sugar. Breakpoints follow Tailwind defaults. The
+  /// bucket key stores just the media condition; the final emit
+  /// prepends "@media " so mixing chain-method and prefix-token
+  /// usage compiles to the same rule.
   sm(arg)  { media_("(min-width: 640px)", arg) }
   md(arg)  { media_("(min-width: 768px)", arg) }
   lg(arg)  { media_("(min-width: 1024px)", arg) }
@@ -354,9 +354,9 @@ class Style {
     return _classCache
   }
 
-  // Compiled CSS — rule for the base class, then each pseudo, then
-  // each @media bucket (itself containing the `.c-...` rule at the
-  // breakpoint). No whitespace minification beyond "clean".
+  /// Compiled CSS — rule for the base class, then each pseudo, then
+  /// each @media bucket (itself containing the `.c-...` rule at the
+  /// breakpoint). No whitespace minification beyond "clean".
   css {
     if (_cssCache != null) return _cssCache
     var cls = className
@@ -374,8 +374,8 @@ class Style {
     return _cssCache
   }
 
-  // Convenience for "just give me the <style> tag". Use directly in
-  // template output.
+  /// Convenience for "just give me the <style> tag". Use directly in
+  /// template output.
   styleTag { "<style>%(css)</style>" }
 
   // ── internal helpers ─────────────────────────────────────────────
@@ -620,6 +620,6 @@ class Css {
   static tw(classes) { Css.empty.tw(classes) }
   static raw(decls)  { Css.empty.raw(decls) }
 
-  // Convenience: new empty Stylesheet.
+  /// Convenience: new empty Stylesheet.
   static sheet { Stylesheet.new() }
 }

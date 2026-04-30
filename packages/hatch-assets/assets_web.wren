@@ -80,24 +80,24 @@ class Asset {
   absolute { _url }
   hash     { _hash }
   size     { _size }
-  // Filesystem mtime has no analogue here — the browser's HTTP
-  // caching layer + the manifest hash drive change detection.
+  /// Filesystem mtime has no analogue here — the browser's HTTP
+  /// caching layer + the manifest hash drive change detection.
   mtime    { 0 }
 
-  // Lazily fetch text. Cached after the first read; `db.reload
-  // (path)` invalidates so a future read re-fetches.
+  /// Lazily fetch text. Cached after the first read; `db.reload
+  /// (path)` invalidates so a future read re-fetches.
   text {
     if (_text == null) _text = Browser.fetch(_url).await
     return _text
   }
 
-  // Bytes path is currently a String shim — the Browser bridge
-  // resolves `fetch(url).then(r => r.text())`, which is fine for
-  // shaders / configs but loses fidelity on binary payloads
-  // (UTF-8 decode with replacement chars). Real binary support
-  // lands once `Browser.fetchBytes` ships; until then, the abort
-  // makes the limitation loud rather than letting a corrupted
-  // PNG slip through.
+  /// Bytes path is currently a String shim — the Browser bridge
+  /// resolves `fetch(url).then(r => r.text())`, which is fine for
+  /// shaders / configs but loses fidelity on binary payloads
+  /// (UTF-8 decode with replacement chars). Real binary support
+  /// lands once `Browser.fetchBytes` ships; until then, the abort
+  /// makes the limitation loud rather than letting a corrupted
+  /// PNG slip through.
   bytes {
     Fiber.abort("Asset.bytes: binary fetch not yet wired on web. Use `text` for shaders / configs; image / audio loading lands with Browser.fetchBytes.")
   }
@@ -124,9 +124,9 @@ class Assets {
     _watchers = {}      // path → List<Fn>
   }
 
-  // Fetch the manifest and mount its VFS at `baseUrl`. Manifest
-  // shape is documented at the top of this file. Must run from
-  // inside a fiber — see the file header.
+  /// Fetch the manifest and mount its VFS at `baseUrl`. Manifest
+  /// shape is documented at the top of this file. Must run from
+  /// inside a fiber — see the file header.
   static open(baseUrl) {
     var url = baseUrl + "/assets-manifest.json"
     var text = Browser.fetch(url).await
@@ -192,22 +192,22 @@ class Assets {
 
   // -- VFS enumeration ----------------------------------------
 
-  // Every file path under the mount, optionally restricted to a
-  // sub-directory. `prefix == ""` returns every file.
+  /// Every file path under the mount, optionally restricted to a
+  /// sub-directory. `prefix == ""` returns every file.
   list { listUnder_("") }
   list(prefix) { listUnder_(prefix) }
 
-  // Immediate subdirectory names directly under `prefix` (no
-  // recursion). Empty list if `prefix` doesn't resolve to a
-  // directory.
+  /// Immediate subdirectory names directly under `prefix` (no
+  /// recursion). Empty list if `prefix` doesn't resolve to a
+  /// directory.
   dirs(prefix) { childrenOfKind_(prefix, true) }
 
-  // Immediate file names directly under `prefix`. Same shape as
-  // `dirs(prefix)` but for leaves.
+  /// Immediate file names directly under `prefix`. Same shape as
+  /// `dirs(prefix)` but for leaves.
   files(prefix) { childrenOfKind_(prefix, false) }
 
-  // True iff the path resolves to a known directory (the root
-  // counts: `exists("")` returns true).
+  /// True iff the path resolves to a known directory (the root
+  /// counts: `exists("")` returns true).
   isDir(prefix) { _children.containsKey(prefix) }
 
   listUnder_(prefix) {
@@ -257,10 +257,10 @@ class Assets {
     return removed
   }
 
-  // Re-fetch the manifest, refresh a single asset's metadata,
-  // drop its content cache, and fire watchers iff the hash
-  // changed. Cheap dev affordance — a "refresh shaders" button
-  // can wire straight to this.
+  /// Re-fetch the manifest, refresh a single asset's metadata,
+  /// drop its content cache, and fire watchers iff the hash
+  /// changed. Cheap dev affordance — a "refresh shaders" button
+  /// can wire straight to this.
   reload(relPath) {
     var entry = _entries[relPath]
     if (entry == null) Fiber.abort("Assets.reload: '%(relPath)' is not in the manifest.")

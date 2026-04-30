@@ -79,69 +79,69 @@ class Request {
   flash=(f)     { _flash = f }
   flashNext=(f) { _flashNext = f }
 
-  // Add a one-shot flash visible to the next request.
-  //
-  //   req.setFlash("notice", "Saved!")
-  //   return Response.redirect("/")
+  /// Add a one-shot flash visible to the next request.
+  ///
+  ///   req.setFlash("notice", "Saved!")
+  ///   return Response.redirect("/")
   setFlash(key, value) {
     if (_flashNext == null) _flashNext = {}
     _flashNext[key] = value
   }
 
-  // Fragment-scoped stylesheet. Lazily created on first access.
-  // Styles added here are injected inline with the fragment's
-  // HTML, so htmx swaps bring them along without leaking globally.
-  //
-  //   var btn = Css.tw("bg-blue-500 text-white px-4 py-2 rounded")
-  //   req.style(btn)                               // register
-  //   return "<button class='%(btn.className)'>ok</button>"
+  /// Fragment-scoped stylesheet. Lazily created on first access.
+  /// Styles added here are injected inline with the fragment's
+  /// HTML, so htmx swaps bring them along without leaking globally.
+  ///
+  ///   var btn = Css.tw("bg-blue-500 text-white px-4 py-2 rounded")
+  ///   req.style(btn)                               // register
+  ///   return "<button class='%(btn.className)'>ok</button>"
   fragmentSheet {
     if (_fragSheet == null) _fragSheet = Stylesheet.new()
     return _fragSheet
   }
 
-  // Register a Style (or multiple) on the request-scoped sheet.
-  // Returns the first Style for chainable use at the call site.
+  /// Register a Style (or multiple) on the request-scoped sheet.
+  /// Returns the first Style for chainable use at the call site.
   style(s) {
     fragmentSheet.add(s)
     return s
   }
 
-  // Validate the form body against a Form schema. Equivalent to
-  // `form.validate(req.form)` — just spares the handler one line.
-  //
-  //   app.post("/signup") {|req|
-  //     var r = req.validate(signup)
-  //     if (!r.valid) return renderWithErrors(req, r)
-  //     ...
-  //   }
+  /// Validate the form body against a Form schema. Equivalent to
+  /// `form.validate(req.form)` — just spares the handler one line.
+  ///
+  ///   app.post("/signup") {|req|
+  ///     var r = req.validate(signup)
+  ///     if (!r.valid) return renderWithErrors(req, r)
+  ///     ...
+  ///   }
   validate(form) { form.validate(this.form) }
 
-  // Internal — App.handle sets this so render() can include the
-  // app's global CSS alongside the fragment CSS.
+  /// Internal — App.handle sets this so render() can include the
+  /// app's global CSS alongside the fragment CSS.
   globalSheet=(s) { _globalSheet = s }
   globalSheet    { _globalSheet }
 
-  // Route parameters captured by the router (/posts/:id → req.param("id")).
+  /// Route parameters captured by the router (/posts/:id → req.param("id")).
   param(name) { _params.containsKey(name) ? _params[name] : null }
 
-  // Parsed `?a=1&b=2` query as a Map. Repeated keys: last-one-wins.
+  /// Parsed `?a=1&b=2` query as a Map. Repeated keys: last-one-wins.
   query {
     if (_queryCache != null) return _queryCache
     _queryCache = Http_.parseForm(_rawQuery)
     return _queryCache
   }
 
-  // application/x-www-form-urlencoded body parsed into a Map.
-  // Triggered explicitly — we don't want to silently eat the body
-  // for JSON/multipart requests.
+  /// application/x-www-form-urlencoded body parsed into a Map.
+  /// Triggered explicitly — we don't want to silently eat the body
+  /// for JSON/multipart requests.
   form {
     if (_formCache != null) return _formCache
     _formCache = Http_.parseForm(_body == null ? "" : _body)
     return _formCache
   }
 
-  // Single header value (case-insensitive). Returns null if absent.
+  /// Single header value (case-insensitive). Returns null if absent.
   header(name) {
     var wanted = Http_.lower(name)
     for (k in _headers.keys) {
@@ -150,29 +150,29 @@ class Request {
     return null
   }
 
-  // htmx request context — `request`, `boosted`, `target`,
-  // `trigger`, `triggerName`, `currentUrl`. Cached.
+  /// htmx request context — `request`, `boosted`, `target`,
+  /// `trigger`, `triggerName`, `currentUrl`. Cached.
   hx {
     if (_hxCache != null) return _hxCache
     _hxCache = Hx.context(_headers)
     return _hxCache
   }
 
-  // Convenience — most handlers just want to know "is this htmx?"
+  /// Convenience — most handlers just want to know "is this htmx?"
   isHx { hx["request"] == true }
 
-  // Render a Template against a context. Content-negotiates:
-  // if the request is htmx, we let the template expose `hx` so
-  // it can pick a fragment; otherwise it renders the full page.
-  // Accepts a Template directly. (A future TemplateRegistry pass
-  // will let handlers look up named templates from the app.)
-  //
-  // CSS: both sheets are threaded into the context so the
-  // template can include them in the right spot. Full-page
-  // responses get both (global in <head>, fragment in <body>);
-  // htmx-fragment responses get fragment-only (the global
-  // sheet is already on the page). Handlers that don't register
-  // any Styles just see empty strings.
+  /// Render a Template against a context. Content-negotiates:
+  /// if the request is htmx, we let the template expose `hx` so
+  /// it can pick a fragment; otherwise it renders the full page.
+  /// Accepts a Template directly. (A future TemplateRegistry pass
+  /// will let handlers look up named templates from the app.)
+  ///
+  /// CSS: both sheets are threaded into the context so the
+  /// template can include them in the right spot. Full-page
+  /// responses get both (global in <head>, fragment in <body>);
+  /// htmx-fragment responses get fragment-only (the global
+  /// sheet is already on the page). Handlers that don't register
+  /// any Styles just see empty strings.
   render(tpl, context) {
     var ctx = context == null ? {} : context
     ctx["#hx"] = hx
@@ -228,8 +228,8 @@ class Response {
     return this
   }
 
-  // Set-Cookie — supports the common attributes. Multiple calls
-  // stack (you can set multiple cookies on one response).
+  /// Set-Cookie — supports the common attributes. Multiple calls
+  /// stack (you can set multiple cookies on one response).
   cookie(name, value) { cookie(name, value, {}) }
   cookie(name, value, opts) {
     var raw = name + "=" + value
@@ -244,7 +244,7 @@ class Response {
     return this
   }
 
-  // Convenience setters.
+  /// Convenience setters.
   html(s) {
     _headers["Content-Type"] = "text/html; charset=utf-8"
     _body = s
@@ -269,7 +269,7 @@ class Response {
     return r
   }
 
-  // Coerce any handler return into a Response.
+  /// Coerce any handler return into a Response.
   static coerce(value) {
     if (value is Response) return value
     if (value is HxResponse) {
@@ -369,11 +369,11 @@ class Router {
   delete(path, fn) { add_("DELETE", path, fn) }
   any(path, fn)    { add_("*",      path, fn) }
 
-  // Mount a sub-router at a prefix.
-  //
-  //   var admin = Router.new_("/admin")
-  //   admin.get("/users") {|req| ... }
-  //   app.mount(admin)
+  /// Mount a sub-router at a prefix.
+  ///
+  ///   var admin = Router.new_("/admin")
+  ///   admin.get("/users") {|req| ... }
+  ///   app.mount(admin)
   mount(subRouter) {
     for (r in subRouter.routes) _routes.add(r)
   }
@@ -384,7 +384,7 @@ class Router {
     return this
   }
 
-  // Returns [handler, params] on match, null on miss.
+  /// Returns [handler, params] on match, null on miss.
   resolve(method, path) {
     for (r in _routes) {
       var params = r.match_(method, path)
@@ -455,20 +455,20 @@ class App {
     _middleware = []
   }
 
-  // App-wide stylesheet. Styles registered here are injected into
-  // the <head> of every full-page response via `req.render`, deduped
-  // by class name. htmx fragment responses skip it (the page already
-  // has it; repeating would bloat the swap payload).
-  //
-  //   var base = Css.tw("font-sans text-gray-900 leading-normal")
-  //   app.globalCss(base)
+  /// App-wide stylesheet. Styles registered here are injected into
+  /// the <head> of every full-page response via `req.render`, deduped
+  /// by class name. htmx fragment responses skip it (the page already
+  /// has it; repeating would bloat the swap payload).
+  ///
+  ///   var base = Css.tw("font-sans text-gray-900 leading-normal")
+  ///   app.globalCss(base)
   globalCss(style) {
     _globalSheet.add(style)
     return this
   }
   globalSheet { _globalSheet }
 
-  // Routing delegates to the built-in router.
+  /// Routing delegates to the built-in router.
   get(path, fn) {
     _router.get(path, fn)
     return this
@@ -498,13 +498,13 @@ class App {
     return this
   }
 
-  // Register a middleware. Runs outermost-first.
+  /// Register a middleware. Runs outermost-first.
   use(fn) {
     _middleware.add(fn)
     return this
   }
 
-  // Custom 404 / error handlers.
+  /// Custom 404 / error handlers.
   notFound(fn) {
     _notFound = fn
     return this
@@ -514,8 +514,8 @@ class App {
     return this
   }
 
-  // Dispatch a parsed Request through the middleware pipeline and
-  // router. Exposed so tests can drive it without a socket.
+  /// Dispatch a parsed Request through the middleware pipeline and
+  /// router. Exposed so tests can drive it without a socket.
   handle(req) {
     // Hoist fields into locals — closures below must not rely on
     // field access, because a Fiber boundary or an Fn.new-created
@@ -543,21 +543,21 @@ class App {
     return out
   }
 
-  // Bind + accept loop. `addr` looks like "127.0.0.1:3000" or
-  // "0.0.0.0:8080". Runs cooperatively: `tryAccept` is polled,
-  // each accepted connection spawns a serve fiber on the scheduler,
-  // and `tick` drives every fiber a step. When the scheduler is
-  // idle, a 10ms sleep keeps CPU calm without making the server
-  // feel sluggish.
-  //
-  // Fibers yield on would-block I/O (see `ByteBuf_.fill_`), on
-  // `Channel.receive` waiting for a broadcast, and inside SSE
-  // writers between emits. The whole thing is cooperative —
-  // one fiber can't preempt another, but it also can't starve
-  // the rest if it parks on an `Fiber.yield()`.
-  //
-  // Hot reload (`hatch web serve`) is driven by the runtime's
-  // SIGUSR1 watcher — there's nothing for the framework to do.
+  /// Bind + accept loop. `addr` looks like "127.0.0.1:3000" or
+  /// "0.0.0.0:8080". Runs cooperatively: `tryAccept` is polled,
+  /// each accepted connection spawns a serve fiber on the scheduler,
+  /// and `tick` drives every fiber a step. When the scheduler is
+  /// idle, a 10ms sleep keeps CPU calm without making the server
+  /// feel sluggish.
+  ///
+  /// Fibers yield on would-block I/O (see `ByteBuf_.fill_`), on
+  /// `Channel.receive` waiting for a broadcast, and inside SSE
+  /// writers between emits. The whole thing is cooperative —
+  /// one fiber can't preempt another, but it also can't starve
+  /// the rest if it parks on an `Fiber.yield()`.
+  ///
+  /// Hot reload (`hatch web serve`) is driven by the runtime's
+  /// SIGUSR1 watcher — there's nothing for the framework to do.
   listen(addr) {
     var listener = TcpListener.bind(addr)
     System.print("@hatch:web listening on http://%(addr)")
@@ -576,9 +576,9 @@ class App {
     }
   }
 
-  // Channel registry — `app.channel("room-42")` hands back the
-  // same Channel every call, so handlers and SSE writers share
-  // subscribers for the same name.
+  /// Channel registry — `app.channel("room-42")` hands back the
+  /// same Channel every call, so handlers and SSE writers share
+  /// subscribers for the same name.
   channel(name) {
     if (_channels == null) _channels = {}
     if (!_channels.containsKey(name)) _channels[name] = Channel.new(name)
@@ -625,8 +625,8 @@ class App {
 // keep-alive, TLS, and WebSocket upgrade are all planned.
 
 class Http_ {
-  // Entry point — reads one request off a TcpStream, returns a
-  // Request or null (malformed / EOF before request line).
+  /// Entry point — reads one request off a TcpStream, returns a
+  /// Request or null (malformed / EOF before request line).
   static readRequest(conn) {
     var buf = ByteBuf_.new(conn)
     var line = buf.readLine
@@ -673,10 +673,10 @@ class Http_ {
     return Request.new_(method, path, query, headers, body, null)
   }
 
-  // Emit the header block for an SSE stream. Keeps the connection
-  // open (no Content-Length, Connection: keep-alive), turns off
-  // intermediate proxy buffering via `X-Accel-Buffering: no` so
-  // events don't batch, and disables caching.
+  /// Emit the header block for an SSE stream. Keeps the connection
+  /// open (no Content-Length, Connection: keep-alive), turns off
+  /// intermediate proxy buffering via `X-Accel-Buffering: no` so
+  /// events don't batch, and disables caching.
   static writeSseHeaders(conn) {
     var out = "HTTP/1.1 200 OK\r\n" +
       "Content-Type: text/event-stream\r\n" +
@@ -687,7 +687,7 @@ class Http_ {
     conn.write(out)
   }
 
-  // Serialize a Response onto the socket.
+  /// Serialize a Response onto the socket.
   static writeResponse(conn, resp) {
     var status  = resp.status
     var reason  = Http_.reason(status)
@@ -841,8 +841,8 @@ class ByteBuf_ {
     _eof = false
   }
 
-  // Read until CRLF, return the line without the CRLF.
-  // Returns null on EOF with no pending data.
+  /// Read until CRLF, return the line without the CRLF.
+  /// Returns null on EOF with no pending data.
   readLine {
     while (true) {
       var idx = findCrlf_()
@@ -861,7 +861,7 @@ class ByteBuf_ {
     }
   }
 
-  // Read exactly `n` bytes, return as String. Short read on EOF.
+  /// Read exactly `n` bytes, return as String. Short read on EOF.
   read(n) {
     while (_buf.count < n && !_eof) fill_()
     var take = n > _buf.count ? _buf.count : n
@@ -1178,8 +1178,8 @@ class Session {
 class Csrf {
   static TOKEN_BYTES_ { 32 }
 
-  // Convenience: returns the middleware Fn so `app.use(Csrf.middleware)`
-  // reads naturally.
+  /// Convenience: returns the middleware Fn so `app.use(Csrf.middleware)`
+  /// reads naturally.
   static middleware { middlewareWith({}) }
 
   static middlewareWith(opts) {
@@ -1237,9 +1237,9 @@ class Csrf {
     return Hash.base64UrlEncode(bytes)
   }
 
-  // Render a hidden form input carrying the token. Handlers
-  // can interpolate `Csrf.field(req)` into an HTML string or
-  // pass it through a template variable.
+  /// Render a hidden form input carrying the token. Handlers
+  /// can interpolate `Csrf.field(req)` into an HTML string or
+  /// pass it through a template variable.
   static field(req) {
     var t = ""
     if (req.session != null && req.session.containsKey("_csrf")) {
@@ -1248,8 +1248,8 @@ class Csrf {
     return "<input type=\"hidden\" name=\"_csrf\" value=\"" + t + "\">"
   }
 
-  // Token accessor — useful when you want to emit it via a
-  // <meta> tag for htmx's hx-headers config.
+  /// Token accessor — useful when you want to emit it via a
+  /// <meta> tag for htmx's hx-headers config.
   static token(req) {
     if (req.session == null) return null
     return req.session.containsKey("_csrf") ? req.session["_csrf"] : null
@@ -1273,8 +1273,8 @@ class Csrf {
 // notice survives exactly one redirect and then evaporates.
 
 class Flash {
-  // Shortcut for injecting `flash` into a render context.
-  // Templates reference `flash["notice"]`, `flash["error"]`, etc.
+  /// Shortcut for injecting `flash` into a render context.
+  /// Templates reference `flash["notice"]`, `flash["error"]`, etc.
   static bind(req, ctx) {
     var c = ctx == null ? {} : ctx
     c["flash"] = req.flash == null ? {} : req.flash

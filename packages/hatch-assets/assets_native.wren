@@ -35,8 +35,8 @@ import "@hatch:fs"   for Fs
 import "@hatch:hash" for Hash
 import "hatch"       for Hatch
 
-// One indexed file. Bytes are read lazily — small assets stay
-// out of memory until you actually ask for them.
+/// One indexed file. Bytes are read lazily — small assets stay
+/// out of memory until you actually ask for them.
 class Asset {
   construct new_(db, relPath, absPath, hash, size, mtime) {
     _db    = db
@@ -55,7 +55,7 @@ class Asset {
   size       { _size }       // bytes
   mtime      { _mtime }      // seconds since epoch
 
-  // Eagerly load (caches across calls until the hash advances).
+  /// Eagerly load (caches across calls until the hash advances).
   bytes {
     if (_bytes == null) _bytes = Fs.readBytes(_abs)
     return _bytes
@@ -93,13 +93,13 @@ class Assets {
     _hooked    = {}     // absolute path → true once Hatch.watchFile registered
   }
 
-  // Open a database rooted at `dir`. Indexes every file under it
-  // in one pass — for sub-second startup on workspaces with
-  // thousands of small assets and ~tens-of-ms on small ones.
-  // Hashing is content-addressable identity, so duplicate
-  // contents at different paths share one Asset record? No —
-  // separate Asset records per path; the hash field carries the
-  // content identity callers can dedupe on themselves.
+  /// Open a database rooted at `dir`. Indexes every file under it
+  /// in one pass — for sub-second startup on workspaces with
+  /// thousands of small assets and ~tens-of-ms on small ones.
+  /// Hashing is content-addressable identity, so duplicate
+  /// contents at different paths share one Asset record? No —
+  /// separate Asset records per path; the hash field carries the
+  /// content identity callers can dedupe on themselves.
   static open(dir) {
     var db = Assets.new_(dir)
     db.scan_()
@@ -163,10 +163,10 @@ class Assets {
     return asset
   }
 
-  // Look up by relative path. Re-stats the file on every call:
-  // if the on-disk mtime advanced past the last seen value we
-  // re-hash + refresh; otherwise the cached entry is returned
-  // verbatim. Throws if the path was never in the index.
+  /// Look up by relative path. Re-stats the file on every call:
+  /// if the on-disk mtime advanced past the last seen value we
+  /// re-hash + refresh; otherwise the cached entry is returned
+  /// verbatim. Throws if the path was never in the index.
   get(relPath) {
     var entry = _entries[relPath]
     if (entry == null) {
@@ -192,10 +192,10 @@ class Assets {
   hash(relPath)  { get(relPath).hash }
   has(relPath)   { _entries.containsKey(relPath) }
 
-  // Subscribe to content changes for a single relative path.
-  // The callback receives the refreshed Asset; only fires when
-  // the SHA-256 actually advances (a `touch` with no content
-  // change is silent).
+  /// Subscribe to content changes for a single relative path.
+  /// The callback receives the refreshed Asset; only fires when
+  /// the SHA-256 actually advances (a `touch` with no content
+  /// change is silent).
   on(relPath, fn) {
     if (!_watchers.containsKey(relPath)) _watchers[relPath] = []
     _watchers[relPath].add(fn)
@@ -233,7 +233,7 @@ class Assets {
     for (fn in subs) fn.call(asset)
   }
 
-  // Drop a subscriber. Returns true if it was registered.
+  /// Drop a subscriber. Returns true if it was registered.
   off(relPath, fn) {
     var subs = _watchers[relPath]
     if (subs == null) return false

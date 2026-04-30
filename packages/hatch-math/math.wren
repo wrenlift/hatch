@@ -42,13 +42,13 @@ class Math {
   static radians(deg) { deg * 0.017453292519943295 }
   static degrees(rad) { rad * 57.29577951308232 }
 
-  // Linear interpolation from `a` to `b` at `t` in `[0, 1]`. `t`
-  // outside that range extrapolates — `clampedLerp` clamps first.
+  /// Linear interpolation from `a` to `b` at `t` in `[0, 1]`. `t`
+  /// outside that range extrapolates — `clampedLerp` clamps first.
   static lerp(a, b, t)        { a + (b - a) * t }
   static clampedLerp(a, b, t) { lerp(a, b, Math.clamp(t, 0, 1)) }
 
-  // Inverse lerp — given a value, return its `t` on the `[a, b]`
-  // axis. Useful for remapping ranges with `lerp(c, d, inv(a, b, v))`.
+  /// Inverse lerp — given a value, return its `t` on the `[a, b]`
+  /// axis. Useful for remapping ranges with `lerp(c, d, inv(a, b, v))`.
   static inverseLerp(a, b, v) {
     if (a == b) return 0
     return (v - a) / (b - a)
@@ -60,17 +60,17 @@ class Math {
     return v
   }
 
-  // Clamp to `[0, 1]`. Named after the GLSL / HLSL intrinsic.
+  /// Clamp to `[0, 1]`. Named after the GLSL / HLSL intrinsic.
   static saturate(v)       { Math.clamp(v, 0, 1) }
 
-  // Hermite smoothstep — zero-slope endpoints at `a` and `b`.
-  // Classic shader / animation staple for ease-in-out curves.
+  /// Hermite smoothstep — zero-slope endpoints at `a` and `b`.
+  /// Classic shader / animation staple for ease-in-out curves.
   static smoothstep(a, b, v) {
     var t = Math.saturate(Math.inverseLerp(a, b, v))
     return t * t * (3 - 2 * t)
   }
-  // Higher-order smoothstep (Ken Perlin's — zero second derivative
-  // at endpoints). Smoother still than the cubic version.
+  /// Higher-order smoothstep (Ken Perlin's — zero second derivative
+  /// at endpoints). Smoother still than the cubic version.
   static smootherstep(a, b, v) {
     var t = Math.saturate(Math.inverseLerp(a, b, v))
     return t * t * t * (t * (6 * t - 15) + 10)
@@ -80,11 +80,11 @@ class Math {
   static max(a, b)       { a > b ? a : b }
   static sign(v)         { v > 0 ? 1 : (v < 0 ? -1 : 0) }
 
-  // Floating-point equality with a tolerance.
+  /// Floating-point equality with a tolerance.
   static approxEq(a, b)        { approxEq(a, b, 0.000001) }
   static approxEq(a, b, eps)   { (a - b).abs < eps }
 
-  // Wraps `v` into `[lo, hi)` — handy for angle wrap-around.
+  /// Wraps `v` into `[lo, hi)` — handy for angle wrap-around.
   static wrap(v, lo, hi) {
     var range = hi - lo
     if (range <= 0) return lo
@@ -147,8 +147,8 @@ class Ease {
     return 1 - u * u * u / 2
   }
 
-  // Asymmetric elastic-like overshoot — `t` exits just past 1
-  // before settling back. Gentle pop for bouncy UI transitions.
+  /// Asymmetric elastic-like overshoot — `t` exits just past 1
+  /// before settling back. Gentle pop for bouncy UI transitions.
   static inBack(t) {
     var s = Math.saturate(t)
     return 2.70158 * s * s * s - 1.70158 * s * s
@@ -159,8 +159,8 @@ class Ease {
     return 1 + 2.70158 * u * u * u + 1.70158 * u * u
   }
 
-  // Exponential — strong acceleration / deceleration with
-  // zero-crossing pinned to the endpoints.
+  /// Exponential — strong acceleration / deceleration with
+  /// zero-crossing pinned to the endpoints.
   static inExpo(t) {
     var s = Math.saturate(t)
     if (s == 0) return 0
@@ -191,7 +191,7 @@ class Vec2 {
   static unitX    { Vec2.new(1, 0) }
   static unitY    { Vec2.new(0, 1) }
 
-  // Component accessors ---------------------------------------------
+  /// Component accessors ---------------------------------------------
   x { _x }
   y { _y }
   x=(v) { _x = v }
@@ -227,8 +227,8 @@ class Vec2 {
     return dx * dx + dy * dy
   }
   distance(other)   { distanceSq(other).sqrt }
-  // Right-hand 2D cross — returns the scalar z-component as if
-  // the vectors had z=0. Useful for signed area / winding.
+  /// Right-hand 2D cross — returns the scalar z-component as if
+  /// the vectors had z=0. Useful for signed area / winding.
   cross(other)      { _x * other.y - _y * other.x }
 
   // Interpolation ---------------------------------------------------
@@ -261,11 +261,11 @@ class Vec2 {
   // Conversion / comparison -----------------------------------------
 
   toList           { [_x, _y] }
-  // Raw component list, ordered (x, y). Companion to `Vec3.data` /
-  // `Vec4.data` / `Mat4.data` / `Quat.data` — used by foreign GPU
-  // upload paths that need a stable, list-shaped view of the
-  // underlying storage. Currently allocates each call (fields are
-  // scalars); cheap enough for the uses we care about.
+  /// Raw component list, ordered (x, y). Companion to `Vec3.data` /
+  /// `Vec4.data` / `Mat4.data` / `Quat.data` — used by foreign GPU
+  /// upload paths that need a stable, list-shaped view of the
+  /// underlying storage. Currently allocates each call (fields are
+  /// scalars); cheap enough for the uses we care about.
   data             { [_x, _y] }
   approxEq(other) { approxEq(other, 0.000001) }
   approxEq(other, eps) {
@@ -325,8 +325,8 @@ class Vec3 {
   }
   distance(o)   { distanceSq(o).sqrt }
 
-  // Right-handed cross product — `a.cross(b)` is perpendicular
-  // to both and follows the right-hand rule.
+  /// Right-handed cross product — `a.cross(b)` is perpendicular
+  /// to both and follows the right-hand rule.
   cross(o) {
     return Vec3.new(
       _y * o.z - _z * o.y,
@@ -343,8 +343,8 @@ class Vec3 {
     )
   }
 
-  // Reflect this vector off a surface with normal `n`. Assumes
-  // `n` is already normalized.
+  /// Reflect this vector off a surface with normal `n`. Assumes
+  /// `n` is already normalized.
   reflect(n) {
     var d = 2 * dot(n)
     return Vec3.new(_x - n.x * d, _y - n.y * d, _z - n.z * d)
@@ -406,9 +406,9 @@ class Vec4 {
   static zero     { Vec4.new(0, 0, 0, 0) }
   static one      { Vec4.new(1, 1, 1, 1) }
 
-  // RGBA convenience — same constructor, different mental model.
-  // Component getters return r/g/b/a aliases so colour code stays
-  // readable without forcing callers to pick a separate type.
+  /// RGBA convenience — same constructor, different mental model.
+  /// Component getters return r/g/b/a aliases so colour code stays
+  /// readable without forcing callers to pick a separate type.
   static rgba(r, g, b, a) { Vec4.new(r, g, b, a) }
 
   x { _x }
@@ -444,8 +444,8 @@ class Vec4 {
     )
   }
 
-  // Drop `w` to recover a Vec3. Common when reading back the
-  // spatial portion of a homogeneous transform result.
+  /// Drop `w` to recover a Vec3. Common when reading back the
+  /// spatial portion of a homogeneous transform result.
   xyz { Vec3.new(_x, _y, _z) }
 
   toList           { [_x, _y, _z, _w] }
@@ -477,7 +477,7 @@ class Mat4 {
     _m = List.filled(16, 0)
   }
 
-  // Pass a flat list of 16 numbers, row-major.
+  /// Pass a flat list of 16 numbers, row-major.
   construct fromList(list) {
     if (list.count != 16) Fiber.abort("Mat4.fromList: need 16 numbers")
     _m = []
@@ -547,8 +547,8 @@ class Mat4 {
     return m
   }
 
-  // Symmetric OpenGL-style right-handed perspective.
-  // `fovY` in radians, depth mapped to `[-1, 1]`.
+  /// Symmetric OpenGL-style right-handed perspective.
+  /// `fovY` in radians, depth mapped to `[-1, 1]`.
   static perspective(fovY, aspect, near, far) {
     var f = 1 / (fovY / 2).tan
     var m = Mat4.new()
@@ -572,9 +572,9 @@ class Mat4 {
     return m
   }
 
-  // View matrix: camera at `eye` looking at `target` with the
-  // given world-space `up`. Right-handed convention — -z points
-  // into the scene.
+  /// View matrix: camera at `eye` looking at `target` with the
+  /// given world-space `up`. Right-handed convention — -z points
+  /// into the scene.
   static lookAt(eye, target, up) {
     var f = (target - eye).normalized      // forward
     var r = f.cross(up).normalized         // right
@@ -595,7 +595,7 @@ class Mat4 {
     return m
   }
 
-  // Accessors -------------------------------------------------------
+  /// Accessors -------------------------------------------------------
   at(r, c)       { _m[r * 4 + c] }
   set(r, c, v)   { _m[r * 4 + c] = v }
   toList {
@@ -643,10 +643,10 @@ class Mat4 {
   // Internal raw setter used by the scalar multiply loop.
   setRaw_(i, v) { _m[i] = v }
 
-  // Raw row-major 16-element list. Returns the underlying storage
-  // by reference — foreign GPU upload paths read sequentially with
-  // List indexing instead of paying for 16 `at(r, c)` method calls
-  // per matrix. Mutating the returned list mutates the matrix.
+  /// Raw row-major 16-element list. Returns the underlying storage
+  /// by reference — foreign GPU upload paths read sequentially with
+  /// List indexing instead of paying for 16 `at(r, c)` method calls
+  /// per matrix. Mutating the returned list mutates the matrix.
   data { _m }
 
   transpose {
@@ -663,8 +663,8 @@ class Mat4 {
     return r
   }
 
-  // Transform a `Vec3` as a point (w=1). Homogeneous divide
-  // applied if the result's `w` isn't 1.
+  /// Transform a `Vec3` as a point (w=1). Homogeneous divide
+  /// applied if the result's `w` isn't 1.
   transformPoint(v) {
     var x = at(0, 0) * v.x + at(0, 1) * v.y + at(0, 2) * v.z + at(0, 3)
     var y = at(1, 0) * v.x + at(1, 1) * v.y + at(1, 2) * v.z + at(1, 3)
@@ -676,8 +676,8 @@ class Mat4 {
     return Vec3.new(x, y, z)
   }
 
-  // Transform a `Vec3` as a direction (w=0). Translation column
-  // has no effect — useful for normals and velocities.
+  /// Transform a `Vec3` as a direction (w=0). Translation column
+  /// has no effect — useful for normals and velocities.
   transformDir(v) {
     var x = at(0, 0) * v.x + at(0, 1) * v.y + at(0, 2) * v.z
     var y = at(1, 0) * v.x + at(1, 1) * v.y + at(1, 2) * v.z
@@ -685,7 +685,7 @@ class Mat4 {
     return Vec3.new(x, y, z)
   }
 
-  // Transform a full `Vec4`.
+  /// Transform a full `Vec4`.
   transformVec4(v) {
     var x = at(0, 0) * v.x + at(0, 1) * v.y + at(0, 2) * v.z + at(0, 3) * v.w
     var y = at(1, 0) * v.x + at(1, 1) * v.y + at(1, 2) * v.z + at(1, 3) * v.w
@@ -734,15 +734,15 @@ class Quat {
 
   static identity { Quat.new(1, 0, 0, 0) }
 
-  // Rotation of `angle` (radians) around a unit-vector `axis`.
-  // Pass a non-normalised axis and the result is also non-unit.
+  /// Rotation of `angle` (radians) around a unit-vector `axis`.
+  /// Pass a non-normalised axis and the result is also non-unit.
   static fromAxisAngle(axis, angle) {
     var half = angle / 2
     var s = half.sin
     return Quat.new(half.cos, axis.x * s, axis.y * s, axis.z * s)
   }
 
-  // YXZ-order Euler angles (yaw, pitch, roll) in radians.
+  /// YXZ-order Euler angles (yaw, pitch, roll) in radians.
   static fromEuler(yaw, pitch, roll) {
     var cy = (yaw * 0.5).cos
     var sy = (yaw * 0.5).sin
@@ -772,7 +772,7 @@ class Quat {
     return Quat.new(_w / l, _x / l, _y / l, _z / l)
   }
 
-  // Conjugate — for a UNIT quaternion this is the inverse.
+  /// Conjugate — for a UNIT quaternion this is the inverse.
   conjugate { Quat.new(_w, -_x, -_y, -_z) }
 
   // Hamilton product. Non-commutative.
@@ -787,8 +787,8 @@ class Quat {
 
   dot(o) { _w * o.w + _x * o.x + _y * o.y + _z * o.z }
 
-  // Spherical linear interpolation. Falls back to lerp when the
-  // two quaternions are near-parallel to avoid division blow-up.
+  /// Spherical linear interpolation. Falls back to lerp when the
+  /// two quaternions are near-parallel to avoid division blow-up.
   static slerp(a, b, t) {
     var c = a.dot(b)
     // Take the shorter arc.
@@ -826,7 +826,7 @@ class Quat {
     )
   }
 
-  // Rotate a `Vec3` by this quaternion (assumed unit).
+  /// Rotate a `Vec3` by this quaternion (assumed unit).
   rotateVec3(v) {
     var qx = _x
     var qy = _y
@@ -844,8 +844,8 @@ class Quat {
     )
   }
 
-  // Emit the equivalent 4x4 rotation matrix. Bakes the unit
-  // assumption — pass `q.normalized` first for safety.
+  /// Emit the equivalent 4x4 rotation matrix. Bakes the unit
+  /// assumption — pass `q.normalized` first for safety.
   toMat4 {
     var xx = _x * _x
     var yy = _y * _y
@@ -869,10 +869,10 @@ class Quat {
     return m
   }
 
-  // Raw component list. Order is `(w, x, y, z)` — same as the
-  // `Quat.new(w, x, y, z)` constructor — so foreign upload paths
-  // can stream the list directly into shader uniforms that store
-  // quaternions in scalar-first layout.
+  /// Raw component list. Order is `(w, x, y, z)` — same as the
+  /// `Quat.new(w, x, y, z)` constructor — so foreign upload paths
+  /// can stream the list directly into shader uniforms that store
+  /// quaternions in scalar-first layout.
   data { [_w, _x, _y, _z] }
 
   approxEq(o) { approxEq(o, 0.000001) }

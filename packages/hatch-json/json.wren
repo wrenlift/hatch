@@ -359,9 +359,9 @@ class Parser_ {
 // --- Encoder ----------------------------------------------------------------
 
 class Encoder_ {
-  // Append the encoded form of `value` to `out`. `indent` is either
-  // null (compact) or a non-negative Num (pretty, that many spaces
-  // per level). `depth` is the current nesting depth.
+  /// Append the encoded form of `value` to `out`. `indent` is either
+  /// null (compact) or a non-negative Num (pretty, that many spaces
+  /// per level). `depth` is the current nesting depth.
   static write(out, value, indent, depth) {
     if (value == null) {
       out.add("null")

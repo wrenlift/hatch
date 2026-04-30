@@ -48,42 +48,42 @@ foreign class AudioCore {
 }
 
 class Audio {
-  // Open the default output device + start the mixer thread.
-  // Idempotent — subsequent calls are no-ops. Aborts the fiber
-  // if the host has no usable output device.
+  /// Open the default output device + start the mixer thread.
+  /// Idempotent — subsequent calls are no-ops. Aborts the fiber
+  /// if the host has no usable output device.
   static context() { AudioCore.contextInit() }
 
-  // Trigger immediate playback.
-  //   "volume":  Num   in 0..=1, default 1
-  //   "loop":    Bool, default false
+  /// Trigger immediate playback.
+  ///   "volume":  Num   in 0..=1, default 1
+  ///   "loop":    Bool, default false
   static play(sound) { play(sound, {}) }
   static play(sound, options) {
     if (!(options is Map)) options = {}
     AudioCore.play(sound.id, options)
   }
 
-  // Stop every active voice. Sources stay loaded; only the live
-  // voices are cleared.
+  /// Stop every active voice. Sources stay loaded; only the live
+  /// voices are cleared.
   static stopAll() { AudioCore.stopAll() }
 
-  // Number of voices currently playing — useful for diagnostics
-  // and for capping concurrent plays from the game side.
+  /// Number of voices currently playing — useful for diagnostics
+  /// and for capping concurrent plays from the game side.
   static activeVoices { AudioCore.activeVoices() }
 }
 
 class Sound {
-  // Decode a WAV byte buffer into a Sound. Pixels live in the
-  // mixer's PCM cache for the lifetime of the process unless
-  // explicitly unloaded.
+  /// Decode a WAV byte buffer into a Sound. Pixels live in the
+  /// mixer's PCM cache for the lifetime of the process unless
+  /// explicitly unloaded.
   static load(bytes) { Sound.new_(AudioCore.soundLoad(bytes)) }
 
   construct new_(id) { _id = id }
 
   id { _id }
 
-  // Drop the underlying sample buffer. After unload, the Sound's
-  // id is invalid — passing it to Audio.play surfaces a runtime
-  // error. Idempotent.
+  /// Drop the underlying sample buffer. After unload, the Sound's
+  /// id is invalid — passing it to Audio.play surfaces a runtime
+  /// error. Idempotent.
   unload {
     AudioCore.soundUnload(_id)
     _id = -1

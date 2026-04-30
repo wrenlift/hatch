@@ -28,15 +28,15 @@
 
 import "time" for TimeCore
 
-// Re-export under the same name — gives users a single import
-// surface without pulling the raw "time" module themselves.
+/// Re-export under the same name — gives users a single import
+/// surface without pulling the raw "time" module themselves.
 class Clock {
   static unix { TimeCore.unix }
   static mono { TimeCore.mono }
   static sleep(seconds) { TimeCore.sleep(seconds) }
   static sleepMs(ms)    { TimeCore.sleep(ms / 1000) }
 
-  // Time a block. Returns monotonic seconds elapsed.
+  /// Time a block. Returns monotonic seconds elapsed.
   static elapsed(block) {
     if (!(block is Fn)) Fiber.abort("Clock.elapsed: expected a Fn")
     var start = TimeCore.mono
@@ -48,10 +48,10 @@ class Clock {
 class Time {
   // Factory constructors -------------------------------------------------
 
-  // Capture the current moment.
+  /// Capture the current moment.
   static now { fromUnix(TimeCore.unix) }
 
-  // Wrap a Unix timestamp (seconds since 1970-01-01 UTC).
+  /// Wrap a Unix timestamp (seconds since 1970-01-01 UTC).
   static fromUnix(seconds) {
     if (!(seconds is Num)) Fiber.abort("Time.fromUnix: expected a number")
     return new_(seconds)
@@ -76,15 +76,15 @@ class Time {
 
   // Formatting -----------------------------------------------------------
 
-  // RFC 3339 / ISO 8601 in UTC, e.g. "2026-04-20T14:23:45Z".
+  /// RFC 3339 / ISO 8601 in UTC, e.g. "2026-04-20T14:23:45Z".
   iso {
     return "%(Time.pad_(year, 4))-%(Time.pad_(month, 2))-%(Time.pad_(day, 2))" +
            "T%(Time.pad_(hour, 2)):%(Time.pad_(minute, 2)):%(Time.pad_(second, 2))Z"
   }
 
-  // Custom format. Tokens: YYYY, MM, DD, HH, mm, ss, SSS (millis).
-  // Everything else passes through verbatim. Minimal on purpose —
-  // full strftime is a later upgrade.
+  /// Custom format. Tokens: YYYY, MM, DD, HH, mm, ss, SSS (millis).
+  /// Everything else passes through verbatim. Minimal on purpose —
+  /// full strftime is a later upgrade.
   format(pattern) {
     if (!(pattern is String)) Fiber.abort("Time.format: pattern must be a string")
     var out = pattern

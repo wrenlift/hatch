@@ -39,10 +39,10 @@
 import "socket" for SocketCore
 
 class TcpListener {
-  // Bind + listen on an address string ("host:port"). The host
-  // half accepts IPv4, IPv6, or a DNS name. Returns a listener.
-  // Pass port 0 to let the OS pick a free port — read it back
-  // from `.address`.
+  /// Bind + listen on an address string ("host:port"). The host
+  /// half accepts IPv4, IPv6, or a DNS name. Returns a listener.
+  /// Pass port 0 to let the OS pick a free port — read it back
+  /// from `.address`.
   static bind(addr) {
     if (!(addr is String)) Fiber.abort("TcpListener.bind: addr must be a string")
     return TcpListener.new_(SocketCore.tcpListen(addr))
@@ -52,26 +52,26 @@ class TcpListener {
     _id = id
   }
 
-  // Block until a peer connects, then return a `TcpStream`.
+  /// Block until a peer connects, then return a `TcpStream`.
   accept {
     return TcpStream.fromId_(SocketCore.tcpAccept(_id))
   }
 
-  // Non-blocking accept. Returns a `TcpStream` or `null` if no
-  // peer is pending — pair with `Fiber.yield()` for cooperative
-  // servers.
+  /// Non-blocking accept. Returns a `TcpStream` or `null` if no
+  /// peer is pending — pair with `Fiber.yield()` for cooperative
+  /// servers.
   tryAccept {
     var sid = SocketCore.tcpTryAccept(_id)
     if (sid == null) return null
     return TcpStream.fromId_(sid)
   }
 
-  // String form of the bound local address, including the port
-  // the OS picked when bound to port 0.
+  /// String form of the bound local address, including the port
+  /// the OS picked when bound to port 0.
   address { SocketCore.tcpListenerLocalAddr(_id) }
 
-  // Free the underlying listener. Already-accepted streams keep
-  // working independently.
+  /// Free the underlying listener. Already-accepted streams keep
+  /// working independently.
   close {
     SocketCore.tcpCloseListener(_id)
     return null
@@ -81,9 +81,9 @@ class TcpListener {
 }
 
 class TcpStream {
-  // Connect to a peer by "host:port" string. Blocks until the
-  // connection completes or `timeoutMs` elapses. Pass null to
-  // use the OS default timeout.
+  /// Connect to a peer by "host:port" string. Blocks until the
+  /// connection completes or `timeoutMs` elapses. Pass null to
+  /// use the OS default timeout.
   static connect(addr)            { connect(addr, null) }
   static connect(addr, timeoutMs) {
     if (!(addr is String)) Fiber.abort("TcpStream.connect: addr must be a string")
@@ -100,31 +100,31 @@ class TcpStream {
     _id = id
   }
 
-  // Block until up to `max` bytes arrive. Returns a List<Num>.
-  // An empty list signals EOF (peer closed their write half);
-  // callers distinguish EOF from "no data right now" because
-  // this form always blocks until *something* happens.
+  /// Block until up to `max` bytes arrive. Returns a List<Num>.
+  /// An empty list signals EOF (peer closed their write half);
+  /// callers distinguish EOF from "no data right now" because
+  /// this form always blocks until *something* happens.
   read(max) { SocketCore.tcpRead(_id, max) }
 
-  // Non-blocking read. Returns:
-  //   * non-empty List<Num>  — bytes ready
-  //   * empty List           — EOF
-  //   * null                 — no data available right now
-  // Cooperative fiber loop:
-  //   while (true) {
-  //     var chunk = conn.tryRead(4096)
-  //     if (chunk == null) { Fiber.yield() } else { ... break }
-  //   }
+  /// Non-blocking read. Returns:
+  ///   * non-empty List<Num>  — bytes ready
+  ///   * empty List           — EOF
+  ///   * null                 — no data available right now
+  /// Cooperative fiber loop:
+  ///   while (true) {
+  ///     var chunk = conn.tryRead(4096)
+  ///     if (chunk == null) { Fiber.yield() } else { ... break }
+  ///   }
   tryRead(max) { SocketCore.tcpTryRead(_id, max) }
 
-  // Write every byte of `data` (String or List<Num>). Blocks
-  // until the OS accepts the full payload. Returns the number of
-  // bytes written.
+  /// Write every byte of `data` (String or List<Num>). Blocks
+  /// until the OS accepts the full payload. Returns the number of
+  /// bytes written.
   write(data) { SocketCore.tcpWrite(_id, data) }
 
-  // Apply a per-read timeout in milliseconds. A subsequent
-  // `read` that waits longer than this fails with a runtime
-  // error. Pass null to clear.
+  /// Apply a per-read timeout in milliseconds. A subsequent
+  /// `read` that waits longer than this fails with a runtime
+  /// error. Pass null to clear.
   setReadTimeout(ms) {
     SocketCore.tcpSetReadTimeout(_id, ms)
     return null
@@ -133,8 +133,8 @@ class TcpStream {
   peerAddr  { SocketCore.tcpPeerAddr(_id) }
   localAddr { SocketCore.tcpLocalAddr(_id) }
 
-  // Shut down both halves and release the OS handle. Calling
-  // `close` twice is safe — the second call is a no-op.
+  /// Shut down both halves and release the OS handle. Calling
+  /// `close` twice is safe — the second call is a no-op.
   close {
     SocketCore.tcpClose(_id)
     return null
@@ -144,8 +144,8 @@ class TcpStream {
 }
 
 class UdpSocket {
-  // Bind a datagram socket. Like TcpListener, port 0 asks the
-  // OS for a free port.
+  /// Bind a datagram socket. Like TcpListener, port 0 asks the
+  /// OS for a free port.
   static bind(addr) {
     if (!(addr is String)) Fiber.abort("UdpSocket.bind: addr must be a string")
     return UdpSocket.new_(SocketCore.udpBind(addr))
@@ -155,21 +155,21 @@ class UdpSocket {
     _id = id
   }
 
-  // Send `data` (String or List<Num>) to `dest` ("host:port"),
-  // returning the number of bytes actually sent. UDP is packet-
-  // oriented: writes are all-or-nothing up to the MTU.
+  /// Send `data` (String or List<Num>) to `dest` ("host:port"),
+  /// returning the number of bytes actually sent. UDP is packet-
+  /// oriented: writes are all-or-nothing up to the MTU.
   sendTo(data, dest) {
     if (!(dest is String)) Fiber.abort("UdpSocket.sendTo: dest must be a string")
     return SocketCore.udpSendTo(_id, data, dest)
   }
 
-  // Block for the next datagram, returning `[bytes, fromAddr]`.
-  // `bytes` is a List<Num>, `fromAddr` is a String. Each recv
-  // reads exactly one datagram.
+  /// Block for the next datagram, returning `[bytes, fromAddr]`.
+  /// `bytes` is a List<Num>, `fromAddr` is a String. Each recv
+  /// reads exactly one datagram.
   recvFrom(max) { SocketCore.udpRecvFrom(_id, max) }
 
-  // Non-blocking recvFrom. Returns `[bytes, fromAddr]` or `null`
-  // when no datagram is buffered.
+  /// Non-blocking recvFrom. Returns `[bytes, fromAddr]` or `null`
+  /// when no datagram is buffered.
   tryRecvFrom(max) { SocketCore.udpTryRecvFrom(_id, max) }
 
   address { SocketCore.udpLocalAddr(_id) }

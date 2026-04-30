@@ -42,7 +42,7 @@ class Fmt {
 
   static reset { "\x1b[0m" }
 
-  // Foreground colors.
+  /// Foreground colors.
   static red(s)     { wrap_(s, "\x1b[31m") }
   static green(s)   { wrap_(s, "\x1b[32m") }
   static yellow(s)  { wrap_(s, "\x1b[33m") }
@@ -52,8 +52,8 @@ class Fmt {
   static white(s)   { wrap_(s, "\x1b[37m") }
   static gray(s)    { wrap_(s, "\x1b[90m") }
 
-  // Styles. `bold`, `dim`, `italic`, `underline` compose on top of
-  // colors — wrap inside-out (`Fmt.bold(Fmt.red("x"))`).
+  /// Styles. `bold`, `dim`, `italic`, `underline` compose on top of
+  /// colors — wrap inside-out (`Fmt.bold(Fmt.red("x"))`).
   static bold(s)      { wrap_(s, "\x1b[1m") }
   static dim(s)       { wrap_(s, "\x1b[2m") }
   static italic(s)    { wrap_(s, "\x1b[3m") }
@@ -70,22 +70,22 @@ class Fmt {
 
   // -- Padding ------------------------------------------------------------
 
-  // Right-align `s` in a field of `width` spaces.
+  /// Right-align `s` in a field of `width` spaces.
   static padLeft(s, width) {
     var t = toString_(s)
     if (t.count >= width) return t
     return " " * (width - t.count) + t
   }
 
-  // Left-align `s` in a field of `width` spaces.
+  /// Left-align `s` in a field of `width` spaces.
   static padRight(s, width) {
     var t = toString_(s)
     if (t.count >= width) return t
     return t + " " * (width - t.count)
   }
 
-  // Center `s` in a field of `width` spaces; excess space lands on
-  // the right when the gap is odd.
+  /// Center `s` in a field of `width` spaces; excess space lands on
+  /// the right when the gap is odd.
   static center(s, width) {
     var t = toString_(s)
     if (t.count >= width) return t
@@ -97,9 +97,9 @@ class Fmt {
 
   // -- Numeric helpers ----------------------------------------------------
 
-  // Unsigned hex. Negative numbers are formatted against their
-  // absolute value with a leading `-` — enough for debug prints,
-  // not an arbitrary-precision bignum helper.
+  /// Unsigned hex. Negative numbers are formatted against their
+  /// absolute value with a leading `-` — enough for debug prints,
+  /// not an arbitrary-precision bignum helper.
   static hex(n) {
     if (n == 0) return "0x0"
     var sign = ""
@@ -117,7 +117,7 @@ class Fmt {
     return sign + "0x" + s
   }
 
-  // Fixed-point decimal. Rounds half-up.
+  /// Fixed-point decimal. Rounds half-up.
   static fixed(n, decimals) {
     if (decimals < 0) Fiber.abort("decimals must be >= 0")
     var mult = (10).pow(decimals)
@@ -134,10 +134,10 @@ class Fmt {
     return "%(signStr)%(whole).%(fracStr)"
   }
 
-  // Duration from a whole-seconds count. Single-unit output for
-  // small values, space-joined for larger ones (e.g. `"1h 1m 10s"`).
-  // Floors to whole seconds; fractional seconds could round up a
-  // minute boundary and read misleadingly.
+  /// Duration from a whole-seconds count. Single-unit output for
+  /// small values, space-joined for larger ones (e.g. `"1h 1m 10s"`).
+  /// Floors to whole seconds; fractional seconds could round up a
+  /// minute boundary and read misleadingly.
   static duration(seconds) {
     var s = seconds.floor
     if (s < 0) return "-" + duration(-s)

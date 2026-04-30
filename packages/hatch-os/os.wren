@@ -38,11 +38,11 @@ class Os {
 
   // -- Env ---------------------------------------------------------------
 
-  // Single-arg form: the raw value or null.
+  /// Single-arg form: the raw value or null.
   static env(name) { OS.env(name) }
 
-  // Two-arg form: fallback when the var is unset. Saves callers
-  // from writing `Os.env("X") || "default"` at every callsite.
+  /// Two-arg form: fallback when the var is unset. Saves callers
+  /// from writing `Os.env("X") || "default"` at every callsite.
   static env(name, default_) {
     var v = OS.env(name)
     return v == null ? default_ : v
@@ -56,8 +56,8 @@ class Os {
 
   static args { OS.args }
 
-  // argv: the args _without_ the program name, matching how
-  // @hatch:cli and most other CLI code want it.
+  /// argv: the args _without_ the program name, matching how
+  /// @hatch:cli and most other CLI code want it.
   static argv {
     var all = OS.args
     if (all.count == 0) return []

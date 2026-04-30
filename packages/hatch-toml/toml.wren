@@ -46,22 +46,22 @@
 import "toml" for TomlCore
 
 class Toml {
-  // Parse a TOML document. Returns a Map with all top-level keys.
+  /// Parse a TOML document. Returns a Map with all top-level keys.
   static parse(text) {
     if (!(text is String)) Fiber.abort("Toml.parse: text must be a string")
     return TomlCore.parse(text)
   }
 
-  // Serialize a Map to canonical TOML (compact inline-table form
-  // where possible, standard `[table]` headers otherwise).
+  /// Serialize a Map to canonical TOML (compact inline-table form
+  /// where possible, standard `[table]` headers otherwise).
   static encode(value) {
     if (!(value is Map)) Fiber.abort("Toml.encode: value must be a Map")
     return TomlCore.encode(value)
   }
 
-  // Same as `encode` but with the `toml` crate's pretty-printer —
-  // expands arrays onto multiple lines and adds some whitespace
-  // for human readability.
+  /// Same as `encode` but with the `toml` crate's pretty-printer —
+  /// expands arrays onto multiple lines and adds some whitespace
+  /// for human readability.
   static encodePretty(value) {
     if (!(value is Map)) Fiber.abort("Toml.encodePretty: value must be a Map")
     return TomlCore.encodePretty(value)

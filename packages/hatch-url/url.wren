@@ -43,9 +43,9 @@ class Url {
 
   // --- Parsing --------------------------------------------------------
 
-  // Parse a string into a Url. Aborts the fiber on malformed
-  // input (missing scheme, bad port, etc.). Callers who want
-  // fallible parsing wrap in `Fiber.new { Url.parse(s) }.try()`.
+  /// Parse a string into a Url. Aborts the fiber on malformed
+  /// input (missing scheme, bad port, etc.). Callers who want
+  /// fallible parsing wrap in `Fiber.new { Url.parse(s) }.try()`.
   static parse(str) {
     if (!(str is String)) Fiber.abort("Url.parse: expected a string")
     if (str == "") Fiber.abort("Url.parse: empty input")
@@ -165,9 +165,9 @@ class Url {
   fragment      { _fragment }
   fragment=(v)  { _fragment = v }
 
-  // Parsed query string as a Map<String, String>. Repeated keys
-  // keep the last value — callers who need multi-valued params
-  // should parse `query` themselves.
+  /// Parsed query string as a Map<String, String>. Repeated keys
+  /// keep the last value — callers who need multi-valued params
+  /// should parse `query` themselves.
   queryMap {
     if (_query == null) return {}
     return Url.decodeQuery(_query)
@@ -197,8 +197,8 @@ class Url {
 
   // --- Percent-encoding ----------------------------------------------
 
-  // Unreserved per RFC 3986: ALPHA / DIGIT / "-" / "." / "_" / "~"
-  // Everything else → %XX uppercase hex.
+  /// Unreserved per RFC 3986: ALPHA / DIGIT / "-" / "." / "_" / "~"
+  /// Everything else → %XX uppercase hex.
   static encode(s) {
     if (!(s is String)) Fiber.abort("Url.encode: expected a string")
     if (s == "") return ""
@@ -262,8 +262,8 @@ class Url {
 
   // --- Query helpers --------------------------------------------------
 
-  // Encode a Map into a `k1=v1&k2=v2` string. Values that aren't
-  // strings are stringified via interpolation.
+  /// Encode a Map into a `k1=v1&k2=v2` string. Values that aren't
+  /// strings are stringified via interpolation.
   static encodeQuery(map) {
     if (!(map is Map)) Fiber.abort("Url.encodeQuery: expected a Map")
     var parts = []

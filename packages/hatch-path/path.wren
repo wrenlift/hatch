@@ -25,8 +25,8 @@ class Path {
 
   // -- join ------------------------------------------------------------------
 
-  // Two-arg form: the common case. `a/b/c` chains as
-  // `Path.join(Path.join("a", "b"), "c")`.
+  /// Two-arg form: the common case. `a/b/c` chains as
+  /// `Path.join(Path.join("a", "b"), "c")`.
   static join(a, b) {
     if (!(a is String) || !(b is String)) {
       Fiber.abort("Path.join: arguments must be strings")
@@ -40,9 +40,9 @@ class Path {
     return a + SEP + b
   }
 
-  // List form: `Path.join(["a", "b", "c"])`. Empty entries are
-  // skipped so callers can pass conditional segments without
-  // pre-filtering.
+  /// List form: `Path.join(["a", "b", "c"])`. Empty entries are
+  /// skipped so callers can pass conditional segments without
+  /// pre-filtering.
   static join(parts) {
     if (parts is String) return parts
     if (!(parts is List)) {
@@ -70,8 +70,8 @@ class Path {
 
   // -- split / components ----------------------------------------------------
 
-  // Split on `/`, preserving the absolute-path "" first element so
-  // `split("/a/b")[0] == ""` and `split("a/b")[0] == "a"`.
+  /// Split on `/`, preserving the absolute-path "" first element so
+  /// `split("/a/b")[0] == ""` and `split("a/b")[0] == "a"`.
   static split(path) {
     if (!(path is String)) Fiber.abort("Path.split: expected a string")
     if (path == "") return []
@@ -80,8 +80,8 @@ class Path {
 
   // -- parent / basename / stem / extname ------------------------------------
 
-  // Directory portion. `"/a/b/c"` → `"/a/b"`, `"c"` → `""`,
-  // `"/"` → `"/"`.
+  /// Directory portion. `"/a/b/c"` → `"/a/b"`, `"c"` → `""`,
+  /// `"/"` → `"/"`.
   static parent(path) {
     if (!(path is String)) Fiber.abort("Path.parent: expected a string")
     if (path == "") return ""
@@ -93,8 +93,8 @@ class Path {
     return stripped[0...idx]
   }
 
-  // Final path component. `"/a/b/c.txt"` → `"c.txt"`,
-  // `"/"` → `""`, `"foo"` → `"foo"`.
+  /// Final path component. `"/a/b/c.txt"` → `"c.txt"`,
+  /// `"/"` → `""`, `"foo"` → `"foo"`.
   static basename(path) {
     if (!(path is String)) Fiber.abort("Path.basename: expected a string")
     var stripped = stripTrailingSep_(path)
@@ -104,9 +104,9 @@ class Path {
     return stripped[(idx + 1)...stripped.count]
   }
 
-  // basename without the extension. `"foo/bar.txt"` → `"bar"`.
-  // Leading-dot files without a further `.` keep their full name
-  // (`".bashrc"` → `".bashrc"`).
+  /// basename without the extension. `"foo/bar.txt"` → `"bar"`.
+  /// Leading-dot files without a further `.` keep their full name
+  /// (`".bashrc"` → `".bashrc"`).
   static stem(path) {
     var base = basename(path)
     if (base == "") return ""
@@ -115,9 +115,9 @@ class Path {
     return base[0...(base.count - ext.count)]
   }
 
-  // Extension including the leading dot. `"foo.tar.gz"` → `".gz"`,
-  // `"README"` → `""`, `".bashrc"` → `""` (leading dot alone is not
-  // an extension).
+  /// Extension including the leading dot. `"foo.tar.gz"` → `".gz"`,
+  /// `"README"` → `""`, `".bashrc"` → `""` (leading dot alone is not
+  /// an extension).
   static extname(path) {
     var base = basename(path)
     var idx = lastIndexOf_(base, ".")
@@ -138,11 +138,11 @@ class Path {
 
   // -- normalize -------------------------------------------------------------
 
-  // Collapse `a/./b` → `a/b`, `a//b` → `a/b`, and resolve `..`
-  // against the preceding segment. Absolute paths stay absolute;
-  // relative paths that ascend above the start keep the leading
-  // `..` segments (we can't resolve past the root of a relative
-  // path without touching the filesystem).
+  /// Collapse `a/./b` → `a/b`, `a//b` → `a/b`, and resolve `..`
+  /// against the preceding segment. Absolute paths stay absolute;
+  /// relative paths that ascend above the start keep the leading
+  /// `..` segments (we can't resolve past the root of a relative
+  /// path without touching the filesystem).
   static normalize(path) {
     if (!(path is String)) Fiber.abort("Path.normalize: expected a string")
     if (path == "") return "."

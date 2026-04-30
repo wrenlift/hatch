@@ -66,7 +66,7 @@ class Arg {
     return this
   }
 
-  // Takes a value: --key val / -k val / --key=val.
+  /// Takes a value: --key val / -k val / --key=val.
   value() {
     _takesValue = true
     _count = false
@@ -74,7 +74,7 @@ class Arg {
     return this
   }
 
-  // Boolean flag: presence sets it to true.
+  /// Boolean flag: presence sets it to true.
   flag() {
     _takesValue = false
     _count = false
@@ -82,7 +82,7 @@ class Arg {
     return this
   }
 
-  // Counting flag: each occurrence bumps a counter (-v -v -v -> 3).
+  /// Counting flag: each occurrence bumps a counter (-v -v -v -> 3).
   count() {
     _takesValue = false
     _count = true
@@ -90,8 +90,8 @@ class Arg {
     return this
   }
 
-  // Positional -- consumed by slot in declaration order. Always
-  // takes a value (by definition), so value() is implicit.
+  /// Positional -- consumed by slot in declaration order. Always
+  /// takes a value (by definition), so value() is implicit.
   positional() {
     _positional = true
     _takesValue = true
@@ -110,7 +110,7 @@ class Arg {
     return this
   }
 
-  // Getters used by Cli.
+  /// Getters used by Cli.
   name           { _name }
   shortFlag      { _short }
   longFlag       { _long }
@@ -146,8 +146,8 @@ class Cli {
     return this
   }
 
-  // Store each arg once plus build side-indexes for constant-time
-  // lookups during parsing.
+  /// Store each arg once plus build side-indexes for constant-time
+  /// lookups during parsing.
   arg(a) {
     _args.add(a)
     if (a.isPositional) _positionals.add(a)
@@ -167,9 +167,9 @@ class Cli {
   args_          { _args }
   subs_          { _subcommands }
 
-  // Parse argv (a list of strings) and return a Matches. Errors
-  // populate matches.error; parsing still returns a Matches so
-  // callers can inspect whatever was parsed before the failure.
+  /// Parse argv (a list of strings) and return a Matches. Errors
+  /// populate matches.error; parsing still returns a Matches so
+  /// callers can inspect whatever was parsed before the failure.
   parse(argv) {
     var matches = Matches.new()
     var argvCount = argv.count
@@ -472,7 +472,7 @@ class Matches {
     _versionRequested = false
   }
 
-  // User-facing accessors.
+  /// User-facing accessors.
   flag(name)    { _flags.containsKey(name) && _flags[name] == true }
   value(name)   { _values.containsKey(name) ? _values[name] : null }
   count(name)   { _counts.containsKey(name) ? _counts[name] : 0 }

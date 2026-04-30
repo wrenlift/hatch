@@ -124,9 +124,9 @@ class Resources {
     return resource
   }
 
-  // Convenience for primitive resources (Num / String / Map / List)
-  // that don't carry a class identity worth looking up against —
-  // user provides the key class explicitly.
+  /// Convenience for primitive resources (Num / String / Map / List)
+  /// that don't carry a class identity worth looking up against —
+  /// user provides the key class explicitly.
   insertAs(klass, value) {
     _store[klass] = value
     return value
@@ -197,10 +197,10 @@ class Commands {
     _ops = []     // List of Maps describing each op
   }
 
-  // Reserve an entity id eagerly so the caller can hold the
-  // returned id and attach more components later in the same
-  // command list. The id isn't bound to a real entity until
-  // `applyCommands` runs.
+  /// Reserve an entity id eagerly so the caller can hold the
+  /// returned id and attach more components later in the same
+  /// command list. The id isn't bound to a real entity until
+  /// `applyCommands` runs.
   spawn() {
     _ops.add({ "kind": "spawn" })
     return PendingSpawn_.new_(this, _ops.count - 1)
@@ -277,13 +277,13 @@ class Query {
     return _world.queryFiltered_(_with, _without)
   }
 
-  // Shorter call-as-a-block style:
-  //   world.query.with(A).with(B).each {|w, e| ... }
+  /// Shorter call-as-a-block style:
+  ///   world.query.with(A).with(B).each {|w, e| ... }
   each(block) {
     for (e in iterate) block.call(_world, e)
   }
 
-  // Count-only — useful for HUD overlays / debug.
+  /// Count-only — useful for HUD overlays / debug.
   count {
     return iterate.count
   }
@@ -310,8 +310,8 @@ class Schedule {
     _order   = null  // resolved topo order (cached until invalidated)
   }
 
-  // Register a system under a label. Re-adding under the same
-  // label replaces the previous fn (handy for hot reload).
+  /// Register a system under a label. Re-adding under the same
+  /// label replaces the previous fn (handy for hot reload).
   add(label, fn) {
     _systems[label] = fn
     if (!_after.containsKey(label)) _after[label] = []
@@ -334,7 +334,7 @@ class Schedule {
     return this
   }
 
-  // `label` must run after `other`.
+  /// `label` must run after `other`.
   after(label, other) {
     if (!_after.containsKey(label)) _after[label] = []
     if (!_after[label].contains(other)) _after[label].add(other)
@@ -342,7 +342,7 @@ class Schedule {
     return this
   }
 
-  // `label` must run before `other`. Sugar for `after(other, label)`.
+  /// `label` must run before `other`. Sugar for `after(other, label)`.
   before(label, other) {
     after(other, label)
     return this
@@ -394,8 +394,8 @@ class Schedule {
     return ordered
   }
 
-  // Resolve order + dispatch each system in order. `ctx` is
-  // passed through to every system.
+  /// Resolve order + dispatch each system in order. `ctx` is
+  /// passed through to every system.
   run(world, ctx) {
     var order = resolve_
     for (label in order) {
@@ -449,14 +449,14 @@ class World {
     return _components[klass].count
   }
 
-  // Live entity ids snapshot — copy-out for safe iteration.
+  /// Live entity ids snapshot — copy-out for safe iteration.
   entities {
     var out = []
     for (id in _entities.keys) out.add(id)
     return out
   }
 
-  // Component classes that currently have at least one entry.
+  /// Component classes that currently have at least one entry.
   componentTypes {
     var out = []
     for (k in _components.keys) {
@@ -470,9 +470,9 @@ class World {
   resources { _resources }
   events    { _events }
 
-  // Drain every event queue. Called by `Schedule.run` at the end
-  // of each frame; you can also call it manually if you're
-  // running systems by hand.
+  /// Drain every event queue. Called by `Schedule.run` at the end
+  /// of each frame; you can also call it manually if you're
+  /// running systems by hand.
   flushEvents { _events.clear }
 
   // -- Entity lifecycle ---------------------------------------
@@ -484,8 +484,8 @@ class World {
     return id
   }
 
-  // Allocate an entity and attach every component in one call.
-  // `components` may be a `List` of instances or a `Bundle`.
+  /// Allocate an entity and attach every component in one call.
+  /// `components` may be a `List` of instances or a `Bundle`.
   spawnWith(components) {
     var list = (components is Bundle) ? components.components : components
     var id = spawn()
@@ -555,8 +555,8 @@ class World {
 
   // -- Hooks --------------------------------------------------
 
-  // Register a callback fired AFTER a component of `klass` is
-  // attached. Block signature: `{|world, entity, component| ...}`.
+  /// Register a callback fired AFTER a component of `klass` is
+  /// attached. Block signature: `{|world, entity, component| ...}`.
   onAdd(klass, fn) {
     if (!_onAdd.containsKey(klass)) _onAdd[klass] = []
     _onAdd[klass].add(fn)
@@ -583,14 +583,14 @@ class World {
 
   // -- Queries ------------------------------------------------
 
-  // Original simple form — match every entity that has every
-  // class in `klasses`.
+  /// Original simple form — match every entity that has every
+  /// class in `klasses`.
   query(klasses) {
     if (klasses is Class) klasses = [klasses]
     return queryFiltered_(klasses, [])
   }
 
-  // Fluent builder: `world.query.with(A).without(B).iterate`.
+  /// Fluent builder: `world.query.with(A).without(B).iterate`.
   query { Query.new_(this) }
 
   // Backing form for both the simple and fluent paths.
@@ -636,16 +636,16 @@ class World {
     return true
   }
 
-  // Convenience for the common iterate-and-call-block pattern.
-  // Block signature: `{|world, entity| ...}`.
+  /// Convenience for the common iterate-and-call-block pattern.
+  /// Block signature: `{|world, entity| ...}`.
   each(klasses, block) {
     for (e in query(klasses)) block.call(this, e)
   }
 
   // -- Hierarchy ----------------------------------------------
 
-  // Set / replace `child`'s parent. Removes `child` from the
-  // previous parent's `Children` if there was one. Idempotent.
+  /// Set / replace `child`'s parent. Removes `child` from the
+  /// previous parent's `Children` if there was one. Idempotent.
   setParent(child, parent) {
     var prev = get(child, Parent)
     if (prev != null) {
@@ -661,8 +661,8 @@ class World {
     kids.add(child)
   }
 
-  // Drop the parent edge. The previous parent's Children list
-  // gets the child removed; the entity itself stays alive.
+  /// Drop the parent edge. The previous parent's Children list
+  /// gets the child removed; the entity itself stays alive.
   unparent(child) {
     var p = get(child, Parent)
     if (p == null) return
@@ -683,12 +683,12 @@ class World {
 
   // -- Commands -----------------------------------------------
 
-  // Allocate a fresh command buffer. Caller fills it and applies
-  // it back via `applyCommands`.
+  /// Allocate a fresh command buffer. Caller fills it and applies
+  /// it back via `applyCommands`.
   commands { Commands.new_() }
 
-  // Replay `cmds.ops` against this world, resolving any pending
-  // spawns to real ids. After return the buffer is empty.
+  /// Replay `cmds.ops` against this world, resolving any pending
+  /// spawns to real ids. After return the buffer is empty.
   applyCommands(cmds) {
     var resolved = {}    // opIndex → entity id
     var i = 0
@@ -722,9 +722,9 @@ class World {
 
   // -- Reset --------------------------------------------------
 
-  // Drop every entity, component, hook, and resource. Useful
-  // between scenes / levels so users don't have to walk the
-  // world themselves.
+  /// Drop every entity, component, hook, and resource. Useful
+  /// between scenes / levels so users don't have to walk the
+  /// world themselves.
   clear() {
     _entities = {}
     _components = {}

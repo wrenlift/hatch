@@ -30,17 +30,17 @@ foreign class ImageCore {
 }
 
 class Image {
-  // Decode bytes (List<Num> or ByteArray) into an Image. Format
-  // is sniffed from the magic bytes; alpha is always present in
-  // the output.
+  /// Decode bytes (List<Num> or ByteArray) into an Image. Format
+  /// is sniffed from the magic bytes; alpha is always present in
+  /// the output.
   static decode(bytes) {
     var rec = ImageCore.decode(bytes)
     return Image.new_(rec["width"], rec["height"], rec["pixels"])
   }
 
-  // Encode RGBA8 pixels to the chosen file format. `format` is
-  // "png", "jpeg" / "jpg", or "bmp". Returns a ByteArray ready
-  // for FS.writeBytes / network upload / archive packaging.
+  /// Encode RGBA8 pixels to the chosen file format. `format` is
+  /// "png", "jpeg" / "jpg", or "bmp". Returns a ByteArray ready
+  /// for FS.writeBytes / network upload / archive packaging.
   static encode(format, width, height, pixels) {
     return ImageCore.encode(format, width, height, pixels)
   }

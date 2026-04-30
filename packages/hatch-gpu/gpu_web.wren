@@ -126,10 +126,10 @@ foreign class GpuWeb_ {
 // @hatch:json to keep gpu_web's dep graph identical to native's.
 // ---------------------------------------------------------------
 class Json_ {
-  // Encode a value to JSON. Recurses through Maps and Lists; rejects
-  // anything else with a clear error pointing at the value's class.
-  // Strings escape `"` and `\`; numerics use Wren's default toString;
-  // Bool / Null map to JSON literals.
+  /// Encode a value to JSON. Recurses through Maps and Lists; rejects
+  /// anything else with a clear error pointing at the value's class.
+  /// Strings escape `"` and `\`; numerics use Wren's default toString;
+  /// Bool / Null map to JSON literals.
   static stringify(v) { appendValue_("", v) }
   static appendValue_(out, v) {
     if (v == null)         return out + "null"
@@ -212,21 +212,21 @@ class Gpu {
 }
 
 // ---------------------------------------------------------------
-// `GpuCore` — Wren class that emulates gpu_native.wren's foreign
-// `GpuCore` surface so the rest of the wrappers can be ported
-// verbatim. Methods accept the same `descriptor` Maps the native
-// foreign class does; this layer translates them into the web
-// plugin's flat handle / JSON shape.
+/// `GpuCore` — Wren class that emulates gpu_native.wren's foreign
+/// `GpuCore` surface so the rest of the wrappers can be ported
+/// verbatim. Methods accept the same `descriptor` Maps the native
+/// foreign class does; this layer translates them into the web
+/// plugin's flat handle / JSON shape.
 // ---------------------------------------------------------------
 class GpuCore {
-  // -- Device --------------------------------------------------
+  /// -- Device --------------------------------------------------
   static requestDevice(descriptor) { 0 } // single global device on web; just an opaque token
   static deviceDestroy(id)         {}     // no-op; the JS-side device lives for the page
   static deviceInfo(id) {
     return { "name": "WebGPU", "backend": "webgpu", "deviceType": "browser" }
   }
 
-  // -- Buffer --------------------------------------------------
+  /// -- Buffer --------------------------------------------------
   static bufferCreate(deviceId, descriptor) {
     var size  = descriptor["size"]
     var usage = bufferUsageBits_(descriptor["usage"])
@@ -265,7 +265,7 @@ class GpuCore {
   static bufferWriteQuats(id, offset, quats) { bufferWriteVec4s(id, offset, quats) }
   static bufferReadBytes(id) { Fiber.abort("GpuCore.bufferReadBytes: not yet supported on the web backend.") }
 
-  // -- Shader --------------------------------------------------
+  /// -- Shader --------------------------------------------------
   static shaderCreate(deviceId, descriptor) {
     var h = GpuWeb_.createShader(descriptor["code"])
     if (h < 0) Fiber.abort("GpuCore.shaderCreate: shader compile failed.")
@@ -273,7 +273,7 @@ class GpuCore {
   }
   static shaderDestroy(id) { GpuWeb_.destroy(id) }
 
-  // -- Texture -------------------------------------------------
+  /// -- Texture -------------------------------------------------
   static textureCreate(deviceId, descriptor) {
     var json = {
       "width":  descriptor["width"],
@@ -297,7 +297,7 @@ class GpuCore {
   }
   static viewDestroy(id) { GpuWeb_.destroy(id) }
 
-  // -- Sampler -------------------------------------------------
+  /// -- Sampler -------------------------------------------------
   static samplerCreate(deviceId, descriptor) {
     var json = descriptor is Map ? descriptor : {}
     var h = GpuWeb_.createSampler(Json_.stringify(json))
@@ -306,7 +306,7 @@ class GpuCore {
   }
   static samplerDestroy(id) { GpuWeb_.destroy(id) }
 
-  // -- Bind group layout / pipeline layout / bind group -------
+  /// -- Bind group layout / pipeline layout / bind group -------
   static bindGroupLayoutCreate(deviceId, descriptor) {
     var entries = []
     for (e in descriptor["entries"]) {
@@ -346,10 +346,10 @@ class GpuCore {
   }
   static bindGroupLayoutDestroy(id) { GpuWeb_.destroy(id) }
 
-  // PipelineLayout — web has no separate handle for it. Encode
-  // the bgls as a list and stash; renderPipelineCreate consumes it.
-  // Returns the JSON-encoded bgl-id list as the "id"; consumers
-  // pass the wrapper through unchanged.
+  /// PipelineLayout — web has no separate handle for it. Encode
+  /// the bgls as a list and stash; renderPipelineCreate consumes it.
+  /// Returns the JSON-encoded bgl-id list as the "id"; consumers
+  /// pass the wrapper through unchanged.
   static pipelineLayoutCreate(deviceId, descriptor) {
     return descriptor["bindGroupLayouts"]   // List<Num> (bgl ids)
   }
@@ -379,7 +379,7 @@ class GpuCore {
   }
   static bindGroupDestroy(id) { GpuWeb_.destroy(id) }
 
-  // -- Render pipeline ----------------------------------------
+  /// -- Render pipeline ----------------------------------------
   static renderPipelineCreate(deviceId, descriptor) {
     var v = descriptor["vertex"]
     var vout = {
@@ -416,11 +416,11 @@ class GpuCore {
   }
   static renderPipelineDestroy(id) { GpuWeb_.destroy(id) }
 
-  // -- Encoder + render pass ----------------------------------
-  // Web has no explicit encoder; "begin frame" creates one
-  // implicitly. We fake an encoder id by carrying the frame
-  // handle through. `encoderRecordPass` plays back a list of
-  // render-pass commands against the live GPU pass handle.
+  /// -- Encoder + render pass ----------------------------------
+  /// Web has no explicit encoder; "begin frame" creates one
+  /// implicitly. We fake an encoder id by carrying the frame
+  /// handle through. `encoderRecordPass` plays back a list of
+  /// render-pass commands against the live GPU pass handle.
   static encoderCreate(deviceId, descriptor) { 0 } // not used on web
   static encoderDestroy(id) {}
   static encoderRecordPass(encoderId, descriptor) {
@@ -484,12 +484,12 @@ class GpuCore {
     for (id in encoderIds) GpuWeb_.endFrame(id)
   }
 
-  // -- Surface ------------------------------------------------
-  // Web's surface is just the canvas attachment. `handle` is
-  // either a Map (native shape) or a Num (web shape — the canvas
-  // handle from @hatch:window's `Window.create_`). We accept
-  // both; Map shape takes the canvas handle from `handle["canvas"]`
-  // when present (a future bridge form), otherwise aborts.
+  /// -- Surface ------------------------------------------------
+  /// Web's surface is just the canvas attachment. `handle` is
+  /// either a Map (native shape) or a Num (web shape — the canvas
+  /// handle from @hatch:window's `Window.create_`). We accept
+  /// both; Map shape takes the canvas handle from `handle["canvas"]`
+  /// when present (a future bridge form), otherwise aborts.
   static surfaceCreate(deviceId, handle) {
     var canvas = -1
     if (handle is Num) canvas = handle
@@ -510,7 +510,7 @@ class GpuCore {
   }
   static surfacePresentFrame(frameId) { GpuWeb_.endFrame(frameId) }
 
-  // -- Texture upload -----------------------------------------
+  /// -- Texture upload -----------------------------------------
   static queueWriteTexture(textureId, bytes, descriptor) {
     var json = {
       "bytesPerRow": descriptor["bytesPerRow"]
@@ -2143,11 +2143,11 @@ class Renderer3D {
   }
 }
 
-// LivePipeline on the web is a one-shot wrapper today; live
-// hot-reload is planned and needs the parked-fiber + watch path
-// to round-trip from the browser's filesystem proxy. The
-// constructor builds once and keeps the shape so
-// portable code referencing `LivePipeline` doesn't break.
+/// LivePipeline on the web is a one-shot wrapper today; live
+/// hot-reload is planned and needs the parked-fiber + watch path
+/// to round-trip from the browser's filesystem proxy. The
+/// constructor builds once and keeps the shape so
+/// portable code referencing `LivePipeline` doesn't break.
 class LivePipeline {
   construct new(device, db, shaderPath, descriptor) {
     _device     = device

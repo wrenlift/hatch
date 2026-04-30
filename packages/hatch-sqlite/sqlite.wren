@@ -71,9 +71,9 @@ foreign class SqliteCore {
   foreign static inTransaction(id)
 }
 
-// Ergonomic wrapper over the foreign handles. Holds the connection
-// id privately; callers pass values and parameter lists and get
-// back Wren-shaped data.
+/// Ergonomic wrapper over the foreign handles. Holds the connection
+/// id privately; callers pass values and parameter lists and get
+/// back Wren-shaped data.
 class Database {
   // Open a database at `path`. Creates the file if missing.
   // `:memory:` gives an in-memory database — useful for tests.
@@ -86,15 +86,15 @@ class Database {
     return Database.new_(SqliteCore.open(path))
   }
 
-  // Shortcut for `Database.open(":memory:")`.
+  /// Shortcut for `Database.open(":memory:")`.
   static openMemory() { Database.open(":memory:") }
 
   id { _id }
 
   // --- Core operations --------------------------------------------------
 
-  // Run a statement (DDL or INSERT/UPDATE/DELETE). Returns the
-  // number of rows affected.
+  /// Run a statement (DDL or INSERT/UPDATE/DELETE). Returns the
+  /// number of rows affected.
   execute(sql) { execute(sql, null) }
   execute(sql, params) {
     if (!(sql is String)) Fiber.abort("Database.execute: sql must be a string")
@@ -102,8 +102,8 @@ class Database {
     return SqliteCore.execute(_id, sql, params)
   }
 
-  // Run a SELECT. Returns a List<Map> — each map has lower-case
-  // column-name keys and Wren-typed values.
+  /// Run a SELECT. Returns a List<Map> — each map has lower-case
+  /// column-name keys and Wren-typed values.
   query(sql) { query(sql, null) }
   query(sql, params) {
     if (!(sql is String)) Fiber.abort("Database.query: sql must be a string")
@@ -111,7 +111,7 @@ class Database {
     return SqliteCore.query(_id, sql, params)
   }
 
-  // First row of a SELECT, or null if empty.
+  /// First row of a SELECT, or null if empty.
   queryRow(sql) { queryRow(sql, null) }
   queryRow(sql, params) {
     var rows = query(sql, params)
@@ -125,15 +125,15 @@ class Database {
   inTransaction   { SqliteCore.inTransaction(_id) }
 
   // --- Transaction helper -----------------------------------------------
-  //
-  //   db.transaction {
-  //     db.execute("INSERT ...")
-  //     db.execute("INSERT ...")
-  //   }
-  //
-  // Commits if the block returns normally; rolls back if the
-  // block aborts. The abort propagates to the caller so failing
-  // blocks aren't silently eaten.
+  ///
+  ///   db.transaction {
+  ///     db.execute("INSERT ...")
+  ///     db.execute("INSERT ...")
+  ///   }
+  ///
+  /// Commits if the block returns normally; rolls back if the
+  /// block aborts. The abort propagates to the caller so failing
+  /// blocks aren't silently eaten.
   transaction(fn) {
     if (!(fn is Fn)) Fiber.abort("Database.transaction: argument must be a Fn")
     checkAlive_()

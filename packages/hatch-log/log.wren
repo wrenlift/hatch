@@ -24,8 +24,8 @@
 import "@hatch:fmt" for Fmt
 
 class Log {
-  // Level constants. Public so callers can do
-  // `Log.level = Log.WARN` without needing to memorise the int.
+  /// Level constants. Public so callers can do
+  /// `Log.level = Log.WARN` without needing to memorise the int.
   static DEBUG { 0 }
   static INFO  { 1 }
   static WARN  { 2 }

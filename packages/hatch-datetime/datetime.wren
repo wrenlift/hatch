@@ -36,17 +36,17 @@ import "time" for TimeCore
 
 // --- Duration ---------------------------------------------------------------
 
-// A span of time. Internally stored as seconds (can be fractional
-// and negative). Constructors let you express common units:
-//
-//   Duration.seconds(30)
-//   Duration.minutes(1.5)
-//   Duration.hours(24)
-//   Duration.days(7)
-//
-// Read back as either the stored unit or any coarser/finer one:
-//
-//   d.seconds / d.minutes / d.hours / d.days
+/// A span of time. Internally stored as seconds (can be fractional
+/// and negative). Constructors let you express common units:
+///
+///   Duration.seconds(30)
+///   Duration.minutes(1.5)
+///   Duration.hours(24)
+///   Duration.days(7)
+///
+/// Read back as either the stored unit or any coarser/finer one:
+///
+///   d.seconds / d.minutes / d.hours / d.days
 class Duration {
   construct new_(secs) {
     _s = secs
@@ -139,7 +139,7 @@ class DateTime {
     return DateTime.new_(seconds, offsetMinutes)
   }
 
-  // Construct at an explicit UTC moment.
+  /// Construct at an explicit UTC moment.
   static utc(year, month, day) {
     return utc(year, month, day, 0, 0, 0)
   }
@@ -149,8 +149,8 @@ class DateTime {
     return DateTime.new_(s, 0)
   }
 
-  // RFC 3339 parser: `YYYY-MM-DDTHH:MM:SS(.fff)?(Z|±HH:MM)`.
-  // Permissive about the separator (`T` or space).
+  /// RFC 3339 parser: `YYYY-MM-DDTHH:MM:SS(.fff)?(Z|±HH:MM)`.
+  /// Permissive about the separator (`T` or space).
   static parse(text) {
     if (!(text is String)) Fiber.abort("DateTime.parse: text must be a string")
     return Parser_.parse_(text)
@@ -171,7 +171,7 @@ class DateTime {
 
   // --- Formatting --------------------------------------------------
 
-  // RFC 3339 form. Includes the offset as `Z` for UTC or `±HH:MM`.
+  /// RFC 3339 form. Includes the offset as `Z` for UTC or `±HH:MM`.
   iso {
     var base =
       "%(DateTime.pad_(year, 4))-%(DateTime.pad_(month, 2))-%(DateTime.pad_(day, 2))" +
@@ -179,10 +179,10 @@ class DateTime {
     return base + offsetSuffix_
   }
 
-  // Custom format. Tokens extend `Time.format`:
-  //   YYYY MM DD HH mm ss SSS   — same as @hatch:time
-  //   Z                         — "Z" for UTC, ±HHMM otherwise
-  //   ZZ                        — ±HH:MM (or "Z" for UTC)
+  /// Custom format. Tokens extend `Time.format`:
+  ///   YYYY MM DD HH mm ss SSS   — same as @hatch:time
+  ///   Z                         — "Z" for UTC, ±HHMM otherwise
+  ///   ZZ                        — ±HH:MM (or "Z" for UTC)
   format(pattern) {
     if (!(pattern is String)) Fiber.abort("DateTime.format: pattern must be a string")
     var out = pattern
@@ -220,29 +220,29 @@ class DateTime {
 
   // --- Arithmetic --------------------------------------------------
 
-  // Add a Duration and return a new DateTime at the same offset.
+  /// Add a Duration and return a new DateTime at the same offset.
   add(d) {
     if (!(d is Duration)) Fiber.abort("DateTime.add: expected a Duration")
     return DateTime.new_(_unix + d.seconds, _off)
   }
 
-  // Subtract a Duration OR compute a Duration between two DateTimes.
+  /// Subtract a Duration OR compute a Duration between two DateTimes.
   subtract(other) {
     if (other is Duration) return DateTime.new_(_unix - other.seconds, _off)
     if (other is DateTime) return Duration.new_(_unix - other.unix)
     Fiber.abort("DateTime.subtract: expected a Duration or DateTime")
   }
 
-  // Alias for `subtract` when both sides are DateTimes — reads
-  // nicer in time-between-events contexts.
+  /// Alias for `subtract` when both sides are DateTimes — reads
+  /// nicer in time-between-events contexts.
   diff(other) {
     if (!(other is DateTime)) Fiber.abort("DateTime.diff: expected a DateTime")
     return Duration.new_(_unix - other.unix)
   }
 
-  // Return a new DateTime representing the same instant but in a
-  // different wall-clock offset. Useful for "what time is it in
-  // New York right now" given a UTC clock.
+  /// Return a new DateTime representing the same instant but in a
+  /// different wall-clock offset. Useful for "what time is it in
+  /// New York right now" given a UTC clock.
   withOffset(offsetMinutes) {
     if (!(offsetMinutes is Num) || !offsetMinutes.isInteger) {
       Fiber.abort("DateTime.withOffset: offsetMinutes must be an integer")

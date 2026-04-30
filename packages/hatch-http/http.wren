@@ -57,16 +57,16 @@ class Response {
   status  { _status }
   body    { _body }
 
-  // Raw headers map: lower-cased keys → List<String> of values.
-  // Multi-value headers like `Set-Cookie` survive intact here
-  // (a naive Map<String, String> would collapse them).
+  /// Raw headers map: lower-cased keys → List<String> of values.
+  /// Multi-value headers like `Set-Cookie` survive intact here
+  /// (a naive Map<String, String> would collapse them).
   headerMap { _headers }
 
   ok { _status >= 200 && _status < 300 }
 
-  // First value for the given header, case-insensitive. Returns
-  // null when absent. This matches the "just tell me the
-  // content-type" use case every HTTP client needs.
+  /// First value for the given header, case-insensitive. Returns
+  /// null when absent. This matches the "just tell me the
+  /// content-type" use case every HTTP client needs.
   header(name) {
     var key = Response.lower_(name)
     if (!_headers.containsKey(key)) return null
@@ -74,8 +74,8 @@ class Response {
     return list.count == 0 ? null : list[0]
   }
 
-  // All values for the given header, preserving order. Returns
-  // an empty list when absent.
+  /// All values for the given header, preserving order. Returns
+  /// an empty list when absent.
   headers(name) {
     var key = Response.lower_(name)
     return _headers.containsKey(key) ? _headers[key] : []
@@ -107,20 +107,20 @@ class Response {
   }
 }
 
-// Streaming response: status + headers are known up front, body is
-// a `Reader` you drain at your own pace. Use for big downloads,
-// SSE feeds, chunked endpoints — anything where pulling the whole
-// body into memory is wrong.
-//
-//   var r = Http.stream("GET", "https://…/big-file")
-//   r.status               // 200
-//   r.header("content-type")
-//   var line = r.body.readLine
-//   while (line != null) {
-//     // ...
-//     line = r.body.readLine
-//   }
-//   r.close                // frees the underlying connection; idempotent
+/// Streaming response: status + headers are known up front, body is
+/// a `Reader` you drain at your own pace. Use for big downloads,
+/// SSE feeds, chunked endpoints — anything where pulling the whole
+/// body into memory is wrong.
+///
+///   var r = Http.stream("GET", "https://…/big-file")
+///   r.status               // 200
+///   r.header("content-type")
+///   var line = r.body.readLine
+///   while (line != null) {
+///     // ...
+///     line = r.body.readLine
+///   }
+///   r.close                // frees the underlying connection; idempotent
 class StreamingResponse {
   construct new_(id, status, headers) {
     _id      = id
@@ -137,11 +137,11 @@ class StreamingResponse {
   headerMap { _headers }
   body      { _body }
 
-  // Fiber-cooperative body reader. Same bytes as `body`, but
-  // polls via `HttpCore.tryStreamReadBytes` and yields on
-  // "would block" so sibling fibers can run in parallel.
-  // Careful: consuming `body` AND `bodyAsync` at the same time
-  // interleaves reads — pick one.
+  /// Fiber-cooperative body reader. Same bytes as `body`, but
+  /// polls via `HttpCore.tryStreamReadBytes` and yields on
+  /// "would block" so sibling fibers can run in parallel.
+  /// Careful: consuming `body` AND `bodyAsync` at the same time
+  /// interleaves reads — pick one.
   bodyAsync {
     if (_bodyAsync == null) {
       var sid = _id
@@ -165,9 +165,9 @@ class StreamingResponse {
     return _headers.containsKey(key) ? _headers[key] : []
   }
 
-  // Release the underlying connection if the caller bails before
-  // EOF. Safe to call twice; draining the reader naturally will
-  // also free the stream on the runtime side.
+  /// Release the underlying connection if the caller bails before
+  /// EOF. Safe to call twice; draining the reader naturally will
+  /// also free the stream on the runtime side.
   close {
     if (_closed) return
     _closed = true
@@ -213,7 +213,7 @@ class Http {
     return StreamingResponse.new_(raw["id"], raw["status"], raw["headers"])
   }
 
-  // Convenience: `Http.getStream(url)` / `Http.getStream(url, opts)`.
+  /// Convenience: `Http.getStream(url)` / `Http.getStream(url, opts)`.
   static getStream(url)          { stream("GET", url, {}) }
   static getStream(url, options) { stream("GET", url, options) }
 

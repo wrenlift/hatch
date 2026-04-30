@@ -92,9 +92,9 @@ class Buffer {
     return Buffer.new_(IoCore.stringToBytes(s))
   }
 
-  // Copies the input list so mutations on the original don't
-  // leak through. If you want to share the list, construct via
-  // the returned Buffer and mutate through it.
+  /// Copies the input list so mutations on the original don't
+  /// leak through. If you want to share the list, construct via
+  /// the returned Buffer and mutate through it.
   static fromBytes(list) {
     if (!(list is List)) Fiber.abort("Buffer.fromBytes: expected a list")
     var bs = []
@@ -113,10 +113,10 @@ class Buffer {
   count    { _bytes.count }
   isEmpty  { _bytes.count == 0 }
 
-  // Mutable view of the underlying list. Mutating this is
-  // equivalent to mutating the buffer; appending via `.add` won't
-  // surprise the Buffer because the Buffer doesn't cache count.
-  // Use sparingly; `toList` if you want a copy.
+  /// Mutable view of the underlying list. Mutating this is
+  /// equivalent to mutating the buffer; appending via `.add` won't
+  /// surprise the Buffer because the Buffer doesn't cache count.
+  /// Use sparingly; `toList` if you want a copy.
   bytes { _bytes }
 
   byteAt(i) {
@@ -186,12 +186,12 @@ class Buffer {
     return Buffer.new_(out)
   }
 
-  // UTF-8 decode. Invalid sequences become U+FFFD replacement
-  // characters. If you need strict decoding, validate yourself
-  // first.
+  /// UTF-8 decode. Invalid sequences become U+FFFD replacement
+  /// characters. If you need strict decoding, validate yourself
+  /// first.
   toString { IoCore.bytesToString(_bytes) }
 
-  // Copy the bytes into a fresh List<Num>.
+  /// Copy the bytes into a fresh List<Num>.
   toList {
     var out = []
     var i = 0
@@ -270,27 +270,27 @@ class Reader {
     _closeFn = null
   }
 
-  // Alternate constructor for callers outside this module. Cross-
-  // module field inheritance isn't fully supported today, so
-  // `Reader.withFn { ... }` is the portable way to build a
-  // Reader backed by your own producer without subclassing.
+  /// Alternate constructor for callers outside this module. Cross-
+  /// module field inheritance isn't fully supported today, so
+  /// `Reader.withFn { ... }` is the portable way to build a
+  /// Reader backed by your own producer without subclassing.
   static withFn(readFn) {
     var r = Reader.new()
     r.setReadFn_(readFn)
     return r
   }
 
-  // Fiber-cooperative constructor. `tryReadFn` returns one of:
-  //   * `null`               — EOF; no more bytes ever.
-  //   * `[]`                 — "nothing right now, try again."
-  //   * `List<Num>` (non-empty) — bytes.
-  //
-  // The wrapper spins on the try-read and calls `Fiber.yield()`
-  // on every "would block" result, so other fibers in the same
-  // VM can make progress while this one waits on IO.
-  //
-  //   var r = Reader.withTryFn {|max| ProcCore.tryReadStdoutBytes(pid, max) }
-  //   // Use inside a Fiber.new { ... } to actually get concurrency.
+  /// Fiber-cooperative constructor. `tryReadFn` returns one of:
+  ///   * `null`               — EOF; no more bytes ever.
+  ///   * `[]`                 — "nothing right now, try again."
+  ///   * `List<Num>` (non-empty) — bytes.
+  ///
+  /// The wrapper spins on the try-read and calls `Fiber.yield()`
+  /// on every "would block" result, so other fibers in the same
+  /// VM can make progress while this one waits on IO.
+  ///
+  ///   var r = Reader.withTryFn {|max| ProcCore.tryReadStdoutBytes(pid, max) }
+  ///   // Use inside a Fiber.new { ... } to actually get concurrency.
   static withTryFn(tryReadFn) {
     var r = Reader.new()
     r.setReadFn_ {|max|
@@ -327,18 +327,18 @@ class Reader {
 
   isClosed { _closed }
 
-  // Close the underlying resource. Idempotent. Callbacks set via
-  // `setCloseFn_` run once; subclasses can override this method
-  // directly if they need something more elaborate.
+  /// Close the underlying resource. Idempotent. Callbacks set via
+  /// `setCloseFn_` run once; subclasses can override this method
+  /// directly if they need something more elaborate.
   close {
     if (_closed) return
     _closed = true
     if (_closeFn != null) _closeFn.call()
   }
 
-  // Read up to `n` bytes. Returns a Buffer (possibly empty at
-  // EOF). Shorter than `n` is fine — you get what's currently
-  // available.
+  /// Read up to `n` bytes. Returns a Buffer (possibly empty at
+  /// EOF). Shorter than `n` is fine — you get what's currently
+  /// available.
   read(n) {
     if (_closed) return Buffer.new()
     if (!(n is Num) || n < 0 || !n.isInteger) {
@@ -363,7 +363,7 @@ class Reader {
     return Buffer.new_(chunk)
   }
 
-  // Read until EOF. Returns a Buffer.
+  /// Read until EOF. Returns a Buffer.
   readAll {
     var out = Buffer.new()
     // Drain any queued line-buffer bytes first.
@@ -388,10 +388,10 @@ class Reader {
     return out
   }
 
-  // Read a single line (up to and including `\n`, whichever
-  // comes first). Returns a String with the trailing `\n` and
-  // any preceding `\r` stripped. Returns null at EOF — distinct
-  // from an empty line (`""` from a bare `\n`).
+  /// Read a single line (up to and including `\n`, whichever
+  /// comes first). Returns a String with the trailing `\n` and
+  /// any preceding `\r` stripped. Returns null at EOF — distinct
+  /// from an empty line (`""` from a bare `\n`).
   readLine {
     if (_closed && _lineBuf.count == 0) return null
     while (true) {
@@ -438,8 +438,8 @@ class Reader {
     }
   }
 
-  // Consume the rest of the stream as UTF-8. Convenience around
-  // `readAll.toString`.
+  /// Consume the rest of the stream as UTF-8. Convenience around
+  /// `readAll.toString`.
   readString { readAll.toString }
 }
 
@@ -453,8 +453,8 @@ class Writer {
     _flushFn = null
   }
 
-  // Alternate constructor for cross-module consumers.
-  //   var w = Writer.withFn {|bytes| ... }
+  /// Alternate constructor for cross-module consumers.
+  ///   var w = Writer.withFn {|bytes| ... }
   static withFn(writeFn) {
     var w = Writer.new()
     w.setWriteFn_(writeFn)
@@ -498,7 +498,7 @@ class Writer {
 
 // --- Concrete readers / writers ---------------------------------------------
 
-// Reads bytes from an in-memory Buffer (or anything Buffer-like).
+/// Reads bytes from an in-memory Buffer (or anything Buffer-like).
 class BufferReader is Reader {
   construct new(source) {
     super()
@@ -523,7 +523,7 @@ class BufferReader is Reader {
   }
 }
 
-// Writes bytes into an in-memory Buffer. Retrieve via `.buffer`.
+/// Writes bytes into an in-memory Buffer. Retrieve via `.buffer`.
 class BufferWriter is Writer {
   construct new() {
     super()
@@ -541,7 +541,7 @@ class BufferWriter is Writer {
   }
 }
 
-// Convenience alias: reads a String's UTF-8 bytes.
+/// Convenience alias: reads a String's UTF-8 bytes.
 class StringReader is Reader {
   construct new(s) {
     super()

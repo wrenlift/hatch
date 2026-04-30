@@ -1413,16 +1413,16 @@ class FnLoader {
   load(name) { _fn.call(name) }
 }
 
-// Caches parsed templates by name. Pass a registry to `Template.parseWith`
-// (or call `registry.get(name)`) so `{% extends %}` / `{% include %}` can
-// resolve across files.
+/// Caches parsed templates by name. Pass a registry to `Template.parseWith`
+/// (or call `registry.get(name)`) so `{% extends %}` / `{% include %}` can
+/// resolve across files.
 class TemplateRegistry {
   construct new(loader) {
     _loader = loader
     _cache = {}
   }
 
-  // Fetch + parse + cache a template by name. Repeat calls are O(1).
+  /// Fetch + parse + cache a template by name. Repeat calls are O(1).
   get(name) {
     if (_cache.containsKey(name)) return _cache[name]
     var src = _loader.load(name)
@@ -1432,7 +1432,7 @@ class TemplateRegistry {
     return tpl
   }
 
-  // Convenience: render a named template. Equivalent to `get(name).render(ctx)`.
+  /// Convenience: render a named template. Equivalent to `get(name).render(ctx)`.
   render(name, ctx) { get(name).render(ctx) }
   renderFragment(name, fragName, ctx) {
     get(name).renderFragment(fragName, ctx)
@@ -1451,8 +1451,8 @@ class Template {
     return Template.parse_(ast, null)
   }
 
-  // Parse + bind to a registry so `{% extends %}` / cross-file `{% include %}`
-  // can resolve. Callers normally reach this through `TemplateRegistry.get`.
+  /// Parse + bind to a registry so `{% extends %}` / cross-file `{% include %}`
+  /// can resolve. Callers normally reach this through `TemplateRegistry.get`.
   static parseWith(src, registry) {
     var toks = Lex_.scan(src)
     var ast = Parse_.parse(toks)
@@ -1510,11 +1510,11 @@ class Template {
   registry_ { _registry }
   fragments_ { _frags }
 
-  // Render with optional context map.
-  //
-  //   tpl.render({ "user": u })                    — plain render
-  //   tpl.render({ "user": u, "#slots": slots })   — named slot bodies
-  //   tpl.render({ "user": u, "#hx": hx })         — expose as `hx` path
+  /// Render with optional context map.
+  ///
+  ///   tpl.render({ "user": u })                    — plain render
+  ///   tpl.render({ "user": u, "#slots": slots })   — named slot bodies
+  ///   tpl.render({ "user": u, "#hx": hx })         — expose as `hx` path
   render(ctx) {
     ctx = ctx == null ? {} : ctx
     // Wrap ctx in a child scope so {% set %} doesn't mutate the caller's map.
@@ -1531,12 +1531,12 @@ class Template {
     return Render_.renderFullWithFrags(_ast, scope, comps, slots, {}, _registry, _frags)
   }
 
-  // Render only the named {% fragment %} block. The rest of the template
-  // is walked but only emits output once we're inside the target fragment.
-  //
-  //   tpl.renderFragment("user-row", { "user": u })
-  //
-  // If the fragment has params, its ctx keys populate them.
+  /// Render only the named {% fragment %} block. The rest of the template
+  /// is walked but only emits output once we're inside the target fragment.
+  ///
+  ///   tpl.renderFragment("user-row", { "user": u })
+  ///
+  /// If the fragment has params, its ctx keys populate them.
   renderFragment(name, ctx) {
     ctx = ctx == null ? {} : ctx
     var scope = Scope_.child(Scope_.root(ctx))
@@ -1583,9 +1583,9 @@ class HxResponse {
   body { _body }
   headers { _headers }
 
-  // Fire one or more htmx client-side events after the swap.
-  // Passing a Map encodes as JSON-style so the client receives a
-  // detail payload.
+  /// Fire one or more htmx client-side events after the swap.
+  /// Passing a Map encodes as JSON-style so the client receives a
+  /// detail payload.
   trigger(name) { setHeader_("HX-Trigger", jsonEvent_(name, null)) }
   trigger(name, detail) { setHeader_("HX-Trigger", jsonEvent_(name, detail)) }
 
@@ -1595,19 +1595,19 @@ class HxResponse {
   triggerAfterSwap(name) { setHeader_("HX-Trigger-After-Swap", jsonEvent_(name, null)) }
   triggerAfterSwap(name, detail) { setHeader_("HX-Trigger-After-Swap", jsonEvent_(name, detail)) }
 
-  // Client-side navigation.
+  /// Client-side navigation.
   pushUrl(url) { setHeader_("HX-Push-Url", url) }
   replaceUrl(url) { setHeader_("HX-Replace-Url", url) }
   redirect(url) { setHeader_("HX-Redirect", url) }
   location(url) { setHeader_("HX-Location", url) }
   refresh() { setHeader_("HX-Refresh", "true") }
 
-  // Swap targeting.
+  /// Swap targeting.
   retarget(sel) { setHeader_("HX-Retarget", sel) }
   reswap(mode) { setHeader_("HX-Reswap", mode) }
   reselect(sel) { setHeader_("HX-Reselect", sel) }
 
-  // Raw escape hatch.
+  /// Raw escape hatch.
   header(name, value) { setHeader_(name, value) }
 
   setHeader_(name, value) {
@@ -1671,9 +1671,9 @@ class Hx {
   static response(body) { HxResponse.new(body) }
   static response() { HxResponse.new("") }
 
-  // Detect from a request headers map — any of the common framework shapes.
-  //
-  //   Hx.isRequest(req.headers)    //= true if HX-Request present / truthy
+  /// Detect from a request headers map — any of the common framework shapes.
+  ///
+  ///   Hx.isRequest(req.headers)    //= true if HX-Request present / truthy
   static isRequest(headers) {
     if (headers == null) return false
     for (k in headers.keys) {

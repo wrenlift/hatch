@@ -100,21 +100,21 @@ class World2D {
 
   step(dt) { PhysicsCore.world2dStep(_id, dt) }
 
-  // Body spawn — descriptor keys:
-  //   "position":       [x, y]              (default [0, 0])
-  //   "linearVelocity": [x, y]              (default [0, 0])
-  //   "shape":          Collider2D Map      (required)
-  //   "mass":           Num                 (additional mass for dynamic bodies)
+  /// Body spawn — descriptor keys:
+  ///   "position":       [x, y]              (default [0, 0])
+  ///   "linearVelocity": [x, y]              (default [0, 0])
+  ///   "shape":          Collider2D Map      (required)
+  ///   "mass":           Num                 (additional mass for dynamic bodies)
   spawnDynamic(descriptor)   { PhysicsCore.world2dSpawnDynamic(_id, descriptor) }
   spawnStatic(descriptor)    { PhysicsCore.world2dSpawnStatic(_id, descriptor) }
   spawnKinematic(descriptor) { PhysicsCore.world2dSpawnKinematic(_id, descriptor) }
   despawn(bodyId)            { PhysicsCore.world2dDespawn(_id, bodyId) }
 
-  // Read-back helpers — Lists for cheap [x, y] returns.
+  /// Read-back helpers — Lists for cheap [x, y] returns.
   position(bodyId)       { PhysicsCore.world2dPosition(_id, bodyId) }
   linearVelocity(bodyId) { PhysicsCore.world2dLinearVelocity(_id, bodyId) }
 
-  // Write-back / forces.
+  /// Write-back / forces.
   setLinearVelocity(bodyId, x, y) { PhysicsCore.world2dSetLinearVelocity(_id, bodyId, x, y) }
   applyImpulse(bodyId, x, y)      { PhysicsCore.world2dApplyImpulse(_id, bodyId, x, y) }
   applyForce(bodyId, x, y)        { PhysicsCore.world2dApplyForce(_id, bodyId, x, y) }
@@ -125,9 +125,9 @@ class World2D {
   }
 }
 
-// Collider descriptors. Each helper returns a plain Map ready to
-// drop into `spawnDynamic({"shape": ..., ...})`. `options` (Map,
-// optional) carries `restitution` (0..=1) and `friction`.
+/// Collider descriptors. Each helper returns a plain Map ready to
+/// drop into `spawnDynamic({"shape": ..., ...})`. `options` (Map,
+/// optional) carries `restitution` (0..=1) and `friction`.
 class Collider2D {
   static ball(radius)               { ball(radius, {}) }
   static ball(radius, options)      { Collider2D.merge_({"kind": "ball", "radius": radius}, options) }

@@ -31,9 +31,9 @@
 import "uuid" for UuidCore
 
 class Uuid {
-  // RFC 4122 namespace constants. Pass either one of these or a
-  // plain UUID string to `Uuid.v5(namespace, name)`. The short
-  // strings "dns" / "url" / "oid" / "x500" are also accepted.
+  /// RFC 4122 namespace constants. Pass either one of these or a
+  /// plain UUID string to `Uuid.v5(namespace, name)`. The short
+  /// strings "dns" / "url" / "oid" / "x500" are also accepted.
   static NS_DNS  { "6ba7b810-9dad-11d1-80b4-00c04fd430c8" }
   static NS_URL  { "6ba7b811-9dad-11d1-80b4-00c04fd430c8" }
   static NS_OID  { "6ba7b812-9dad-11d1-80b4-00c04fd430c8" }
@@ -54,7 +54,7 @@ class Uuid {
 
   // --- Parsing / validation --------------------------------------
 
-  // Returns the canonical form on success, null on failure.
+  /// Returns the canonical form on success, null on failure.
   static parse(text) {
     if (!(text is String)) Fiber.abort("Uuid.parse: text must be a string")
     return UuidCore.parse(text)
@@ -65,7 +65,7 @@ class Uuid {
     return UuidCore.isValid(text)
   }
 
-  // Returns the version number (1–7) or null on malformed input.
+  /// Returns the version number (1–7) or null on malformed input.
   static version(text) {
     if (!(text is String)) Fiber.abort("Uuid.version: text must be a string")
     return UuidCore.version(text)
@@ -73,14 +73,14 @@ class Uuid {
 
   // --- Byte form -------------------------------------------------
 
-  // 16-byte canonical form as `List<Num>`.
+  /// 16-byte canonical form as `List<Num>`.
   static toBytes(text) {
     if (!(text is String)) Fiber.abort("Uuid.toBytes: text must be a string")
     return UuidCore.toBytes(text)
   }
 
-  // 16-byte list → canonical UUID string. Any length other than 16
-  // aborts; values must be integers in 0..=255.
+  /// 16-byte list → canonical UUID string. Any length other than 16
+  /// aborts; values must be integers in 0..=255.
   static fromBytes(bytes) {
     if (!(bytes is List)) Fiber.abort("Uuid.fromBytes: bytes must be a list")
     return UuidCore.fromBytes(bytes)

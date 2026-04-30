@@ -46,7 +46,7 @@ class Field {
 
   // ── transforms ────────────────────────────────────────────────
 
-  // Strip leading / trailing ASCII whitespace (space, tab, \n, \r).
+  /// Strip leading / trailing ASCII whitespace (space, tab, \n, \r).
   trim {
     _transforms.add(Fn.new {|v| Field.trim_(v) })
     return this
@@ -72,7 +72,7 @@ class Field {
     return this
   }
 
-  // Arbitrary transform. Fn takes the current value, returns new.
+  /// Arbitrary transform. Fn takes the current value, returns new.
   transform(fn) {
     _transforms.add(fn)
     return this
@@ -99,8 +99,8 @@ class Field {
     return this
   }
 
-  // Absolute-or-relative URL with a scheme. Rejects javascript:
-  // and data: out of hand.
+  /// Absolute-or-relative URL with a scheme. Rejects javascript:
+  /// and data: out of hand.
   url        { url("Enter a valid URL") }
   url(msg) {
     _validators.add(["url", Fn.new {|v|
@@ -168,9 +168,9 @@ class Field {
     return this
   }
 
-  // Equality with another field's value. Used for confirm-password
-  // style checks. `other` is the OTHER field's raw post-transform
-  // value — the Form wires it in.
+  /// Equality with another field's value. Used for confirm-password
+  /// style checks. `other` is the OTHER field's raw post-transform
+  /// value — the Form wires it in.
   matches(otherName, msg) {
     _validators.add(["matches:" + otherName, Fn.new {|v|
       // The form passes a Map of already-transformed values as the
@@ -181,8 +181,8 @@ class Field {
     return this
   }
 
-  // Custom validator. `fn` takes the value; return null (ok) or
-  // an error message.
+  /// Custom validator. `fn` takes the value; return null (ok) or
+  /// an error message.
   custom(fn)         { custom(fn, "Invalid") }
   custom(fn, msg) {
     _validators.add(["custom", Fn.new {|v|
@@ -320,8 +320,8 @@ class FormResult {
 
   hasError(name) { _errors.containsKey(name) && _errors[name].count > 0 }
 
-  // Get the cleaned value (post-transform). Falls back to raw
-  // when validation failed and transforms produced nothing usable.
+  /// Get the cleaned value (post-transform). Falls back to raw
+  /// when validation failed and transforms produced nothing usable.
   valueOf(name) {
     if (_data.containsKey(name)) return _data[name]
     if (_raw.containsKey(name)) return _raw[name]
@@ -339,10 +339,10 @@ class Form {
 
   fields { _fields }
 
-  // Run transforms + validators against `params` (Map of fieldname
-  // → raw value). Returns a FormResult. Missing fields land as
-  // `null` pre-transform; transforms (e.g. `default_`) get to
-  // handle them.
+  /// Run transforms + validators against `params` (Map of fieldname
+  /// → raw value). Returns a FormResult. Missing fields land as
+  /// `null` pre-transform; transforms (e.g. `default_`) get to
+  /// handle them.
   validate(params) {
     if (!(params is Map)) Fiber.abort("Form.validate: params must be a Map")
     var data = {}

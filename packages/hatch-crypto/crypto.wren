@@ -36,33 +36,33 @@
 import "crypto" for CryptoCore
 
 class Aes {
-  // Generate a fresh 32-byte key from the OS CSPRNG. Store it
-  // securely — anyone with the key can decrypt your messages.
+  /// Generate a fresh 32-byte key from the OS CSPRNG. Store it
+  /// securely — anyone with the key can decrypt your messages.
   static key   { CryptoCore.aesGcmKey() }
 
-  // Generate a fresh 12-byte nonce from the OS CSPRNG. Must be
-  // unique per (key, message) — reusing a nonce with the same
-  // key breaks AES-GCM's security entirely. Generate a fresh
-  // one per encryption.
+  /// Generate a fresh 12-byte nonce from the OS CSPRNG. Must be
+  /// unique per (key, message) — reusing a nonce with the same
+  /// key breaks AES-GCM's security entirely. Generate a fresh
+  /// one per encryption.
   static nonce { CryptoCore.aesGcmNonce() }
 
-  // Encrypt. `key` must be 32 bytes, `nonce` must be 12.
-  // `plaintext` is a String or List<Num>. Returns ciphertext
-  // as List<Num> (includes the 16-byte auth tag at the end).
+  /// Encrypt. `key` must be 32 bytes, `nonce` must be 12.
+  /// `plaintext` is a String or List<Num>. Returns ciphertext
+  /// as List<Num> (includes the 16-byte auth tag at the end).
   static encrypt(key, nonce, plaintext)      { encrypt(key, nonce, plaintext, null) }
-  // Same but with Additional Authenticated Data — bytes covered
-  // by the tag but not encrypted (context metadata, headers, etc.).
+  /// Same but with Additional Authenticated Data — bytes covered
+  /// by the tag but not encrypted (context metadata, headers, etc.).
   static encrypt(key, nonce, plaintext, aad) {
     validateKey_(key, "Aes.encrypt")
     validateNonce_(nonce, "Aes.encrypt")
     return CryptoCore.aesGcmEncrypt(key, nonce, plaintext, aad)
   }
 
-  // Decrypt. Returns the plaintext List<Num> on success, or
-  // `null` on ANY failure (wrong key, wrong nonce, tampered
-  // ciphertext, mismatched AAD). All failures indistinguishable
-  // by design — a malicious attacker learns nothing from the
-  // outcome beyond "didn't decrypt cleanly".
+  /// Decrypt. Returns the plaintext List<Num> on success, or
+  /// `null` on ANY failure (wrong key, wrong nonce, tampered
+  /// ciphertext, mismatched AAD). All failures indistinguishable
+  /// by design — a malicious attacker learns nothing from the
+  /// outcome beyond "didn't decrypt cleanly".
   static decrypt(key, nonce, ciphertext)      { decrypt(key, nonce, ciphertext, null) }
   static decrypt(key, nonce, ciphertext, aad) {
     validateKey_(key, "Aes.decrypt")
@@ -88,14 +88,14 @@ class Aes {
 }
 
 class Ed25519 {
-  // Generate a fresh signing keypair. Returns [secret, public],
-  // both 32-byte List<Num>s. Secret is the signing key — never
-  // share it. Public can be distributed freely.
+  /// Generate a fresh signing keypair. Returns [secret, public],
+  /// both 32-byte List<Num>s. Secret is the signing key — never
+  /// share it. Public can be distributed freely.
   static keypair { CryptoCore.ed25519Keypair() }
 
-  // Derive the matching public key from a secret. Useful when
-  // you're persisting only the secret and need the public on
-  // demand.
+  /// Derive the matching public key from a secret. Useful when
+  /// you're persisting only the secret and need the public on
+  /// demand.
   static publicFromSecret(secret) {
     if (!((secret is List) || (secret is ByteArray)) || secret.count != 32) {
       Fiber.abort("Ed25519.publicFromSecret: secret must be a 32-byte list")
@@ -103,9 +103,9 @@ class Ed25519 {
     return CryptoCore.ed25519PublicFromSecret(secret)
   }
 
-  // Sign a message (String or byte list). Returns a 64-byte
-  // signature as List<Num>. Same message + same secret always
-  // produces the same signature (Ed25519 is deterministic).
+  /// Sign a message (String or byte list). Returns a 64-byte
+  /// signature as List<Num>. Same message + same secret always
+  /// produces the same signature (Ed25519 is deterministic).
   static sign(secret, message) {
     if (!((secret is List) || (secret is ByteArray)) || secret.count != 32) {
       Fiber.abort("Ed25519.sign: secret must be a 32-byte list")
@@ -113,11 +113,11 @@ class Ed25519 {
     return CryptoCore.ed25519Sign(secret, message)
   }
 
-  // Verify a signature against (public, message). Returns true
-  // iff everything lines up; false on any mismatch. Never aborts
-  // — wrong length signature / public key / anything produces
-  // `false`, not a throw, so auth flows don't need error handling
-  // around a simple "is this valid" check.
+  /// Verify a signature against (public, message). Returns true
+  /// iff everything lines up; false on any mismatch. Never aborts
+  /// — wrong length signature / public key / anything produces
+  /// `false`, not a throw, so auth flows don't need error handling
+  /// around a simple "is this valid" check.
   static verify(public, message, signature) {
     if (!((public is List) || (public is ByteArray))) {
       Fiber.abort("Ed25519.verify: public must be a list")
@@ -130,11 +130,11 @@ class Ed25519 {
   }
 }
 
-// Convenience for generic secure randomness. Bigger surface —
-// `@hatch:random` — exists for non-crypto uses (games, sampling,
-// simulations) and uses a faster, seedable, non-cryptographic
-// PRNG. Use `Crypto.bytes` here only when you need a value that
-// could face an adversary (keys, nonces, session IDs, salts).
+/// Convenience for generic secure randomness. Bigger surface —
+/// `@hatch:random` — exists for non-crypto uses (games, sampling,
+/// simulations) and uses a faster, seedable, non-cryptographic
+/// PRNG. Use `Crypto.bytes` here only when you need a value that
+/// could face an adversary (keys, nonces, session IDs, salts).
 class Crypto {
   static bytes(n) {
     if (!(n is Num) || !n.isInteger || n < 0) {
@@ -144,38 +144,38 @@ class Crypto {
   }
 }
 
-// Password hashing — argon2id by default.
-//
-// Argon2id is OWASP's current recommendation (2024+): memory-hard,
-// resistant to GPU/ASIC cracking, and parameterised so the cost
-// can grow as hardware does. Use it for any value a human will
-// ever type — account passwords, passphrase-derived keys, API
-// token recovery codes.
-//
-//   var hash = Password.hash("correct horse battery staple")
-//   // -> "$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>"
-//
-//   Password.verify("correct horse battery staple", hash)  // true
-//   Password.verify("wrong", hash)                         // false
-//
-// The hash string is self-describing (PHC format) — it embeds the
-// algorithm, parameters, salt, and digest. You store it as-is and
-// pass it back to `verify`. No "what params did I use" bookkeeping.
-//
-// Default params target ~50-80ms per hash on commodity hardware
-// (m=19456 KiB, t=2, p=1). Tune upward with `hashWith` as you
-// scale — the point is to keep hashing slow for an attacker while
-// fast enough for a real login.
-//
-// Never store a plaintext password, never hash with SHA-anything,
-// never use MD5 / SHA-1 / bcrypt for *new* code. `@hatch:hash`
-// is for message digests; `Password` is the only thing in the
-// ecosystem that should touch user passwords.
+/// Password hashing — argon2id by default.
+///
+/// Argon2id is OWASP's current recommendation (2024+): memory-hard,
+/// resistant to GPU/ASIC cracking, and parameterised so the cost
+/// can grow as hardware does. Use it for any value a human will
+/// ever type — account passwords, passphrase-derived keys, API
+/// token recovery codes.
+///
+///   var hash = Password.hash("correct horse battery staple")
+///   // -> "$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>"
+///
+///   Password.verify("correct horse battery staple", hash)  // true
+///   Password.verify("wrong", hash)                         // false
+///
+/// The hash string is self-describing (PHC format) — it embeds the
+/// algorithm, parameters, salt, and digest. You store it as-is and
+/// pass it back to `verify`. No "what params did I use" bookkeeping.
+///
+/// Default params target ~50-80ms per hash on commodity hardware
+/// (m=19456 KiB, t=2, p=1). Tune upward with `hashWith` as you
+/// scale — the point is to keep hashing slow for an attacker while
+/// fast enough for a real login.
+///
+/// Never store a plaintext password, never hash with SHA-anything,
+/// never use MD5 / SHA-1 / bcrypt for *new* code. `@hatch:hash`
+/// is for message digests; `Password` is the only thing in the
+/// ecosystem that should touch user passwords.
 class Password {
-  // Hash a password with OWASP-default argon2id params. Returns
-  // a PHC-format String. Each call generates a fresh salt, so
-  // hashing the same password twice produces different strings —
-  // and both verify against the original.
+  /// Hash a password with OWASP-default argon2id params. Returns
+  /// a PHC-format String. Each call generates a fresh salt, so
+  /// hashing the same password twice produces different strings —
+  /// and both verify against the original.
   static hash(password) {
     if (!((password is String) || (password is List) || (password is ByteArray))) {
       Fiber.abort("Password.hash: password must be a String or byte list")
@@ -183,10 +183,10 @@ class Password {
     return CryptoCore.argon2Hash(password)
   }
 
-  // Verify `password` against a previously-stored PHC hash. Returns
-  // true iff the hash matches. Never aborts on a malformed hash
-  // string — returns false — so auth flows stay branch-free and
-  // don't leak "is this a valid PHC string?" side-channels.
+  /// Verify `password` against a previously-stored PHC hash. Returns
+  /// true iff the hash matches. Never aborts on a malformed hash
+  /// string — returns false — so auth flows stay branch-free and
+  /// don't leak "is this a valid PHC string?" side-channels.
   static verify(password, hash) {
     if (!((password is String) || (password is List) || (password is ByteArray))) {
       Fiber.abort("Password.verify: password must be a String or byte list")
@@ -197,12 +197,12 @@ class Password {
     return CryptoCore.argon2Verify(password, hash)
   }
 
-  // Hash with custom argon2id params. `m` is memory in KiB,
-  // `t` is iterations, `p` is parallelism lanes. Use when you
-  // want a stricter (slower) or relaxed (embedded / CI) profile
-  // than the defaults. Producing hashes verifiable against
-  // `Password.verify` requires argon2id — other algorithms are
-  // currently not exposed.
+  /// Hash with custom argon2id params. `m` is memory in KiB,
+  /// `t` is iterations, `p` is parallelism lanes. Use when you
+  /// want a stricter (slower) or relaxed (embedded / CI) profile
+  /// than the defaults. Producing hashes verifiable against
+  /// `Password.verify` requires argon2id — other algorithms are
+  /// currently not exposed.
   static hashWith(password, m, t, p) {
     if (!((password is String) || (password is List) || (password is ByteArray))) {
       Fiber.abort("Password.hashWith: password must be a String or byte list")

@@ -52,30 +52,30 @@ class Rand {
 
   // --- Collection helpers -----------------------------------------------
 
-  // One uniformly-random element of `list`. Aborts if empty.
+  /// One uniformly-random element of `list`. Aborts if empty.
   static sample(list)       { default_.sample(list) }
-  // `count` distinct elements of `list`, random order. Aborts if
-  // count > list.count.
+  /// `count` distinct elements of `list`, random order. Aborts if
+  /// count > list.count.
   static sample(list, count){ default_.sample(list, count) }
 
-  // Fisher-Yates in place. Returns the list so calls can chain.
+  /// Fisher-Yates in place. Returns the list so calls can chain.
   static shuffle(list)      { default_.shuffle(list) }
 
   // --- Stream management -----------------------------------------------
 
-  // Seed the shared default stream. Accepts any Num; the PRNG
-  // converts internally. Useful for deterministic tests:
-  //
-  //   Rand.seed = 1234
-  //   Rand.int(100) // always the same sequence across runs
+  /// Seed the shared default stream. Accepts any Num; the PRNG
+  /// converts internally. Useful for deterministic tests:
+  ///
+  ///   Rand.seed = 1234
+  ///   Rand.int(100) // always the same sequence across runs
   static seed=(n) {
     if (!(n is Num)) Fiber.abort("Rand.seed: must be a number")
     default_ = Random.new(n)
   }
 
-  // Grab an independent stream. Use when you want reproducibility
-  // without touching the shared default, or when multiple fibers
-  // need uncorrelated sequences.
+  /// Grab an independent stream. Use when you want reproducibility
+  /// without touching the shared default, or when multiple fibers
+  /// need uncorrelated sequences.
   static stream()           { Random.new }
   static stream(seed)       { Random.new(seed) }
 }
