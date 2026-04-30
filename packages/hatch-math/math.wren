@@ -27,8 +27,10 @@
 //   the `approxEq(other[, eps])` method on each type for fuzzy
 //   comparison under accumulated floating-point error.
 
-// -- Scalar helpers ---------------------------------------------
-
+/// Scalar math helpers and constants — `Math.PI`, `Math.TAU`,
+/// `Math.lerp(a, b, t)`, `Math.clamp(x, lo, hi)`, etc. Pure
+/// Wren, no native deps; precision matches the host's `Num`
+/// (double-precision float).
 class Math {
   static PI           { 3.141592653589793 }
   static TAU          { 6.283185307179586 }
@@ -101,6 +103,18 @@ class Math {
 //   var eased = Ease.outCubic(progress)
 //   particle.pos = Vec3.lerp(start, end, eased)
 
+/// Easing curves for animation / transition. Every method
+/// takes a `t` in `[0, 1]` and returns the eased progress.
+/// Inputs outside `[0, 1]` are clamped via [Math.saturate],
+/// so `t = 0` produces `0` and `t = 1` produces `1` for
+/// every curve.
+///
+/// ## Example
+///
+/// ```wren
+/// var eased  = Ease.outCubic(progress)
+/// particle.pos = Vec3.lerp(start, end, eased)
+/// ```
 class Ease {
   static linear(t) { Math.saturate(t) }
 
@@ -159,8 +173,11 @@ class Ease {
   }
 }
 
-// -- Vec2 -------------------------------------------------------
-
+/// 2-component vector (`x`, `y`). Constructed via
+/// [Vec2.new], or one of the factory getters (`Vec2.zero`,
+/// `Vec2.one`, …). Operators `+`, `-`, `*`, `/`, `==` work
+/// component-wise; methods return new vectors (immutable
+/// math is the convention).
 class Vec2 {
   // Factory methods --------------------------------------------------
 
@@ -260,8 +277,10 @@ class Vec2 {
   toString { "Vec2(%(_x), %(_y))" }
 }
 
-// -- Vec3 -------------------------------------------------------
-
+/// 3-component vector (`x`, `y`, `z`). Construct via
+/// [Vec3.new] or factory getters (`zero` / `one` / `unitX` /
+/// `unitY` / `unitZ`). Component-wise `+`, `-`, `*`, `/`;
+/// dot / cross / length / normalize / lerp built in.
 class Vec3 {
   construct new(x, y, z) {
     _x = x
@@ -371,11 +390,11 @@ class Vec3 {
   toString { "Vec3(%(_x), %(_y), %(_z))" }
 }
 
-// -- Vec4 -------------------------------------------------------
-//
-// Used primarily as a homogeneous coordinate (point with w=1,
-// direction with w=0) and RGBA colors.
-
+/// 4-component vector (`x`, `y`, `z`, `w`). Used primarily
+/// as a homogeneous coordinate (point with `w = 1`, direction
+/// with `w = 0`) and as RGBA colours. Component-wise
+/// arithmetic; `dot` / `length` / `normalize` / `lerp` built
+/// in.
 class Vec4 {
   construct new(x, y, z, w) {
     _x = x
@@ -443,12 +462,16 @@ class Vec4 {
   toString { "Vec4(%(_x), %(_y), %(_z), %(_w))" }
 }
 
-// -- Mat4 -------------------------------------------------------
-//
-// Row-major storage: `_m[row * 4 + col]`. `at(r, c)` reads,
-// `set(r, c, v)` writes. Factories produce the common affine
-// + projection matrices every renderer needs.
-
+/// 4×4 matrix in row-major storage. `at(r, c)` reads,
+/// `set(r, c, v)` writes. Static factories produce the
+/// common affine + projection matrices every renderer needs:
+/// `Mat4.identity`, `Mat4.perspective(fovY, aspect, near, far)`,
+/// `Mat4.ortho(...)`, `Mat4.lookAt(eye, target, up)`,
+/// translation / rotation / scale helpers, etc.
+///
+/// `data` returns the underlying `List<Num>` for buffer
+/// uploads; mutate the matrix through the named setters
+/// rather than indexing into `data`.
 class Mat4 {
   construct new() {
     _m = List.filled(16, 0)
@@ -692,12 +715,15 @@ class Mat4 {
   }
 }
 
-// -- Quat -------------------------------------------------------
-//
-// Rotations as unit quaternions. Layout `(w, x, y, z)`. Identity
-// is `(1, 0, 0, 0)`. Multiplication is Hamilton-convention —
-// `a * b` applies `b` first then `a`, matching Mat4 composition.
-
+/// Rotation as a unit quaternion. Layout `(w, x, y, z)`;
+/// identity is `(1, 0, 0, 0)`. Multiplication is
+/// Hamilton-convention — `a * b` applies `b` first then `a`,
+/// matching Mat4 composition order.
+///
+/// Constructors: [Quat.new], `Quat.identity`,
+/// `Quat.fromAxisAngle(axis, angle)`,
+/// `Quat.fromEulerXYZ(x, y, z)`. Common ops: `*` (compose),
+/// `inverse`, `normalize`, `slerp`, `rotate(vec3)`.
 class Quat {
   construct new(w, x, y, z) {
     _w = w
