@@ -112,6 +112,10 @@ class Bundle {
 // every signature.
 // ---------------------------------------------------------------
 
+/// Per-world singleton store. Holds objects every system
+/// might need — `dt`, the active camera, input state, an
+/// asset db — without threading them through every system
+/// signature. Access via `world.resources.get(Class)`.
 class Resources {
   construct new_() { _store = {} }
 
@@ -143,6 +147,11 @@ class Resources {
 // at frame-end clears anything no one drained.
 // ---------------------------------------------------------------
 
+/// Per-world event bus. Systems emit events with `push(...)`
+/// and consume them with `drain(Class)` (returns the queued
+/// events for that class and clears the queue). Events are
+/// frame-scoped — a system that doesn't drain a queue loses
+/// the events at the next tick.
 class Events {
   construct new_() { _queues = {} }
 
@@ -179,6 +188,10 @@ class Events {
 // invalidating the active iterator.
 // ---------------------------------------------------------------
 
+/// Deferred mutation buffer. Systems queue spawn / despawn /
+/// attach / detach operations through `Commands`; the World
+/// applies them in bulk between frames so a system can never
+/// observe a half-mutated entity table mid-iteration.
 class Commands {
   construct new_() {
     _ops = []     // List of Maps describing each op
@@ -235,6 +248,14 @@ class PendingSpawn_ {
 // the matching entity list.
 // ---------------------------------------------------------------
 
+/// Component-driven entity selector. Build via
+/// `world.query(Class, ...)`; chain `.without(Class, ...)` to
+/// exclude tags; iterate via `.each { |e, comp1, comp2| ... }`
+/// or `.entities` to get just the matching entity ids.
+///
+/// Internally walks the world's component table — cheap for
+/// the common case of one or two component types, but worth
+/// caching the query if it fires every frame.
 class Query {
   construct new_(world) {
     _world = world
@@ -275,6 +296,13 @@ class Query {
 // `{"dt": dt, "frame": frame, "input": input}`.
 // ---------------------------------------------------------------
 
+/// Topologically-sorted system runner. `add(label, system)`
+/// registers a system under a label; `addAfter(label, [...])`
+/// expresses ordering constraints; `tick(world, ctx)` runs
+/// every registered system in dependency order.
+///
+/// Constraint cycles abort the fiber at first `tick` —
+/// resolution is cached until the graph changes.
 class Schedule {
   construct new() {
     _systems = {}    // label → fn(world, ctx)
@@ -385,6 +413,23 @@ class Schedule {
 // extras above hanging off it.
 // ---------------------------------------------------------------
 
+/// The ECS world — entity factory, component store, system
+/// scheduler, and event bus. One World owns the whole ECS;
+/// every other class hangs off it.
+///
+/// ```wren
+/// var world = World.new()
+/// var hero  = world.spawn()
+/// world.attach(hero, Position.new(0, 0, 0))
+/// world.attach(hero, Velocity.new(1, 0, 0))
+///
+/// world.system { |w|
+///   w.query(Position, Velocity).each { |e, p, v|
+///     p.x = p.x + v.x
+///   }
+/// }
+/// world.tick(0.016)
+/// ```
 class World {
   construct new() {
     _nextId       = 1
