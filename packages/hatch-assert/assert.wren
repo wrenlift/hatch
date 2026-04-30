@@ -16,75 +16,88 @@
 // assertion crashes the spec file with the same message — enough
 // signal for a standalone `wlift foo.spec.wren` run.
 
+/// One assertion in flight. Build via [Expect.that], chain a
+/// matcher (`.toBe`, `.toEqual`, `.toBeNull`, …), optionally
+/// negate with `.not.<matcher>`. Every matcher aborts the fiber
+/// on failure with a message the test runner captures.
 class Assertion {
   construct new(actual) {
     _actual = actual
     _inverted = false
   }
 
-  // Flip the expected outcome of the next matcher. Chained, so
-  // `Expect.that(x).not.toBeNull()` reads naturally.
+  /// Flip the expected outcome of the next matcher. Chained:
+  /// `Expect.that(x).not.toBeNull()` reads naturally.
+  /// @returns {Assertion}
   not {
     _inverted = true
     return this
   }
 
-  // -- Equality ------------------------------------------------------------
-
-  // Reference equality via `==`. Two different list instances that
-  // happen to hold the same elements are *not* equal here — use
-  // `toEqual` for structural comparison.
+  /// Reference equality via `==`. Two different list instances
+  /// that happen to hold the same elements are *not* equal —
+  /// use [Assertion.toEqual] for structural comparison.
+  ///
+  /// @param {Object} expected
   toBe(expected) {
     check_(_actual == expected, "toBe", expected)
   }
 
-  // Structural equality. Lists and maps compare element-by-element;
-  // everything else falls back to `==`.
+  /// Structural equality. Lists and maps compare element-by-
+  /// element; everything else falls back to `==`.
+  ///
+  /// @param {Object} expected
   toEqual(expected) {
     check_(deepEquals_(_actual, expected), "toEqual", expected)
   }
 
-  // -- Nullability ---------------------------------------------------------
-
+  /// Pass when the actual value is `null`.
   toBeNull() {
     check_(_actual == null, "toBeNull", null)
   }
 
-  // -- Truthiness ----------------------------------------------------------
-  //
-  // Wren's truthiness: only `false` and `null` are falsy. Everything
-  // else (including 0 and "") is truthy. Matchers mirror that.
-
+  /// Wren's truthiness: only `false` and `null` are falsy.
+  /// Everything else (including `0` and `""`) is truthy.
   toBeTruthy() {
     check_(_actual != null && _actual != false, "toBeTruthy", null)
   }
 
+  /// Pass when the actual value is `false` or `null`.
   toBeFalsy() {
     check_(_actual == null || _actual == false, "toBeFalsy", null)
   }
 
-  // -- Ordering ------------------------------------------------------------
-
+  /// Strictly greater than `other` (`actual > other`).
+  /// @param {Num} other
   toBeGreaterThan(other) {
     check_(_actual > other, "toBeGreaterThan", other)
   }
 
+  /// Greater than or equal to `other`.
+  /// @param {Num} other
   toBeGreaterThanOrEqual(other) {
     check_(_actual >= other, "toBeGreaterThanOrEqual", other)
   }
 
+  /// Strictly less than `other`.
+  /// @param {Num} other
   toBeLessThan(other) {
     check_(_actual < other, "toBeLessThan", other)
   }
 
+  /// Less than or equal to `other`.
+  /// @param {Num} other
   toBeLessThanOrEqual(other) {
     check_(_actual <= other, "toBeLessThanOrEqual", other)
   }
 
-  // -- Collections ---------------------------------------------------------
-
-  // `contains(item)` on a List walks the list; on a String, it's
-  // substring containment; on a Map, it checks key presence.
+  /// `contains(item)` semantics by type:
+  ///
+  /// - `List` → element membership.
+  /// - `String` → substring containment.
+  /// - `Map` → key presence.
+  ///
+  /// @param {Object} item
   toContain(item) {
     var ok
     if (_actual is List) {
@@ -99,18 +112,19 @@ class Assertion {
     check_(ok, "toContain", item)
   }
 
-  // Types — classes only; scalars go through `toBe` / `toBeTruthy`.
+  /// Pass when `actual is klass`. Classes only — scalars go
+  /// through [Assertion.toBe] or [Assertion.toBeTruthy].
+  ///
+  /// @param {Class} klass
   toBeInstanceOf(klass) {
     check_(_actual is klass, "toBeInstanceOf", klass)
   }
 
-  // -- Aborts --------------------------------------------------------------
-
-  // Pass a zero-arg Fn. The matcher runs it inside a fresh fiber
-  // and checks `fiber.error` — distinct from `try()`'s return value
-  // since a successful fiber returns the expression result (which
-  // could equal null, which would look like "no error"). Use
-  // `toAbortWith` to also pin the abort message.
+  /// Pass when `actual` (a zero-arg `Fn`) aborts the fiber
+  /// when invoked. Distinct from `try()`'s return value: a
+  /// successful fiber returns its expression result, which
+  /// might equal `null` and look like "no error". Use
+  /// [Assertion.toAbortWith] to also pin the abort message.
   toAbort() {
     if (!(_actual is Fn)) Fiber.abort("toAbort: actual must be a Fn")
     var fib = Fiber.new(_actual)
@@ -118,6 +132,8 @@ class Assertion {
     check_(fib.error != null, "toAbort", null)
   }
 
+  /// Pass when `actual` aborts with exactly `message`.
+  /// @param {String} message
   toAbortWith(message) {
     if (!(_actual is Fn)) Fiber.abort("toAbortWith: actual must be a Fn")
     var fib = Fiber.new(_actual)
@@ -194,8 +210,24 @@ class Assertion {
   }
 }
 
-// The single entry point specs touch. Deliberately terse —
-// `Expect.that(x).toBe(y)` reads as plain English.
+/// Single entry point — `Expect.that(x).toBe(y)` reads as
+/// plain English. Returns a fresh [Assertion] you chain
+/// matchers off of.
+///
+/// ## Example
+///
+/// ```wren
+/// import "@hatch:assert" for Expect
+///
+/// Expect.that(1 + 1).toBe(2)
+/// Expect.that([1, 2, 3]).toEqual([1, 2, 3])
+/// Expect.that(null).toBeNull()
+/// Expect.that(42).not.toBeNull()
+/// Expect.that(Fn.new { boom() }).toAbort()
+/// ```
 class Expect {
+  /// Wrap a value in a fresh [Assertion].
+  /// @param {Object} actual
+  /// @returns {Assertion}
   static that(actual) { Assertion.new(actual) }
 }

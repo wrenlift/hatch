@@ -39,7 +39,40 @@
 // but runs into a separate dispatch quirk — see QUIRKS.md — and
 // will land once that's unblocked.)
 
+/// JSON parser and serializer.
+///
+/// Type mapping (JSON ↔ Wren):
+///
+/// - `null` ↔ `Null`
+/// - `true` / `false` ↔ `Bool`
+/// - number ↔ `Num`
+/// - string ↔ `String`
+/// - array ↔ `List`
+/// - object ↔ `Map` with string keys
+///
+/// ## Example
+///
+/// ```wren
+/// import "@hatch:json" for JSON
+///
+/// JSON.parse("[1, 2, 3]")            // [1, 2, 3]
+/// JSON.parse("{\"a\": true}")        // {a: true}
+/// JSON.encode({"x": [1, 2]})         // "{\"x\":[1,2]}"
+/// JSON.encode({"x": 1}, 2)           // pretty-printed, indent=2
+/// ```
+///
+/// Custom types: define `toJson()` on your class and it becomes
+/// encodable; the method returns any JSON-encodable value
+/// (typically a Map). The encoder recurses on the returned
+/// value, so nested custom objects work.
 class JSON {
+  /// Parse a JSON string into the matching Wren value
+  /// (`Null` / `Bool` / `Num` / `String` / `List` / `Map`).
+  /// Aborts the fiber on malformed input, with the byte offset
+  /// of the failing token.
+  ///
+  /// @param {String} text
+  /// @returns {Object}
   static parse(text) {
     var p = Parser_.new(text)
     p.skipWs_
@@ -49,16 +82,23 @@ class JSON {
     return value
   }
 
-  // Compact encoding (no whitespace).
+  /// Compact encode — no whitespace between tokens.
+  ///
+  /// @param {Object} value
+  /// @returns {String}
   static encode(value) {
     var out = []
     Encoder_.write(out, value, null, 0)
     return out.join("")
   }
 
-  // Pretty-printed encoding. `indent` is the number of spaces per
-  // level; pass 0 for compact-with-newlines, or 2 / 4 for typical
-  // human-readable output.
+  /// Pretty-printed encode. `indent` is the number of spaces
+  /// per level; pass `0` for compact-with-newlines, `2` or `4`
+  /// for typical human-readable output.
+  ///
+  /// @param {Object} value
+  /// @param {Num} indent
+  /// @returns {String}
   static encode(value, indent) {
     if (!(indent is Num) || indent < 0) {
       Fiber.abort("JSON.encode: indent must be a non-negative number")
