@@ -1,33 +1,33 @@
-// @hatch:fmt — terminal-output helpers.
-//
-// What's here:
-//
-//   import "@hatch:fmt" for Fmt
-//
-//   Fmt.green("ok")                    // wraps in ANSI green
-//   Fmt.bold(Fmt.red("FAIL"))          // nestable
-//   Fmt.padLeft("3", 4)                // "   3"
-//   Fmt.padRight("3", 4)               // "3   "
-//   Fmt.center("hi", 6)                // "  hi  "
-//   Fmt.hex(255)                       // "0xff"
-//   Fmt.fixed(3.14159, 2)              // "3.14"
-//   Fmt.duration(3670)                 // "1h 1m 10s"
-//
-// Wren has string interpolation already (`"%(x)"`) so there's no
-// printf here — the helpers focus on things Wren's core doesn't
-// cover: ANSI styling, width-padding, and a couple of numeric
-// shorthands.
-//
-// Colors can be disabled globally for piped / non-TTY output:
-//
-//   Fmt.enabled = false
-//   Fmt.green("x")    // → "x"  (no escape codes)
-//
-// TTY auto-detection is planned (needs FFI; lands alongside
-// `@hatch:os`); until then, callers flip the flag themselves.
+/// @hatch:fmt — terminal-output helpers.
+///
+/// What's here:
+///
+///   import "@hatch:fmt" for Fmt
+///
+///   Fmt.green("ok")                    // wraps in ANSI green
+///   Fmt.bold(Fmt.red("FAIL"))          // nestable
+///   Fmt.padLeft("3", 4)                // "   3"
+///   Fmt.padRight("3", 4)               // "3   "
+///   Fmt.center("hi", 6)                // "  hi  "
+///   Fmt.hex(255)                       // "0xff"
+///   Fmt.fixed(3.14159, 2)              // "3.14"
+///   Fmt.duration(3670)                 // "1h 1m 10s"
+///
+/// Wren has string interpolation already (`"%(x)"`) so there's no
+/// printf here — the helpers focus on things Wren's core doesn't
+/// cover: ANSI styling, width-padding, and a couple of numeric
+/// shorthands.
+///
+/// Colors can be disabled globally for piped / non-TTY output:
+///
+///   Fmt.enabled = false
+///   Fmt.green("x")    // → "x"  (no escape codes)
+///
+/// TTY auto-detection is planned (needs FFI; lands alongside
+/// `@hatch:os`); until then, callers flip the flag themselves.
 
 class Fmt {
-  // -- Global toggle ------------------------------------------------------
+  /// -- Global toggle ------------------------------------------------------
 
   static enabled {
     if (__enabled == null) __enabled = true
@@ -35,10 +35,10 @@ class Fmt {
   }
   static enabled=(v) { __enabled = v }
 
-  // -- ANSI escapes -------------------------------------------------------
-  //
-  // `\x1b` is the single ESC byte; each code is `\x1b[<n>m`. `reset`
-  // clears all styling so the next character starts fresh.
+  /// -- ANSI escapes -------------------------------------------------------
+  ///
+  /// `\x1b` is the single ESC byte; each code is `\x1b[<n>m`. `reset`
+  /// clears all styling so the next character starts fresh.
 
   static reset { "\x1b[0m" }
 

@@ -91,8 +91,8 @@ class Signal {
   }
 
   // --- Emit helpers: Wren Fn.call is arity-specific, so we
-  // expose emit overloads up through 3 positional args. For more,
-  // use `emitMany(list)` which unpacks.
+  /// expose emit overloads up through 3 positional args. For more,
+  /// use `emitMany(list)` which unpacks.
 
   emit()          { emit_([]) }
   emit(a)         { emit_([a]) }

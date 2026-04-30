@@ -178,7 +178,7 @@ class Assets {
     _children[prefix] = children
   }
 
-  // -- Path-keyed lookups (parity with native) -----------------
+  /// -- Path-keyed lookups (parity with native) -----------------
 
   has(relPath)   { _entries.containsKey(relPath) }
   get(relPath) {
@@ -233,7 +233,7 @@ class Assets {
     return out
   }
 
-  // -- Watchers / hot reload ----------------------------------
+  /// -- Watchers / hot reload ----------------------------------
 
   on(relPath, fn) {
     if (!_watchers.containsKey(relPath)) _watchers[relPath] = []

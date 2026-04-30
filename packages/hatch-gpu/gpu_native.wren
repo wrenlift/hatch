@@ -676,7 +676,7 @@ class Sampler {
   toString { "Sampler(%(_id))" }
 }
 
-// -- Bind groups -------------------------------------------------
+/// -- Bind groups -------------------------------------------------
 
 class BindGroupLayout {
   construct new_(id) { _id = id }
@@ -705,7 +705,7 @@ class BindGroup {
   }
 }
 
-// -- Render pipeline --------------------------------------------
+/// -- Render pipeline --------------------------------------------
 
 class RenderPipeline {
   construct new_(id) { _id = id }

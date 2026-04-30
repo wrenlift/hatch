@@ -198,13 +198,13 @@ class Http {
   }
 
   // --- Streaming request (lazy body) -----------------------------------
-  //
-  // Same option shape as `request`. Returns a `StreamingResponse`
-  // whose `.body` is an `@hatch:io` Reader — callers drain it line
-  // by line, chunk by chunk, or pipe it into a file / process.
-  //
-  // Close the response (`sr.close`) if you bail before EOF;
-  // otherwise reaching EOF frees the connection automatically.
+  ///
+  /// Same option shape as `request`. Returns a `StreamingResponse`
+  /// whose `.body` is an `@hatch:io` Reader — callers drain it line
+  /// by line, chunk by chunk, or pipe it into a file / process.
+  ///
+  /// Close the response (`sr.close`) if you bail before EOF;
+  /// otherwise reaching EOF frees the connection automatically.
 
   static stream(method, url)          { stream(method, url, {}) }
   static stream(method, url, options) {

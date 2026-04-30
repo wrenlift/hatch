@@ -32,7 +32,7 @@
 import "fs" for FS
 
 class Fs {
-  // -- Text ---------------------------------------------------------------
+  /// -- Text ---------------------------------------------------------------
 
   static readText(path) { FS.readText(path) }
   static writeText(path, contents) { FS.writeText(path, contents) }
@@ -61,19 +61,19 @@ class Fs {
     FS.writeText(path, joined)
   }
 
-  // -- Bytes --------------------------------------------------------------
+  /// -- Bytes --------------------------------------------------------------
 
   static readBytes(path) { FS.readBytes(path) }
   static writeBytes(path, bytes) { FS.writeBytes(path, bytes) }
 
-  // -- Metadata -----------------------------------------------------------
+  /// -- Metadata -----------------------------------------------------------
 
   static exists(path) { FS.exists(path) }
   static isFile(path) { FS.isFile(path) }
   static isDir(path) { FS.isDir(path) }
   static size(path) { FS.size(path) }
 
-  // -- Directory ops ------------------------------------------------------
+  /// -- Directory ops ------------------------------------------------------
 
   static listDir(path) { FS.listDir(path) }
   static mkdir(path) { FS.mkdir(path) }
@@ -104,7 +104,7 @@ class Fs {
     }
   }
 
-  // -- Process paths ------------------------------------------------------
+  /// -- Process paths ------------------------------------------------------
 
   static cwd { FS.cwd }
   static home { FS.home }

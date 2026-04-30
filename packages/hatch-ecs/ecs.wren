@@ -64,9 +64,9 @@
 //     them like any other.
 
 // ---------------------------------------------------------------
-// Built-in components for the hierarchy layer. Plain classes;
-// users can read them back via `world.get(e, Parent)` if they
-// need the raw data.
+/// Built-in components for the hierarchy layer. Plain classes;
+/// users can read them back via `world.get(e, Parent)` if they
+/// need the raw data.
 // ---------------------------------------------------------------
 
 class Parent {
@@ -94,9 +94,9 @@ class Children {
 }
 
 // ---------------------------------------------------------------
-// Bundles — a list of pre-built component instances that can be
-// attached as a unit. Trivial wrapper over List<component>; the
-// abstraction is the named API, not the storage shape.
+/// Bundles — a list of pre-built component instances that can be
+/// attached as a unit. Trivial wrapper over List<component>; the
+/// abstraction is the named API, not the storage shape.
 // ---------------------------------------------------------------
 
 class Bundle {
@@ -441,7 +441,7 @@ class World {
     _events       = Events.new_()
   }
 
-  // -- Counts + introspection ---------------------------------
+  /// -- Counts + introspection ---------------------------------
 
   count { _entities.count }
   countOf(klass) {
@@ -465,7 +465,7 @@ class World {
     return out
   }
 
-  // -- Resources / events -------------------------------------
+  /// -- Resources / events -------------------------------------
 
   resources { _resources }
   events    { _events }
@@ -475,7 +475,7 @@ class World {
   /// running systems by hand.
   flushEvents { _events.clear }
 
-  // -- Entity lifecycle ---------------------------------------
+  /// -- Entity lifecycle ---------------------------------------
 
   spawn() {
     var id = _nextId
@@ -515,7 +515,7 @@ class World {
     if (p != null) {}
   }
 
-  // -- Component CRUD -----------------------------------------
+  /// -- Component CRUD -----------------------------------------
 
   attach(e, component) {
     var klass = component.type

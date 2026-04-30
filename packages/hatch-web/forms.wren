@@ -32,7 +32,7 @@
 // "strip whitespace, then require non-empty" — empty-after-trim
 // triggers required. Validators DON'T mutate the value.
 
-// ── Field ──────────────────────────────────────────────────────────────
+/// ── Field ──────────────────────────────────────────────────────────────
 
 class Field {
   construct new(name) {
@@ -78,7 +78,7 @@ class Field {
     return this
   }
 
-  // ── validators ────────────────────────────────────────────────
+  /// ── validators ────────────────────────────────────────────────
 
   required    { required("This field is required") }
   required(msg) {
@@ -292,7 +292,7 @@ class Field {
   }
 }
 
-// ── FormResult ─────────────────────────────────────────────────────────
+/// ── FormResult ─────────────────────────────────────────────────────────
 
 class FormResult {
   construct new_(data, errors, rawInput) {
@@ -329,7 +329,7 @@ class FormResult {
   }
 }
 
-// ── Form ───────────────────────────────────────────────────────────────
+/// ── Form ───────────────────────────────────────────────────────────────
 
 class Form {
   construct new(fields) {

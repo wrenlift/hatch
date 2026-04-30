@@ -273,15 +273,15 @@ class Tw_ {
   }
 }
 
-// ── Style ──────────────────────────────────────────────────────────────
-//
-// Immutable builder. Combinator methods (`tw`, `hover`, `focus`, `raw`)
-// return NEW Style instances — share safely across routes / threads.
-//
-// A Style is a base declaration map + an ordered list of pseudo and
-// media buckets. Emitting CSS walks each bucket in the order it was
-// registered, so identical builders produce identical output
-// (deterministic className hash).
+/// ── Style ──────────────────────────────────────────────────────────────
+///
+/// Immutable builder. Combinator methods (`tw`, `hover`, `focus`, `raw`)
+/// return NEW Style instances — share safely across routes / threads.
+///
+/// A Style is a base declaration map + an ordered list of pseudo and
+/// media buckets. Emitting CSS walks each bucket in the order it was
+/// registered, so identical builders produce identical output
+/// (deterministic className hash).
 
 class Style {
   construct new_(base, pseudos, mediaBuckets) {
@@ -571,18 +571,18 @@ class Style {
   }
 }
 
-// ── Stylesheet ─────────────────────────────────────────────────────────
-//
-// A collection of Styles, deduped by className. `add` returns the
-// style unchanged so handlers can thread it:
-//
-//   return req.render(tpl, {
-//     "btn": req.fragmentSheet.add(btn).className
-//   })
-//
-// `emit` returns the concatenated CSS. `styleTag` wraps it in
-// `<style>...</style>`. Empty sheets emit "" / an empty style tag;
-// handlers can always include it without null-checking.
+/// ── Stylesheet ─────────────────────────────────────────────────────────
+///
+/// A collection of Styles, deduped by className. `add` returns the
+/// style unchanged so handlers can thread it:
+///
+///   return req.render(tpl, {
+///     "btn": req.fragmentSheet.add(btn).className
+///   })
+///
+/// `emit` returns the concatenated CSS. `styleTag` wraps it in
+/// `<style>...</style>`. Empty sheets emit "" / an empty style tag;
+/// handlers can always include it without null-checking.
 
 class Stylesheet {
   construct new() {
@@ -613,7 +613,7 @@ class Stylesheet {
   }
 }
 
-// ── Css namespace ──────────────────────────────────────────────────────
+/// ── Css namespace ──────────────────────────────────────────────────────
 
 class Css {
   static empty       { Style.empty_() }

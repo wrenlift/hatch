@@ -62,7 +62,7 @@ class Time {
     _c = TimeCore.utc(seconds)
   }
 
-  // Component getters ----------------------------------------------------
+  /// Component getters ----------------------------------------------------
 
   unix         { _unix }
   year         { _c["year"] }

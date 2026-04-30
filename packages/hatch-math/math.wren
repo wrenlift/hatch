@@ -179,7 +179,7 @@ class Ease {
 /// component-wise; methods return new vectors (immutable
 /// math is the convention).
 class Vec2 {
-  // Factory methods --------------------------------------------------
+  /// Factory methods --------------------------------------------------
 
   construct new(x, y) {
     _x = x
@@ -207,7 +207,7 @@ class Vec2 {
   /(other) { other is Vec2 ? Vec2.new(_x / other.x, _y / other.y) : Vec2.new(_x / other, _y / other) }
   - { Vec2.new(-_x, -_y) }
 
-  // Length / normalization ------------------------------------------
+  /// Length / normalization ------------------------------------------
 
   lengthSq { _x * _x + _y * _y }
   length   { lengthSq.sqrt }
@@ -218,7 +218,7 @@ class Vec2 {
     return Vec2.new(_x / l, _y / l)
   }
 
-  // Dot product + angle / distance ----------------------------------
+  /// Dot product + angle / distance ----------------------------------
 
   dot(other)        { _x * other.x + _y * other.y }
   distanceSq(other) {
@@ -231,11 +231,11 @@ class Vec2 {
   /// the vectors had z=0. Useful for signed area / winding.
   cross(other)      { _x * other.y - _y * other.x }
 
-  // Interpolation ---------------------------------------------------
+  /// Interpolation ---------------------------------------------------
 
   static lerp(a, b, t) { Vec2.new(Math.lerp(a.x, b.x, t), Math.lerp(a.y, b.y, t)) }
 
-  // In-place mutation for hot loops ---------------------------------
+  /// In-place mutation for hot loops ---------------------------------
 
   addInto(a, b) {
     _x = a.x + b.x
@@ -258,7 +258,7 @@ class Vec2 {
     return this
   }
 
-  // Conversion / comparison -----------------------------------------
+  /// Conversion / comparison -----------------------------------------
 
   toList           { [_x, _y] }
   /// Raw component list, ordered (x, y). Companion to `Vec3.data` /
@@ -350,7 +350,7 @@ class Vec3 {
     return Vec3.new(_x - n.x * d, _y - n.y * d, _z - n.z * d)
   }
 
-  // In-place mutation -----------------------------------------------
+  /// In-place mutation -----------------------------------------------
 
   addInto(a, b) {
     _x = a.x + b.x

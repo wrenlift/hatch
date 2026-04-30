@@ -134,14 +134,23 @@ def promote(text):
                 break
             end += 1
         # Look for a declaration on the next non-blank line.
+        # Allow up to one blank line between the doc block and
+        # the declaration — a very common authoring pattern is
+        # to leave a visual gap after a section-header `// ────`
+        # ruler before the class actually starts.
         decl_idx = end
+        blanks = 0
         while decl_idx < n and lines[decl_idx].strip() == '':
+            blanks += 1
+            if blanks > 1:
+                break
             decl_idx += 1
         if decl_idx >= n:
             i = end + 1
             continue
-        if decl_idx != end:
-            # A blank line breaks the doc-block adjacency; skip.
+        if blanks > 1:
+            # Two or more blank lines — too far separated to
+            # treat as the same doc unit.
             i = end + 1
             continue
         if not looks_like_decl(lines[decl_idx], indent):

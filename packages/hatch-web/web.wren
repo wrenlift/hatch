@@ -38,12 +38,12 @@ import "./live"          for Scheduler_, Channel, Sse, SseStream
 import "@hatch:time"     for Clock
 import "hatch"           for Hatch
 
-// ── Request ─────────────────────────────────────────────────────────────
-//
-// Immutable view of one HTTP/1.1 request. Path params populate
-// after the router matches, so `param("id")` works inside the
-// handler without re-parsing. Query string is parsed lazily on
-// first access.
+/// ── Request ─────────────────────────────────────────────────────────────
+///
+/// Immutable view of one HTTP/1.1 request. Path params populate
+/// after the router matches, so `param("id")` works inside the
+/// handler without re-parsing. Query string is parsed lazily on
+/// first access.
 
 class Request {
   construct new_(method, path, query, headers, body, remote) {
@@ -194,11 +194,11 @@ class Request {
   setParam_(k, v) { _params[k] = v }
 }
 
-// ── Response ────────────────────────────────────────────────────────────
-//
-// Mutable builder. Methods chain. An HxResponse returned from a
-// handler is "just" a Response carrying the body + hx headers,
-// so the two are interchangeable at the edge.
+/// ── Response ────────────────────────────────────────────────────────────
+///
+/// Mutable builder. Methods chain. An HxResponse returned from a
+/// handler is "just" a Response carrying the body + hx headers,
+/// so the two are interchangeable at the edge.
 
 class Response {
   construct new() { init_(200, {}, "") }
@@ -419,7 +419,7 @@ class Pipeline_ {
   }
 }
 
-// ── App ─────────────────────────────────────────────────────────────────
+/// ── App ─────────────────────────────────────────────────────────────────
 
 class App {
   construct new() {
@@ -709,7 +709,7 @@ class Http_ {
     if (bodyLen > 0) conn.write(body)
   }
 
-  // ── parsing helpers ───────────────────────────────────────────
+  /// ── parsing helpers ───────────────────────────────────────────
 
   static parseForm(s) {
     var out = {}
@@ -909,19 +909,19 @@ class ByteBuf_ {
   }
 }
 
-// ── Static file serving ────────────────────────────────────────────────
-//
-//   app.use(Static.serve("/assets", "./public"))
-//
-// Serves GET/HEAD requests whose path starts with the URL prefix.
-// Maps them to files under `root`. `..` in the path is rejected
-// out of hand. On a miss, hands off to the next middleware so
-// your dynamic routes still win for unknown paths — a 404 only
-// comes from the router, not here.
-//
-// Content-Type is inferred from extension. A tiny MIME table
-// covers the common web assets; unknown extensions fall back to
-// application/octet-stream.
+/// ── Static file serving ────────────────────────────────────────────────
+///
+///   app.use(Static.serve("/assets", "./public"))
+///
+/// Serves GET/HEAD requests whose path starts with the URL prefix.
+/// Maps them to files under `root`. `..` in the path is rejected
+/// out of hand. On a miss, hands off to the next middleware so
+/// your dynamic routes still win for unknown paths — a 404 only
+/// comes from the router, not here.
+///
+/// Content-Type is inferred from extension. A tiny MIME table
+/// covers the common web assets; unknown extensions fall back to
+/// application/octet-stream.
 
 class Static {
   static serve(urlPrefix, root) {
@@ -1008,22 +1008,22 @@ class Static {
   }
 }
 
-// ── Signed-cookie session ──────────────────────────────────────────────
-//
-//   app.use(Session.cookie("my-secret"))
-//
-// Parses the `_session` cookie on the way in (verifies HMAC,
-// decodes JSON) and attaches a mutable Map as `req.session`.
-// On the way out, re-serializes + signs and writes a Set-Cookie.
-//
-// HMAC-SHA256 over the payload. Constant-time comparison on
-// verify so an attacker can't probe for byte-wise matches.
-// Tamper / bad signature / malformed cookie = empty session;
-// we never trust a partially-valid cookie.
-//
-// Stateless by default — the whole session lives in the cookie.
-// Fine for small sessions (user id, role, flash), bad for
-// megabytes. Server-side stores come later.
+/// ── Signed-cookie session ──────────────────────────────────────────────
+///
+///   app.use(Session.cookie("my-secret"))
+///
+/// Parses the `_session` cookie on the way in (verifies HMAC,
+/// decodes JSON) and attaches a mutable Map as `req.session`.
+/// On the way out, re-serializes + signs and writes a Set-Cookie.
+///
+/// HMAC-SHA256 over the payload. Constant-time comparison on
+/// verify so an attacker can't probe for byte-wise matches.
+/// Tamper / bad signature / malformed cookie = empty session;
+/// we never trust a partially-valid cookie.
+///
+/// Stateless by default — the whole session lives in the cookie.
+/// Fine for small sessions (user id, role, flash), bad for
+/// megabytes. Server-side stores come later.
 
 class Session {
   static COOKIE_NAME_ { "_session" }
@@ -1160,20 +1160,20 @@ class Session {
   }
 }
 
-// ── CSRF protection ────────────────────────────────────────────────────
-//
-//   app.use(Session.cookie("..."))   // required — CSRF lives in session
-//   app.use(Csrf.middleware)
-//
-// On any request with a session, ensures `session["_csrf"]` is
-// populated with a fresh random token. Exposes it at
-// `req.csrfToken` so templates / handlers can embed it.
-//
-// For state-changing methods (POST / PUT / PATCH / DELETE), the
-// middleware demands a matching token in either the form body
-// (field "_csrf") or the "X-CSRF-Token" header. Missing or
-// mismatched → 403. SameSite=Lax on the session cookie covers
-// most of the CSRF risk already; this is defense in depth.
+/// ── CSRF protection ────────────────────────────────────────────────────
+///
+///   app.use(Session.cookie("..."))   // required — CSRF lives in session
+///   app.use(Csrf.middleware)
+///
+/// On any request with a session, ensures `session["_csrf"]` is
+/// populated with a fresh random token. Exposes it at
+/// `req.csrfToken` so templates / handlers can embed it.
+///
+/// For state-changing methods (POST / PUT / PATCH / DELETE), the
+/// middleware demands a matching token in either the form body
+/// (field "_csrf") or the "X-CSRF-Token" header. Missing or
+/// mismatched → 403. SameSite=Lax on the session cookie covers
+/// most of the CSRF risk already; this is defense in depth.
 
 class Csrf {
   static TOKEN_BYTES_ { 32 }
@@ -1256,21 +1256,21 @@ class Csrf {
   }
 }
 
-// ── Flash messages ─────────────────────────────────────────────────────
-//
-//   // in handler
-//   req.flash["notice"] = "Signed in as %(user.name)"
-//   return Response.redirect("/")
-//
-//   // in template
-//   {% if flash.containsKey("notice") %}
-//     <div class="flash">{{ flash["notice"] }}</div>
-//   {% endif %}
-//
-// The Session middleware already hoists `_flash` out of the
-// session on the way in and stashes anything written during the
-// handler back under `_flash` on the way out, so a one-shot
-// notice survives exactly one redirect and then evaporates.
+/// ── Flash messages ─────────────────────────────────────────────────────
+///
+///   // in handler
+///   req.flash["notice"] = "Signed in as %(user.name)"
+///   return Response.redirect("/")
+///
+///   // in template
+///   {% if flash.containsKey("notice") %}
+///     <div class="flash">{{ flash["notice"] }}</div>
+///   {% endif %}
+///
+/// The Session middleware already hoists `_flash` out of the
+/// session on the way in and stashes anything written during the
+/// handler back under `_flash` on the way out, so a one-shot
+/// notice survives exactly one redirect and then evaporates.
 
 class Flash {
   /// Shortcut for injecting `flash` into a render context.

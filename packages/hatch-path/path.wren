@@ -1,24 +1,24 @@
-// @hatch:path — filesystem path manipulation.
-//
-//   import "@hatch:path" for Path
-//
-//   Path.join("foo", "bar", "baz.txt")     // "foo/bar/baz.txt"
-//   Path.join(["foo", "bar"])              // "foo/bar"
-//   Path.parent("foo/bar/baz.txt")         // "foo/bar"
-//   Path.basename("foo/bar/baz.txt")       // "baz.txt"
-//   Path.stem("foo/bar/baz.txt")           // "baz"
-//   Path.extname("foo/bar/baz.txt")        // ".txt"
-//   Path.normalize("foo//./bar/../x")      // "foo/x"
-//   Path.isAbsolute("/a/b")                // true
-//   Path.split("foo/bar/baz")              // ["foo", "bar", "baz"]
-//
-// Unix-style paths only (`/` separator, no drive letters). Windows
-// paths would need OS detection via FFI, which lives in @hatch:os;
-// until that lands, consumers on Windows should use forward slashes
-// explicitly or post-process the result.
-//
-// All operations are pure string manipulation — nothing touches the
-// filesystem here. That belongs in @hatch:fs.
+/// @hatch:path — filesystem path manipulation.
+///
+///   import "@hatch:path" for Path
+///
+///   Path.join("foo", "bar", "baz.txt")     // "foo/bar/baz.txt"
+///   Path.join(["foo", "bar"])              // "foo/bar"
+///   Path.parent("foo/bar/baz.txt")         // "foo/bar"
+///   Path.basename("foo/bar/baz.txt")       // "baz.txt"
+///   Path.stem("foo/bar/baz.txt")           // "baz"
+///   Path.extname("foo/bar/baz.txt")        // ".txt"
+///   Path.normalize("foo//./bar/../x")      // "foo/x"
+///   Path.isAbsolute("/a/b")                // true
+///   Path.split("foo/bar/baz")              // ["foo", "bar", "baz"]
+///
+/// Unix-style paths only (`/` separator, no drive letters). Windows
+/// paths would need OS detection via FFI, which lives in @hatch:os;
+/// until that lands, consumers on Windows should use forward slashes
+/// explicitly or post-process the result.
+///
+/// All operations are pure string manipulation — nothing touches the
+/// filesystem here. That belongs in @hatch:fs.
 
 class Path {
   static SEP { "/" }
@@ -126,7 +126,7 @@ class Path {
     return base[idx...base.count]
   }
 
-  // -- absolute / relative ---------------------------------------------------
+  /// -- absolute / relative ---------------------------------------------------
 
   static isAbsolute(path) {
     if (!(path is String)) Fiber.abort("Path.isAbsolute: expected a string")

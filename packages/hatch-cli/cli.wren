@@ -47,9 +47,9 @@ class Arg {
     _count = false
   }
 
-  // Builder setters -- each returns `this` for chaining.
-  // flag/value/count/positional are mutually exclusive kinds; the
-  // last one called wins.
+  /// Builder setters -- each returns `this` for chaining.
+  /// flag/value/count/positional are mutually exclusive kinds; the
+  /// last one called wins.
 
   short(s) {
     _short = s

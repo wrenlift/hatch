@@ -1,33 +1,33 @@
-// @hatch:fp — fluent + functional collection operations.
-//
-//   import "@hatch:fp" for FP, Pipe
-//
-//   // Static toolbox — each takes a sequence + a lambda:
-//   FP.flatMap([[1, 2], [3]], Fn.new {|xs| xs })      //= [1, 2, 3]
-//   FP.groupBy([1, 2, 3, 4], Fn.new {|n| n % 2 })     //= { 1: [1, 3], 0: [2, 4] }
-//   FP.partition([1, 2, 3, 4], Fn.new {|n| n > 2 })   //= [[3, 4], [1, 2]]
-//   FP.zipWith([1, 2, 3], [10, 20, 30], Fn.new {|a, b| a + b })  //= [11, 22, 33]
-//   FP.sortedBy(["bb", "a", "ccc"], Fn.new {|s| s.count })       //= ["a", "bb", "ccc"]
-//   FP.chunked([1, 2, 3, 4, 5], 2)                    //= [[1, 2], [3, 4], [5]]
-//
-//   // Fluent pipeline — chains compose left-to-right. Each op
-//   // eagerly materialises into a List, so long chains are still
-//   // O(n) per step. Terminates with `.toList`, `.reduce`, etc.
-//   Pipe.of(1..10)
-//     .where(Fn.new {|n| n % 2 == 0 })
-//     .map  (Fn.new {|n| n * n })
-//     .take (3)
-//     .toList                                          //= [4, 16, 36]
-//
-// Wren's stock `Sequence` already does `map / where / take / skip /
-// reduce / each / count / any / all / contains / join / toList`.
-// `@hatch:fp` layers the rest on top: flatMap, groupBy, partition,
-// zip/zipWith, sortedBy, chunked, windowed, scan, tap, takeWhile /
-// dropWhile, distinct, first / last / min / max, sum, concat,
-// reversed, withIndex, toMap.
-//
-// Everything here is pure Wren — no runtime module — so the JIT
-// tier-ups it like any hot user code.
+/// @hatch:fp — fluent + functional collection operations.
+///
+///   import "@hatch:fp" for FP, Pipe
+///
+///   // Static toolbox — each takes a sequence + a lambda:
+///   FP.flatMap([[1, 2], [3]], Fn.new {|xs| xs })      //= [1, 2, 3]
+///   FP.groupBy([1, 2, 3, 4], Fn.new {|n| n % 2 })     //= { 1: [1, 3], 0: [2, 4] }
+///   FP.partition([1, 2, 3, 4], Fn.new {|n| n > 2 })   //= [[3, 4], [1, 2]]
+///   FP.zipWith([1, 2, 3], [10, 20, 30], Fn.new {|a, b| a + b })  //= [11, 22, 33]
+///   FP.sortedBy(["bb", "a", "ccc"], Fn.new {|s| s.count })       //= ["a", "bb", "ccc"]
+///   FP.chunked([1, 2, 3, 4, 5], 2)                    //= [[1, 2], [3, 4], [5]]
+///
+///   // Fluent pipeline — chains compose left-to-right. Each op
+///   // eagerly materialises into a List, so long chains are still
+///   // O(n) per step. Terminates with `.toList`, `.reduce`, etc.
+///   Pipe.of(1..10)
+///     .where(Fn.new {|n| n % 2 == 0 })
+///     .map  (Fn.new {|n| n * n })
+///     .take (3)
+///     .toList                                          //= [4, 16, 36]
+///
+/// Wren's stock `Sequence` already does `map / where / take / skip /
+/// reduce / each / count / any / all / contains / join / toList`.
+/// `@hatch:fp` layers the rest on top: flatMap, groupBy, partition,
+/// zip/zipWith, sortedBy, chunked, windowed, scan, tap, takeWhile /
+/// dropWhile, distinct, first / last / min / max, sum, concat,
+/// reversed, withIndex, toMap.
+///
+/// Everything here is pure Wren — no runtime module — so the JIT
+/// tier-ups it like any hot user code.
 
 class FP {
   // -- Identity / constant / no-op ---------------------------------------
@@ -399,7 +399,7 @@ class FP {
     return result
   }
 
-  // -- Extrema ----------------------------------------------------------
+  /// -- Extrema ----------------------------------------------------------
 
   static min(seq) {
     var best = null
@@ -536,7 +536,7 @@ class Pipe {
   /// Escape hatch: hand back the current sequence unwrapped.
   unwrap { _seq }
 
-  // -- Terminals (return a concrete value) -------------------------------
+  /// -- Terminals (return a concrete value) -------------------------------
 
   toList                { _seq is List ? _seq : _seq.toList }
   reduce(fn)            { _seq.reduce(fn) }
@@ -564,7 +564,7 @@ class Pipe {
   groupBy(fn)           { FP.groupBy(_seq, fn) }
   partition(fn)         { FP.partition(_seq, fn) }
 
-  // -- Non-terminals (return a new Pipe) ---------------------------------
+  /// -- Non-terminals (return a new Pipe) ---------------------------------
 
   map(fn)               { Pipe.of(_seq.map(fn)) }
   where(fn)             { Pipe.of(_seq.where(fn)) }

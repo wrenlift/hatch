@@ -1,33 +1,33 @@
-// @hatch:template — Jinja/Twig-style templating for HTML and XML.
-//
-//   import "@hatch:template" for Template, Hx
-//
-//   var tpl = Template.parse("<h1>Hello {{ name }}</h1>")
-//   tpl.render({ "name": "world" })          //= "<h1>Hello world</h1>"
-//
-// Syntax:
-//   {{ expr }}           — interpolation (HTML-escaped)
-//   {{{ expr }}}         — raw interpolation (unescaped)
-//   {% if expr %}        — conditional (elif / else / endif)
-//   {% for x in expr %}  — loop over a sequence (endfor)
-//   {% slot name %}      — named slot with default body (endslot)
-//   {% fragment name %}  — addressable partial for htmx responses (endfragment)
-//   {% set x = expr %}   — bind a variable in current scope
-//   {% include "name" %} — render a registered component by name
-//   {# comment #}        — stripped at parse time
-//
-// Expressions:
-//   Paths: user.name, items[0], ctx["key"]
-//   Literals: 42, 1.5, "str", 'str', true, false, null
-//   Comparisons: == != < <= > >=
-//   Booleans: and / or / not
-//   Filters: {{ x | upper }} / {{ x | default("—") }}
-//   Builtins: escape, raw, upper, lower, default, length, join
-//
-// htmx:
-//   tpl.renderFragment("name", ctx)     — render a {% fragment %} block only
-//   ctx["#hx"] = { "request": true }    — exposed as `hx` in templates
-//   Hx.response(body).trigger("x")      — build HX-* response headers
+/// @hatch:template — Jinja/Twig-style templating for HTML and XML.
+///
+///   import "@hatch:template" for Template, Hx
+///
+///   var tpl = Template.parse("<h1>Hello {{ name }}</h1>")
+///   tpl.render({ "name": "world" })          //= "<h1>Hello world</h1>"
+///
+/// Syntax:
+///   {{ expr }}           — interpolation (HTML-escaped)
+///   {{{ expr }}}         — raw interpolation (unescaped)
+///   {% if expr %}        — conditional (elif / else / endif)
+///   {% for x in expr %}  — loop over a sequence (endfor)
+///   {% slot name %}      — named slot with default body (endslot)
+///   {% fragment name %}  — addressable partial for htmx responses (endfragment)
+///   {% set x = expr %}   — bind a variable in current scope
+///   {% include "name" %} — render a registered component by name
+///   {# comment #}        — stripped at parse time
+///
+/// Expressions:
+///   Paths: user.name, items[0], ctx["key"]
+///   Literals: 42, 1.5, "str", 'str', true, false, null
+///   Comparisons: == != < <= > >=
+///   Booleans: and / or / not
+///   Filters: {{ x | upper }} / {{ x | default("—") }}
+///   Builtins: escape, raw, upper, lower, default, length, join
+///
+/// htmx:
+///   tpl.renderFragment("name", ctx)     — render a {% fragment %} block only
+///   ctx["#hx"] = { "request": true }    — exposed as `hx` in templates
+///   Hx.response(body).trigger("x")      — build HX-* response headers
 
 class TemplateError {
   construct new(msg) { _msg = msg }
@@ -1395,10 +1395,10 @@ class Render_ {
 
 // --- Public API ------------------------------------------------------------
 
-// Loader protocol — any class with `load(name) → String|null` works.
-// The package ships two concrete loaders: MapLoader (in-memory) and
-// FnLoader (adapt any 1-arg function). For a filesystem-backed loader
-// the user would wire up a FnLoader with `@hatch:fs.read(path)`.
+/// Loader protocol — any class with `load(name) → String|null` works.
+/// The package ships two concrete loaders: MapLoader (in-memory) and
+/// FnLoader (adapt any 1-arg function). For a filesystem-backed loader
+/// the user would wire up a FnLoader with `@hatch:fs.read(path)`.
 
 class MapLoader {
   construct new(sources) { _sources = sources }
@@ -1563,16 +1563,16 @@ class Template {
 }
 
 // --- htmx response helper --------------------------------------------------
-//
-// Thin bag of body + headers. No HTTP opinions — the caller picks a
-// transport. Every chainable method returns `this` so a response can
-// be built inline:
-//
-//   var r = Hx.response(tpl.renderFragment("row", ctx))
-//     .trigger("user-updated", { "id": 42 })
-//     .pushUrl("/users/42")
-//     .reswap("outerHTML")
-//   // r.body → string, r.headers → map of header → value
+///
+/// Thin bag of body + headers. No HTTP opinions — the caller picks a
+/// transport. Every chainable method returns `this` so a response can
+/// be built inline:
+///
+///   var r = Hx.response(tpl.renderFragment("row", ctx))
+///     .trigger("user-updated", { "id": 42 })
+///     .pushUrl("/users/42")
+///     .reswap("outerHTML")
+///   // r.body → string, r.headers → map of header → value
 
 class HxResponse {
   construct new(body) {

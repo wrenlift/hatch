@@ -88,7 +88,7 @@ foreign class PhysicsCore {
   foreign static world3dApplyForce(worldId, bodyId, x, y, z)
 }
 
-// -- 2D ----------------------------------------------------------
+/// -- 2D ----------------------------------------------------------
 
 class World2D {
   static new(descriptor) { World2D.new_(PhysicsCore.world2dCreate(descriptor)) }
@@ -151,7 +151,7 @@ class Collider2D {
   }
 }
 
-// -- 3D ----------------------------------------------------------
+/// -- 3D ----------------------------------------------------------
 
 class World3D {
   static new(descriptor) { World3D.new_(PhysicsCore.world3dCreate(descriptor)) }

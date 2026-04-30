@@ -239,20 +239,20 @@ class Channel {
   }
 }
 
-// ── SSE ────────────────────────────────────────────────────────────────
-//
-// `Sse.stream(writerFn)` returns a value the listen loop recognises:
-// instead of serialising a Response once, it writes SSE headers and
-// invokes `writerFn` with an `emit` helper. The writer typically
-// loops forever, calling `emit.call(payload)` for each event it
-// wants to push to the client.
-//
-// `emit` accepts:
-//   - a String → sent as `data:` (one line)
-//   - a Map with any of `event`, `data`, `id`, `retry` → full SSE frame
-//
-// Heartbeats: call `emit.call(":ping")` (comments are ignored by the
-// client) to keep intermediate proxies from closing an idle connection.
+/// ── SSE ────────────────────────────────────────────────────────────────
+///
+/// `Sse.stream(writerFn)` returns a value the listen loop recognises:
+/// instead of serialising a Response once, it writes SSE headers and
+/// invokes `writerFn` with an `emit` helper. The writer typically
+/// loops forever, calling `emit.call(payload)` for each event it
+/// wants to push to the client.
+///
+/// `emit` accepts:
+///   - a String → sent as `data:` (one line)
+///   - a Map with any of `event`, `data`, `id`, `retry` → full SSE frame
+///
+/// Heartbeats: call `emit.call(":ping")` (comments are ignored by the
+/// client) to keep intermediate proxies from closing an idle connection.
 
 class SseStream {
   construct new_(writerFn) {

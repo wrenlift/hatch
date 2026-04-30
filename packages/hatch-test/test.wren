@@ -1,30 +1,30 @@
-// @hatch:test — tiny test runner for `*.spec.wren` files.
-//
-// Usage:
-//
-//   import "@hatch:test"   for Test
-//   import "@hatch:assert" for Expect
-//
-//   Test.describe("List") {
-//     Test.it("indexes from zero") {
-//       Expect.that([1, 2][0]).toBe(1)
-//     }
-//     Test.it("reports count") {
-//       Expect.that([1, 2].count).toBe(2)
-//     }
-//   }
-//
-//   Test.run()
-//
-// `describe` records a group name; `it` records a single test case
-// under the current group. `run()` iterates registered cases, runs
-// each inside a fresh fiber, captures any abort as a failure, and
-// prints a summary. Exits non-zero on any failure so `hatch test`
-// (and plain `wlift foo.spec.wren`) both propagate the result.
-//
-// Deliberately small surface: no before/after hooks, no async, no
-// skip markers. First-wave packages just need "did this work?" —
-// the heavier runner features land if/when they earn their keep.
+/// @hatch:test — tiny test runner for `*.spec.wren` files.
+///
+/// Usage:
+///
+///   import "@hatch:test"   for Test
+///   import "@hatch:assert" for Expect
+///
+///   Test.describe("List") {
+///     Test.it("indexes from zero") {
+///       Expect.that([1, 2][0]).toBe(1)
+///     }
+///     Test.it("reports count") {
+///       Expect.that([1, 2].count).toBe(2)
+///     }
+///   }
+///
+///   Test.run()
+///
+/// `describe` records a group name; `it` records a single test case
+/// under the current group. `run()` iterates registered cases, runs
+/// each inside a fresh fiber, captures any abort as a failure, and
+/// prints a summary. Exits non-zero on any failure so `hatch test`
+/// (and plain `wlift foo.spec.wren`) both propagate the result.
+///
+/// Deliberately small surface: no before/after hooks, no async, no
+/// skip markers. First-wave packages just need "did this work?" —
+/// the heavier runner features land if/when they earn their keep.
 
 class Test {
   // --- Registration ------------------------------------------------------
