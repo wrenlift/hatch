@@ -1641,9 +1641,9 @@ class Renderer3D {
     appendMat4_(floats, model)
     // normal_mat = inverse(transpose(model)). For orthonormal
     // model matrices (rotation + translation only), the model
-    // matrix's upper-3x3 itself works as the normal matrix —
-    // good enough for v0; full inverse-transpose lands when we
-    // expose a Mat4.inverse helper.
+    // matrix's upper-3x3 itself works as the normal matrix.
+    // Non-orthonormal models will need a real inverse-transpose
+    // once `Mat4.inverse` is exposed.
     appendMat4_(floats, model)
     appendVec4_(floats, material.color)
     var ld = _light.direction

@@ -1,4 +1,4 @@
-// @hatch:web chat demo — Phase 4 showcase.
+// @hatch:web chat demo — fiber scheduler + Channel + SSE.
 //
 //   wlift --mode interpreter --step-limit 0 chat.wren
 //   Open two browser tabs at http://127.0.0.1:3000

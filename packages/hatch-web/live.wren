@@ -1,5 +1,5 @@
-// @hatch:web/live — Phase 4 primitives: fiber-cooperative scheduler,
-// in-memory Channel pub/sub, and Server-Sent Events streaming.
+// @hatch:web/live — fiber-cooperative scheduler, in-memory
+// Channel pub/sub, and Server-Sent Events streaming.
 //
 // All of this is cooperative — a handler blocks the server until it
 // either returns, yields (via the scheduler's `Fiber.yield()` hook),

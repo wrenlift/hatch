@@ -1,4 +1,4 @@
-// @hatch:web — signup + login demo, exercising Phase 1-3 surface.
+// @hatch:web — signup + login demo.
 //
 //   wlift --mode interpreter signup.wren
 //   open http://127.0.0.1:3000
@@ -11,8 +11,8 @@
 //   - Flash notices across redirects
 //   - htmx-free progressive enhancement — the form posts work without JS
 //
-// Not persisted — users live in an in-memory Map. Swap for an
-// ORM-backed store when Phase 5 lands.
+// Not persisted — users live in an in-memory Map. An
+// ORM-backed store is planned.
 
 import "../web"       for App, Form, Field, Response, Session, Flash, Csrf
 import "../css"       for Css

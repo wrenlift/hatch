@@ -22,9 +22,9 @@
 // handler innermost.
 //
 // HTTP/1.1 cleartext on top of @hatch:socket — no TLS, no h2,
-// no WebSockets yet. Content-Length bodies only (chunked TE
-// comes later). One request per connection (no keep-alive) to
-// keep the Phase 1 parser honest; pipelining/keep-alive next.
+// no WebSockets yet. Content-Length bodies only. One request
+// per connection (no keep-alive). Pipelining and keep-alive
+// are planned.
 
 import "@hatch:socket"   for TcpListener
 import "@hatch:template" for Hx, HxResponse, Template
@@ -125,8 +125,7 @@ class Request {
   // Route parameters captured by the router (/posts/:id → req.param("id")).
   param(name) { _params.containsKey(name) ? _params[name] : null }
 
-  // Parsed `?a=1&b=2` query as a Map. Repeated keys: last-one-wins
-  // (good enough for Phase 1; `queryAll` can come later).
+  // Parsed `?a=1&b=2` query as a Map. Repeated keys: last-one-wins.
   query {
     if (_queryCache != null) return _queryCache
     _queryCache = Http_.parseForm(_rawQuery)
@@ -165,8 +164,8 @@ class Request {
   // Render a Template against a context. Content-negotiates:
   // if the request is htmx, we let the template expose `hx` so
   // it can pick a fragment; otherwise it renders the full page.
-  // Accepts either a Template or a template name (when the app
-  // carries a TemplateRegistry — not wired yet in Phase 1).
+  // Accepts a Template directly. (A future TemplateRegistry pass
+  // will let handlers look up named templates from the app.)
   //
   // CSS: both sheets are threaded into the context so the
   // template can include them in the right spot. Full-page
@@ -623,7 +622,7 @@ class App {
 //
 // Minimal parser + serializer. Reads request line + headers +
 // Content-Length body. Chunked transfer-encoding, pipelining,
-// keep-alive, TLS, and WebSocket upgrade are all Phase 2+.
+// keep-alive, TLS, and WebSocket upgrade are all planned.
 
 class Http_ {
   // Entry point — reads one request off a TcpStream, returns a
