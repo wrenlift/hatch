@@ -5,3 +5,4 @@
 # bytecode bundle is a derived output rebuilt on `hatch run`.
 examples/**/*.hatch
 packages/**/*.hatch
+.DS_Store

@@ -1,0 +1,40 @@
+# Fly.io config for hatch.wrenlift.com.
+#
+# Deploy via:
+#
+#   fly deploy --remote-only --config site/fly.toml -a hatch-wrenlift
+#
+# CNAME setup (one-time, manual at the wrenlift apex DNS):
+#
+#   hatch.wrenlift.com  CNAME  hatch-wrenlift.fly.dev
+#   fly certs add hatch.wrenlift.com -a hatch-wrenlift
+
+app = "hatch-wrenlift"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3000"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0   # spin down to zero when idle; the catalog rehydrates on each cold start
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1

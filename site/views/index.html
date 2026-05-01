@@ -1,0 +1,313 @@
+{% extends "layout.html" %}
+
+{% block body %}
+
+<!-- NAV -->
+<nav class="nav">
+  <a class="brand" href="/" aria-label="Hatch">
+    <img class="wordmark" src="/assets/hatch-wordmark.png" alt="Hatch" />
+  </a>
+  <div class="nav-links">
+    <a href="#install">Install</a>
+    <a href="#packages">Packages</a>
+    <a href="#frameworks">Frameworks</a>
+    <a href="#why">Why Hatch</a>
+    <a href="#community">Community</a>
+    <a href="https://github.com/wrenlift/hatch">Docs</a>
+  </div>
+  <a class="nav-cta" href="https://github.com/wrenlift/hatch" aria-label="GitHub">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.4 3-.405 1.02.005 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+    <span>GitHub</span>
+  </a>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div>
+    <span class="eyebrow"><span class="dot"></span>v0.4.2 · powered by wrenlift runtime</span>
+    <h1>Crack open<br/>a script. <span class="accent">Hatch</span><br/>does the rest.</h1>
+    <p class="lede">
+      Hatch is a cozy ecosystem of libraries and frameworks for the
+      <a href="https://wren.io" target="_blank" rel="noopener"><code>Wren</code></a> scripting language &mdash; tested, versioned, and
+      ready to drop into any project running on the Wrenlift runtime.
+    </p>
+    <div class="cta-row">
+      <a class="btn" href="#install">
+        <span>Get Hatch</span><span class="arrow">→</span>
+      </a>
+      <a class="btn ghost" href="#packages">
+        <span>Browse packages</span>
+      </a>
+    </div>
+    <div class="hero-meta">
+      <span>📦 <b>{{ totalCount }}</b> packages</span>
+      <span>⚡ runs on <b>wrenlift 1.2+</b></span>
+      <span>🪺 <b>MIT</b> licensed</span>
+    </div>
+  </div>
+  <div class="mascot-stage">
+    <div class="sparkle s1">✦</div>
+    <div class="sparkle s2">✦</div>
+    <div class="sparkle s3">✦</div>
+    <div class="sparkle s4">✦</div>
+    <div class="nest"></div>
+    <img src="/assets/hatch-mascot.png" alt="Hatch mascot — a cheerful sparrow chick hatching from an egg">
+    <div class="term-float" aria-hidden="true">
+      <div class="term-bar">
+        <span class="tdot"></span><span class="tdot"></span><span class="tdot"></span>
+        <span class="ttitle">~/my-project</span>
+      </div>
+      <div class="term-body">
+        <div><span class="pr">$</span> <span class="cmd">hatch add @hatch:http @hatch:json</span></div>
+        <div class="mut">  resolving deps…</div>
+        <div><span class="ok">✓</span> http@2.1.0 added</div>
+        <div><span class="ok">✓</span> json@1.4.3 added</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- HERO DIVIDER -->
+<div class="hero-divider" aria-hidden="true">
+  <span class="glyph"></span>
+</div>
+
+<!-- INSTALL -->
+<section id="install" class="wrap">
+  <div class="section-head">
+    <div>
+      <div class="section-tag">Quick start · 60 seconds</div>
+      <h2 class="section-title">Three steps. <em>You're running.</em></h2>
+    </div>
+    <p class="section-sub">A single static binary, no extra runtime to install. Add packages with one command and you're up.</p>
+  </div>
+
+  <div class="install-grid">
+    <div class="install-steps">
+      <div class="step">
+        <div class="step-num">01</div>
+        <div>
+          <h3>Install the CLI</h3>
+          <p>One line installs the <code>hatch</code> binary and the wrenlift runtime.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <div>
+          <h3>Init a project</h3>
+          <p>Scaffolds a <code>hatchfile</code> manifest and an entry script.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <div>
+          <h3>Run it</h3>
+          <p>Wrenlift compiles and runs your script with hatched packages linked.</p>
+        </div>
+      </div>
+
+      <div class="platform-row">
+        <span class="label">Or install via:</span>
+        <div class="platforms">
+          <span class="pchip">brew</span>
+          <span class="pchip">winget</span>
+          <span class="pchip">scoop</span>
+          <span class="pchip">apt</span>
+          <span class="pchip">docker</span>
+        </div>
+      </div>
+    </div>
+
+    <pre class="codeblock" aria-label="Quick start commands"><span class="cmt"># 1. install</span>
+<span class="pr">$</span> curl -fsSL hatch.wrenlift.com/i | sh
+
+<span class="cmt"># 2. scaffold</span>
+<span class="pr">$</span> hatch new my-app
+<span class="pr">$</span> cd my-app
+<span class="pr">$</span> hatch add @hatch:http @hatch:json
+
+<span class="cmt"># 3. run</span>
+<span class="pr">$</span> hatch run
+<span class="mut">  listening on :8080</span> <span class="ok">✓</span></pre>
+  </div>
+</section>
+
+<!-- FRAMEWORKS -->
+<section id="frameworks" class="wrap">
+  <div class="fw-card">
+    <div class="section-tag">Frameworks</div>
+    <h2 class="section-title">Pick your <em style="color:var(--butter);">canvas</em>.</h2>
+    <p class="lead">Two first-party frameworks, both built on the same runtime. Same packages, same tooling, same <code style="font-family:var(--mono);font-size:14px;background:rgba(251,243,220,0.1);padding:2px 7px;border-radius:6px;color:var(--cream);">hatchfile</code>.</p>
+
+    <div class="fw-grid">
+      <div class="fw-tile">
+        <div class="fw-tile-head">
+          <div class="fw-tile-icon web">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3A2A18" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg>
+          </div>
+          <div>
+            <h3>Web</h3>
+            <span class="pkg">@hatch:web</span>
+          </div>
+        </div>
+        <p>Server-rendered, htmx-native web framework for Wren. Ships a dev server with hot reload, file-based routing, and a production bundler that targets Wrenlift edge or Node.</p>
+        <div class="fw-snippet"><span class="cmt"># scaffold a web app</span>
+<span class="pr">$</span> hatch new my-site --template web
+<span class="pr">$</span> cd my-site &amp;&amp; hatch dev</div>
+        <a class="fw-link" href="#">Read the web guide <span class="arr">→</span></a>
+      </div>
+
+      <div class="fw-tile">
+        <div class="fw-tile-head">
+          <div class="fw-tile-icon game">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3A2A18" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="3"/><path d="M7 12h4"/><path d="M9 10v4"/><circle cx="16" cy="11" r="1"/><circle cx="18" cy="14" r="1"/></svg>
+          </div>
+          <div>
+            <h3>Game</h3>
+            <span class="pkg">@hatch:game</span>
+          </div>
+        </div>
+        <p>Sprite batching, audio mixer, input mapping, ECS-lite scenes. 2D first, with hot reload for scripts, shaders, and assets — and a software renderer fallback so your prototype runs anywhere, browser included.</p>
+        <div class="fw-snippet"><span class="cmt"># scaffold a game</span>
+<span class="pr">$</span> hatch new my-game --template game
+<span class="pr">$</span> cd my-game &amp;&amp; hatch play</div>
+        <a class="fw-link" href="#">Read the game guide <span class="arr">→</span></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PACKAGES -->
+<section id="packages" class="pkg-bg">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <div class="section-tag">Featured · {{ totalCount }} in registry</div>
+        <h2 class="section-title">Featured <em>packages</em>.</h2>
+      </div>
+      <p class="section-sub">Curated, semver-pinned, spec-driven tested. Browse the full registry or search below.</p>
+    </div>
+
+    {% include "partials/packages.html" %}
+
+    <div class="all-link">
+      <a href="https://github.com/wrenlift/hatch/blob/main/index.toml" target="_blank" rel="noopener">Browse all {{ totalCount }} packages →</a>
+    </div>
+  </div>
+</section>
+
+<!-- WHY -->
+<section id="why" class="wrap" style="margin-top: 32px;">
+  <div class="section-head">
+    <div>
+      <div class="section-tag">Why Hatch</div>
+      <h2 class="section-title">Built for <em>tiny scripts</em><br/>and serious shipping.</h2>
+    </div>
+  </div>
+
+  <div class="why-grid">
+    <div class="why-card">
+      <div class="why-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3A2A18" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+      </div>
+      <h4>Tiered runtime, fast</h4>
+      <p>Wrenlift's tiered runtime is engineered for speed &mdash; cold scripts start quickly, hot paths get faster the longer they run.</p>
+    </div>
+    <div class="why-card">
+      <div class="why-icon" style="background:var(--sage)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3A2A18" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <h4>Sandboxed by default</h4>
+      <p>Capability-based permissions for filesystem, network, and process access.</p>
+    </div>
+    <div class="why-card">
+      <div class="why-icon" style="background:var(--toast)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3A2A18" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+      </div>
+      <h4>Hatch bundle format</h4>
+      <p>Ship your app and its packages as a single <code style="font-family:var(--mono);font-size:13px;background:rgba(58,42,24,0.08);padding:1px 5px;border-radius:3px;">.hatch</code> bundle &mdash; reproducible, signed, runnable on any wrenlift host.</p>
+    </div>
+    <div class="why-card">
+      <div class="why-icon" style="background:var(--sky)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3A2A18" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+      </div>
+      <h4>Semver, properly</h4>
+      <p>Lockfiles, deterministic resolution, and reproducible builds out of the box.</p>
+    </div>
+  </div>
+</section>
+
+<!-- COMMUNITY -->
+<section id="community" class="wrap">
+  <div class="community">
+    <div>
+      <div class="section-tag">The flock</div>
+      <h2 class="section-title">Build with us.</h2>
+      <p>Hatch is community-run. The registry is open, the CLI is MIT, and most maintainers hang out daily on Discord. New package ideas welcome — even half-baked ones.</p>
+      <a class="btn dark" style="background:var(--butter);color:var(--ink);border-color:var(--butter);box-shadow:0 4px 0 var(--sage-deep);" href="https://github.com/wrenlift/hatch">
+        <span>Publish a package</span><span class="arrow">→</span>
+      </a>
+    </div>
+    <div class="links">
+      <a class="clink" href="https://github.com/wrenlift/hatch">
+        <span class="l"><b>GitHub</b><span>wrenlift/hatch</span></span><span class="arr">→</span>
+      </a>
+      <a class="clink" href="#">
+        <span class="l"><b>Discord</b><span>community</span></span><span class="arr">→</span>
+      </a>
+      <a class="clink" href="#">
+        <span class="l"><b>Forum</b><span>discuss.hatch.wrenlift.com</span></span><span class="arr">→</span>
+      </a>
+      <a class="clink" href="#">
+        <span class="l"><b>Mastodon</b><span>@hatch@fosstodon</span></span><span class="arr">→</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="foot-grid">
+    <div>
+      <a class="brand foot-brand" href="/" style="margin-bottom:14px;" aria-label="Hatch">
+        <img class="wordmark" src="/assets/hatch-wordmark.png" alt="Hatch" />
+      </a>
+      <p style="font-size:13px;color:var(--ink-2);max-width:340px;margin:8px 0 0;">
+        Built with love by the <a href="https://wren.io" target="_blank" rel="noopener">Wren</a> and <a href="https://wrenlift.com" target="_blank" rel="noopener">Wrenlift</a> community.
+      </p>
+    </div>
+    <div>
+      <h5>Project</h5>
+      <ul>
+        <li><a href="#install">Install</a></li>
+        <li><a href="#packages">Packages</a></li>
+        <li><a href="#">Changelog</a></li>
+        <li><a href="#">Roadmap</a></li>
+      </ul>
+    </div>
+    <div>
+      <h5>Learn</h5>
+      <ul>
+        <li><a href="#">Guide</a></li>
+        <li><a href="#">API reference</a></li>
+        <li><a href="#">Examples</a></li>
+        <li><a href="https://wren.io" target="_blank" rel="noopener">Wren docs</a></li>
+      </ul>
+    </div>
+    <div>
+      <h5>Community</h5>
+      <ul>
+        <li><a href="https://github.com/wrenlift/hatch">GitHub</a></li>
+        <li><a href="#">Discord</a></li>
+        <li><a href="#">Forum</a></li>
+        <li><a href="#">Sponsor</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot-bottom">
+    <span>© 2026 The Hatch contributors · MIT licensed</span>
+    <span>this site runs on <code style="font-family:var(--mono);font-size:12.5px;background:rgba(58,42,24,0.06);padding:2px 7px;border-radius:6px;border:1px solid rgba(58,42,24,0.15);">@hatch:web</code></span>
+  </div>
+</footer>
+
+{% endblock %}

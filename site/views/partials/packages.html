@@ -1,0 +1,52 @@
+<div class="search-bar">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3A2A18" stroke-width="2.5" stroke-linecap="round">
+    <circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.6-4.6"/>
+  </svg>
+  <input id="search" name="q"
+         type="text"
+         placeholder="Search packages — try 'http', 'json', 'crypto'…"
+         autocomplete="off"
+         hx-get="/packages/search"
+         hx-trigger="input changed delay:120ms, keyup[key=='Enter']"
+         hx-target="#grid"
+         hx-include="[name=cat]:checked"
+         hx-swap="outerHTML" />
+  <span class="kbd">⌘ K</span>
+</div>
+
+<div class="filter-row" id="filters">
+  <label class="fchip{% if not currentCat or currentCat == 'all' %} active{% endif %}">
+    <input type="radio" name="cat" value="all" hidden{% if not currentCat or currentCat == 'all' %} checked{% endif %}
+           hx-get="/packages/search" hx-target="#grid" hx-include="#search" hx-swap="outerHTML"/>
+    All <span class="ct">{{ totalCount }}</span>
+  </label>
+  <label class="fchip{% if currentCat == 'net' %} active{% endif %}">
+    <input type="radio" name="cat" value="net" hidden{% if currentCat == 'net' %} checked{% endif %}
+           hx-get="/packages/search" hx-target="#grid" hx-include="#search" hx-swap="outerHTML"/>
+    Networking <span class="ct">{{ counts.net }}</span>
+  </label>
+  <label class="fchip{% if currentCat == 'data' %} active{% endif %}">
+    <input type="radio" name="cat" value="data" hidden{% if currentCat == 'data' %} checked{% endif %}
+           hx-get="/packages/search" hx-target="#grid" hx-include="#search" hx-swap="outerHTML"/>
+    Data <span class="ct">{{ counts.data }}</span>
+  </label>
+  <label class="fchip{% if currentCat == 'sys' %} active{% endif %}">
+    <input type="radio" name="cat" value="sys" hidden{% if currentCat == 'sys' %} checked{% endif %}
+           hx-get="/packages/search" hx-target="#grid" hx-include="#search" hx-swap="outerHTML"/>
+    System <span class="ct">{{ counts.sys }}</span>
+  </label>
+  <label class="fchip{% if currentCat == 'dev' %} active{% endif %}">
+    <input type="radio" name="cat" value="dev" hidden{% if currentCat == 'dev' %} checked{% endif %}
+           hx-get="/packages/search" hx-target="#grid" hx-include="#search" hx-swap="outerHTML"/>
+    Dev tools <span class="ct">{{ counts.dev }}</span>
+  </label>
+</div>
+
+{% fragment grid %}
+<div class="pkg-grid" id="grid">
+  {% for p in packages %}{% include "partials/_package_card.html" %}{% endfor %}
+  {% if packages | length == 0 %}
+  <div class="empty"><span class="em">🪹</span>No packages matched. Try another keyword.</div>
+  {% endif %}
+</div>
+{% endfragment %}

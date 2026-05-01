@@ -1,0 +1,49 @@
+name: Deploy hatch.wrenlift.com
+
+# Deploys the @hatch:web landing page to Fly.io on any push to
+# main that touches `site/**`. Mirrors the existing `publish-pkg`
+# convention: the workflow lives in the hatch repo, the deploy
+# target is just another runtime alongside the published package
+# bundles.
+#
+# Secrets required (set on the hatch repo):
+#   FLY_API_TOKEN — `fly auth token`'s output, scoped to the
+#                   hatch-wrenlift app.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-site
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to Fly.io
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -eu
+          # `--remote-only` builds on Fly's machines instead of the
+          # GitHub runner, sidestepping any local-dev tool gaps.
+          # `--ha=false` keeps the single-machine footprint we asked
+          # for in fly.toml; without it Fly defaults to 2-machine HA.
+          flyctl deploy site \
+            --config site/fly.toml \
+            --app hatch-wrenlift \
+            --remote-only \
+            --ha=false

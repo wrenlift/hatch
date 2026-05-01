@@ -1,0 +1,20 @@
+<a class="pkg-card" href="{{ p.git }}" data-cat="{{ p.cat }}" target="_blank" rel="noopener">
+  <div class="pkg-head">
+    <div class="pkg-icon" style="background:{{ p.catColor }};">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3A2A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+        <path d="m3.27 6.96 8.73 5.05 8.73-5.05"/>
+        <path d="M12 22.08V12"/>
+      </svg>
+    </div>
+    <div style="text-align:right;">
+      <div class="pkg-name">{{ p.name }}</div>
+      <div class="pkg-version">v{{ p.version }}</div>
+    </div>
+  </div>
+  <p class="pkg-desc">{{ p.description }}</p>
+  <div class="pkg-meta">
+    <span class="pkg-when">{{ p.relativeAge }}</span>
+    <span style="margin-left:auto;color:{{ p.catColor }};font-weight:600;">● {{ p.catLabel }}</span>
+  </div>
+</a>
