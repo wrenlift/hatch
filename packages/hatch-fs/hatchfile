@@ -1,5 +1,5 @@
 name        = "@hatch:fs"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "fs"
 description = "Filesystem I/O — read, write, stat, list, walk."
 

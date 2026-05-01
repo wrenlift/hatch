@@ -1,5 +1,5 @@
 name        = "@hatch:uuid"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "uuid"
 description = "UUID v4/v5/v7 generation, parsing, and byte conversion."
 

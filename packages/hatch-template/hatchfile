@@ -1,5 +1,5 @@
 name        = "@hatch:template"
-version     = "0.1.1"
+version     = "0.1.2"
 entry       = "template"
 description = "Jinja/Twig-style templating for HTML and XML with first-class htmx support — fragments, components, slots, conditionals, loops, response helpers."
 

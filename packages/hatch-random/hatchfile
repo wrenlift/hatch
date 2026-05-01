@@ -1,5 +1,5 @@
 name        = "@hatch:random"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "random"
 description = "Random numbers, sampling, shuffle — one-shot statics + seedable streams."
 

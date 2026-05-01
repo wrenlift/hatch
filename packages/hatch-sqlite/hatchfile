@@ -1,5 +1,5 @@
 name        = "@hatch:sqlite"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "sqlite"
 description = "Embedded SQLite. `Database.open(path)` returns a connection; prepared statements with named parameter binding, rows iterated as Maps, transactions, error handling. Backed by rusqlite (bundled libsqlite — no system dependency)."
 
@@ -19,7 +19,7 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-rev   = "ba16692ef1cdae1db24c90ec3dcf4ea551adacad"
+rev   = "6ca95fc6483c600d228e1a4f25a7570f1ebe6359"
 crate = "wlift_sqlite"
 
 # Per-platform dylib paths. CI populates `libs/` via the

@@ -1,5 +1,5 @@
 name        = "@hatch:datetime"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "datetime"
 description = "Timezone-aware DateTime value type, Duration arithmetic, RFC 3339 parse + format."
 

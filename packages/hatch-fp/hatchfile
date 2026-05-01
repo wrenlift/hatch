@@ -1,5 +1,5 @@
 name        = "@hatch:fp"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "fp"
 description = "Fluent + functional collection operations — map / filter / reduce / flatMap / groupBy / partition / zip / sortBy / scan / chunked / windowed / distinct and the usual suspects."
 

@@ -1,5 +1,5 @@
 name        = "@hatch:proc"
-version     = "0.3.0"
+version     = "0.3.1"
 entry       = "proc"
 description = "Subprocess spawn with lifecycle, streaming IO (blocking + fiber-cooperative), and pipelines."
 

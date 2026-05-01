@@ -1,5 +1,5 @@
 name        = "@hatch:assets"
-version     = "0.2.0"
+version     = "0.2.1"
 entry       = "assets"
 description = "Content-addressable assets database with hot-reload. Two backends behind one API — filesystem-backed on native (Fs.walk + content hashes + Hatch.watchFile), manifest-driven on web (fetch + lazy reads, page ships an `assets-manifest.json`). Edit a shader / texture / config file, see registered subscribers fire."
 

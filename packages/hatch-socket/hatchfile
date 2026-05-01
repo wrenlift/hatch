@@ -1,5 +1,5 @@
 name        = "@hatch:socket"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "socket"
 description = "TCP listeners + connections and UDP datagram sockets. Blocking and non-blocking variants suitable for fiber-cooperative schedulers."
 

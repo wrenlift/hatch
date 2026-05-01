@@ -1,5 +1,5 @@
 name        = "@hatch:log"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "log"
 description = "Level-filtered structured logger with ANSI colors."
 

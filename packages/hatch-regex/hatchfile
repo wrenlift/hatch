@@ -1,5 +1,5 @@
 name        = "@hatch:regex"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "regex"
 description = "Compiled regular expressions with capture groups, replace, and split."
 

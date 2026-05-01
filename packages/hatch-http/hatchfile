@@ -1,5 +1,5 @@
 name        = "@hatch:http"
-version     = "0.3.0"
+version     = "0.3.1"
 entry       = "http"
 description = "HTTP/1.1 client with TLS, streaming bodies, and fiber-cooperative reads."
 

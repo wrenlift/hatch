@@ -1,5 +1,5 @@
 name        = "@hatch:image"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "image"
 description = "Image encode + decode. PNG / JPG / BMP / WebP in, RGBA8 buffer out — `Image.decode(bytes)` feeds straight into `@hatch:gpu`'s `Device.uploadImage(image)`, and `Image.encodePng(...)` writes synthesized buffers back out. Backed by the `image` crate."
 
@@ -7,7 +7,7 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-rev   = "8f16a3daf5a60f2bfb4b4afcd70f1b7d4bc4df38"
+rev   = "6ca95fc6483c600d228e1a4f25a7570f1ebe6359"
 crate = "wlift_image"
 
 [native_libs]

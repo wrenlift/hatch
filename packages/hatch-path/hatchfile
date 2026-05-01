@@ -1,5 +1,5 @@
 name        = "@hatch:path"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "path"
 description = "Filesystem path manipulation: join, split, parent, ext, normalize."
 

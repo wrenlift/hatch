@@ -1,5 +1,5 @@
 name        = "@hatch:test"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "test"
 description = "Tiny test runner for *.spec.wren files."
 

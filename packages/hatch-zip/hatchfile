@@ -1,5 +1,5 @@
 name        = "@hatch:zip"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "zip"
 description = "Read and write ZIP archives entirely in memory (store / deflate / zstd)."
 

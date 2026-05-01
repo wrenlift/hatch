@@ -1,5 +1,5 @@
 name        = "@hatch:audio"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "audio"
 description = "Audio playback. cpal-backed output stream + a tiny mixer; WAV decoding via hound. `Audio.context()` opens the device; `Sound.load(bytes)` decodes a WAV; `audio.play(sound)` schedules immediate playback against the global mixer. Wires into `@hatch:game` for free."
 
@@ -7,7 +7,7 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-rev   = "8f16a3daf5a60f2bfb4b4afcd70f1b7d4bc4df38"
+rev   = "6ca95fc6483c600d228e1a4f25a7570f1ebe6359"
 crate = "wlift_audio"
 
 [native_libs]

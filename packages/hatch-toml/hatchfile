@@ -1,5 +1,5 @@
 name        = "@hatch:toml"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "toml"
 description = "TOML parser and serializer, backed by the Rust `toml` crate."
 
