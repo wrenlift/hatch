@@ -1,4 +1,4 @@
-Rapier-backed rigid-body physics for WrenLift apps. `World2D` and `World3D` from one import — identical API shape, the only divergence is dimensional types (`[x, y]` versus `[x, y, z]`). Bundles `rapier2d` and `rapier3d` in a single cdylib so games never have to choose between dimensions at the package level.
+Rapier-backed rigid-body physics for the WrenLift game framework. `World2D` and `World3D` from one import — identical API shape, the only divergence is dimensional types (`[x, y]` versus `[x, y, z]`). Bundles `rapier2d` and `rapier3d` in a single cdylib so games never have to choose between dimensions at the package level.
 
 ## Overview
 
