@@ -1,4 +1,4 @@
-Window and input for any WrenLift app. `winit` on native, page-attached canvas on web — same `Window.create({...})` call, same `pollEvents` / `closeRequested` / `size` surface across targets. Hands `@hatch:gpu` the platform handle it needs to build a `Surface`; on web you can bring your own canvas via `Window.attach(elementId)`.
+Window and input for any WrenLift app. `winit` on native, page-attached canvas on web — same `Window.create({...})` call, same `pollEvents` / `closeRequested` / `size` surface across targets. Bring-your-own canvas via `Window.attach(elementId)` on web.
 
 ## Overview
 
@@ -27,7 +27,7 @@ while (!win.closeRequested) {
 }
 ```
 
-`win.pollEvents` returns an iterable of event `Map`s — one per OS event since the last poll. Event types include `keyDown` / `keyUp` (with `code`), `mouseDown` / `mouseUp` (with `button`), `mouseMove`, `resize`, and `close`. Most consumers route this through `@hatch:game`'s `Input` aggregator instead of handling it directly.
+`win.pollEvents` returns an iterable of event `Map`s — one per OS event since the last poll. Event types include `keyDown` / `keyUp` (with `code`), `mouseDown` / `mouseUp` (with `button`), `mouseMove`, `resize`, and `close`.
 
 ## Web target
 
@@ -45,4 +45,4 @@ Resize events fire when the underlying element's `clientWidth` / `clientHeight` 
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Native uses `winit`; web uses the DOM. Pair with `@hatch:gpu` for rendering and `@hatch:game` for the frame loop and input aggregation.
+Wren 0.4 + WrenLift runtime 0.1 or newer. Native uses `winit`; web uses the DOM.

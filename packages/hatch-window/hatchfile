@@ -1,7 +1,7 @@
 name        = "@hatch:window"
 version     = "0.2.7"
 entry       = "window"
-description = "Window + input for any WrenLift app. winit on native, page-attached canvas on web — same `Window.create({...})` API, same `pollEvents` / `closeRequested` / `size` surface across targets. Hands `@hatch:gpu` the handle it needs to build a Surface; bring-your-own canvas via `Window.attach(elementId)` on web."
+description = "Window + input for any WrenLift app. winit on native, page-attached canvas on web — same `Window.create({...})` API, same `pollEvents` / `closeRequested` / `size` surface across targets. Bring-your-own canvas via `Window.attach(elementId)` on web."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:window"
 readme   = "README.md"
 
