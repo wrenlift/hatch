@@ -1,5 +1,5 @@
 name        = "@hatch:web"
-version     = "0.1.1"
+version     = "0.1.2"
 entry       = "web"
 description = "Server-rendered, htmx-native web framework for Wren. Router, middleware, content-negotiated rendering via @hatch:template, HTTP/1.1 server on top of @hatch:socket."
 
@@ -9,14 +9,14 @@ description = "Server-rendered, htmx-native web framework for Wren. Router, midd
 modules = ["css", "forms", "live", "web"]
 
 [dependencies]
-"@hatch:socket"   = "0.1.0"
-"@hatch:template" = "0.1.1"
-"@hatch:log"      = "0.1.0"
+"@hatch:socket"   = "0.1.1"
+"@hatch:template" = "0.1.2"
+"@hatch:log"      = "0.1.1"
 "@hatch:hash"     = "0.1.0"
-"@hatch:json"     = "0.1.0"
-"@hatch:crypto"   = "0.2.0"
-"@hatch:fs"       = "0.1.0"
-"@hatch:time"     = "0.1.0"
+"@hatch:json"     = "0.1.2"
+"@hatch:crypto"   = "0.2.1"
+"@hatch:fs"       = "0.1.1"
+"@hatch:time"     = "0.1.1"
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }
 "@hatch:assert" = { path = "../hatch-assert" }
