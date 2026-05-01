@@ -1,4 +1,4 @@
-// `@hatch:audio` — playback for the WrenLift game framework.
+// `@hatch:audio` — playback for WrenLift apps.
 //
 // ```wren
 // import "@hatch:audio"  for Audio, Sound
