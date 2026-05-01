@@ -55,6 +55,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-28T12:43:42.817671+00:00"
 updated_at = "2026-04-28T12:43:42.817671+00:00"
 
+[packages."@hatch:audio-0.1.2"]
+name = "@hatch:audio"
+version = "0.1.2"
+git = "https://github.com/wrenlift/hatch"
+description = "Audio playback. cpal-backed output stream + a tiny mixer; WAV decoding via hound. `Audio.context()` opens the device; `Sound.load(bytes)` decodes a WAV; `audio.play(sound)` schedules immediate playback against the global mixer. Wires into `@hatch:game` for free."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T23:43:09.375233+00:00"
+updated_at = "2026-05-01T23:43:09.375233+00:00"
+
 [packages."@hatch:audio-0.1.0"]
 name = "@hatch:audio"
 version = "0.1.0"
