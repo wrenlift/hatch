@@ -1,0 +1,113 @@
+{# Generic guide page. Reuses the docs shell (topbar + sidebar
+   + main + TOC rail) and renders a markdown source via marked.js
+   inside the same `.pkg-readme` typography the README and API
+   pages use. The route hands `guideTitle` / `guideMd` — the
+   raw markdown text travels via `data-md` so HTML entities
+   round-trip cleanly. #}
+{% extends "docs_layout.html" %}
+
+{% block title %}{{ guideTitle }} · Hatch docs{% endblock %}
+
+{% block head %}
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+{% endblock %}
+
+{% block docs_main %}
+  <header class="docs-browse-head">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Home</a>
+      <span class="crumb-sep">/</span>
+      {% if guideKind == "blog" %}
+        <a href="/blog/web">Blog</a>
+      {% else %}
+        <a href="/guides/intro">Guides</a>
+      {% endif %}
+      <span class="crumb-sep">/</span>
+      <span class="crumb-current">{{ guideTitle }}</span>
+    </nav>
+    <h1 class="pkg-title"><span class="pkg-title-name">{{ guideTitle }}</span></h1>
+  </header>
+
+  {# Same render hook the API page uses — wait for marked to
+     load, parse the `data-md` blob, then run mountWrenCode so
+     fenced wren examples become CodeMirror views. #}
+  <script>
+    (function () {
+      function render() {
+        var slot = document.getElementById("guide-body");
+        if (!slot || !window.marked) return false;
+        if (slot.dataset.rendered === "1") return true;
+        slot.innerHTML = window.marked.parse(slot.dataset.md || "");
+        slot.dataset.rendered = "1";
+        if (window.mountWrenCode) window.mountWrenCode(slot);
+        return true;
+      }
+      if (!render()) {
+        var t = setInterval(function () { if (render()) clearInterval(t); }, 80);
+        setTimeout(function () { clearInterval(t); }, 5000);
+      }
+    })();
+  </script>
+
+  <div class="pkg-readme guide-doc" id="guide-body" data-md="{{ guideMd }}"></div>
+{% endblock %}
+
+{% block docs_toc %}
+  {# Same client-side TOC builder the README uses — once marked
+     parses the body, scrape h2 / h3 elements, build the list. #}
+  <h5>On this page</h5>
+  <ul id="readme-toc"></ul>
+  <script>
+    (function () {
+      function build() {
+        var host = document.getElementById("guide-body");
+        var toc = document.getElementById("readme-toc");
+        if (!host || !toc) return false;
+        if (host.dataset.rendered !== "1") return false;
+        toc.innerHTML = "";
+        var slug = function (s) {
+          return (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        };
+        var heads = host.querySelectorAll("h2, h3");
+        var entries = [];
+        heads.forEach(function (h) {
+          var id = h.id || slug(h.textContent);
+          if (!id) return;
+          h.id = id;
+          var li = document.createElement("li");
+          if (h.tagName === "H3") li.className = "indent";
+          var a = document.createElement("a");
+          a.href = "#" + id;
+          a.textContent = h.textContent.trim();
+          li.appendChild(a);
+          toc.appendChild(li);
+          entries.push({ el: h, link: a });
+        });
+        if (entries.length && "IntersectionObserver" in window) {
+          var visible = new Set();
+          var io = new IntersectionObserver(function (items) {
+            items.forEach(function (it) {
+              if (it.isIntersecting) visible.add(it.target);
+              else visible.delete(it.target);
+            });
+            var first = null;
+            entries.forEach(function (e) {
+              if (!first && visible.has(e.el)) first = e.el;
+            });
+            if (!first && entries[0]) first = entries[0].el;
+            entries.forEach(function (e) {
+              e.link.classList.toggle("active", e.el === first);
+            });
+          }, { rootMargin: "-80px 0px -70% 0px", threshold: 0 });
+          entries.forEach(function (e) { io.observe(e.el); });
+          if (entries[0]) entries[0].link.classList.add("active");
+        }
+        return true;
+      }
+      if (!build()) {
+        var t = setInterval(function () { if (build()) clearInterval(t); }, 100);
+        setTimeout(function () { clearInterval(t); }, 6000);
+      }
+    })();
+  </script>
+{% endblock %}

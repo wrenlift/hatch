@@ -9,10 +9,37 @@ import "@hatch:template" for TemplateRegistry, FnLoader
 import "@hatch:fs"       for Fs
 import "@hatch:proc"     for Proc
 import "./lib/catalog"   for Catalog
+import "./lib/api"       for Api
+
+// Render the cozy 404 page. Used by every 404-producing route
+// (missing guide, missing blog, missing package). The path is
+// surfaced in the page so users see what they actually asked
+// for, not just "404".
+var notFound = Fn.new {|requestedPath|
+  var r = Response.new(404)
+  r.html(registry.get("404.html").render({
+    "requestedPath":   requestedPath,
+    "wrenliftVersion": WRENLIFT_VERSION
+  }))
+  return r
+}
+
+// Single source of truth for the WrenLift runtime version
+// surfaced on the topbar pill, the landing eyebrow, and any
+// "runs on" copy. Sync with `Cargo.toml`'s `version` whenever
+// the runtime cuts a release — there's no native runtime API
+// to read it back yet, so we keep it as a literal here and
+// thread it through the page context.
+var WRENLIFT_VERSION = "0.1.0"
 
 var app = App.new()
 
 app.use(Static.serve("/assets", "./public/assets"))
+
+// Framework-level catchall — every unmatched route lands on the
+// cozy 404 page rather than the browser's grey default. Wired
+// after `registry` is constructed below; see app.notFound at the
+// bottom of this file.
 
 // Filesystem template loader — names map to ./views/<name> via
 // @hatch:fs. The template registry caches parsed templates and is
@@ -34,10 +61,11 @@ System.print("catalog: %(Catalog.count) distinct packages loaded")
 // the full / route and the htmx fragment swap.
 var pageContext = Fn.new {|packages, currentCat|
   return {
-    "totalCount": Catalog.count,
-    "counts":     Catalog.byCategory,
-    "packages":   packages,
-    "currentCat": currentCat
+    "totalCount":       Catalog.count,
+    "counts":           Catalog.byCategory,
+    "packages":         packages,
+    "currentCat":       currentCat,
+    "wrenliftVersion":  WRENLIFT_VERSION
   }
 }
 
@@ -62,16 +90,125 @@ app.get("/packages/search") {|req|
   return req.render(registry.get("index.html"), ctx)
 }
 
+// Guide pages — a small fixed set (intro / install / hatchfile
+// spec / CLI cheatsheet / authoring docs). Each lives as a
+// markdown file under `content/`; the route reads it, hands
+// the raw source to `views/guide.html`, marked.js + the
+// CodeMirror upgrade pipeline render it inside the same
+// `.pkg-readme` typography the README + API pages use.
+var GUIDES = {
+  "intro":     { "title": "Introduction",    "file": "content/intro.md" },
+  "install":   { "title": "Install & setup", "file": "content/install.md" },
+  "hatchfile": { "title": "The hatchfile",   "file": "content/hatchfile.md" },
+  "cli":       { "title": "CLI cheatsheet",  "file": "content/cli.md" },
+  "authoring": { "title": "Authoring docs",  "file": "content/authoring.md" }
+}
+
+app.get("/guides/:slug") {|req|
+  var slug = req.params["slug"]
+  if (!GUIDES.containsKey(slug)) return notFound.call("/guides/" + slug)
+  var meta = GUIDES[slug]
+  var md = Fs.exists(meta["file"]) ? Fs.readText(meta["file"]) : "*(content missing — `" + meta["file"] + "` doesn't exist yet.)*"
+  var ctx = docsContext.call(null, {
+    "guideSlug":  slug,
+    "guideTitle": meta["title"],
+    "guideMd":    md,
+    "guideKind":  "guide",
+    "activeNav":  "guides"
+  })
+  return req.render(registry.get("guide.html"), ctx)
+}
+
+// Blog / tutorials. Same shell as guides — markdown source under
+// `content/blog/`, rendered via marked.js + CodeMirror — but
+// linked from the landing page's framework cards as "Read the
+// X guide" deep dives. The breadcrumb crumb says "Blog" so the
+// hierarchy reads as a separate section.
+var BLOGS = [
+  {
+    "slug":  "web",
+    "title": "Build a web app with @hatch:web",
+    "file":  "content/blog/web.md",
+    "blurb": "A tour through routes, htmx fragment swaps, templating, and the dev loop — by building a small site end to end.",
+    "tag":   "Web"
+  },
+  {
+    "slug":  "game",
+    "title": "Build a game with @hatch:game",
+    "file":  "content/blog/game.md",
+    "blurb": "Sprite batching, input mapping, audio, and ECS-lite scenes — walk through a tiny 2D game from blank canvas to playable.",
+    "tag":   "Game"
+  }
+]
+
+// Lookup helper used by the per-post route. The list above is the
+// source of truth (so the index page can just iterate it); the
+// route uses this to find the matching entry by slug.
+var blogBySlug = Fn.new {|slug|
+  for (b in BLOGS) {
+    if (b["slug"] == slug) return b
+  }
+  return null
+}
+
+// Blog index. Two cards (web + game today) using the same docs
+// shell as /packages so the chrome stays consistent. Lives at
+// /blog so the topbar's Blog link has somewhere real to land.
+app.get("/blog") {|req|
+  var ctx = docsContext.call(null, {
+    "blogs":     BLOGS,
+    "activeNav": "blog"
+  })
+  return req.render(registry.get("blog.html"), ctx)
+}
+
+app.get("/blog/:slug") {|req|
+  var slug = req.params["slug"]
+  var meta = blogBySlug.call(slug)
+  if (meta == null) return notFound.call("/blog/" + slug)
+  var md = Fs.exists(meta["file"]) ? Fs.readText(meta["file"]) : "*(content missing — `" + meta["file"] + "` doesn't exist yet.)*"
+  var ctx = docsContext.call(null, {
+    "guideSlug":  slug,
+    "guideTitle": meta["title"],
+    "guideMd":    md,
+    "guideKind":  "blog",
+    "activeNav":  "blog"
+  })
+  return req.render(registry.get("guide.html"), ctx)
+}
+
+// Build the docs-shell context once per request. `stdlib` and
+// `community` populate the sidebar; `currentPkg` lets the active
+// row highlight without per-page wiring.
+var docsContext = Fn.new {|currentPkg, extra|
+  var ctx = {
+    "stdlib":          Catalog.standardLibrary,
+    "community":       Catalog.community,
+    "currentPkg":      currentPkg,
+    "totalCount":      Catalog.count,
+    "wrenliftVersion": WRENLIFT_VERSION
+  }
+  if (extra != null) {
+    for (k in extra.keys) ctx[k] = extra[k]
+  }
+  return ctx
+}
+
 // Browse: every package in one grid. The landing page's "Featured"
 // section caps at 12 recents; this is the unbounded view, same
 // search/filter UX layered on top so the URL is sharable.
-app.get("/docs") {|req|
+app.get("/packages") {|req|
   var q   = req.query.containsKey("q")   ? req.query["q"]   : ""
   var cat = req.query.containsKey("cat") ? req.query["cat"] : "all"
   var packages = (q == "" && cat == "all") ?
     Catalog.search("", "all", 200) :
     Catalog.search(q, cat, 200)
-  var ctx = pageContext.call(packages, cat)
+  var ctx = docsContext.call(null, {
+    "packages":   packages,
+    "currentCat": cat,
+    "counts":     Catalog.byCategory,
+    "activeNav":  "packages"
+  })
   return req.render(registry.get("docs.html"), ctx)
 }
 
@@ -80,21 +217,41 @@ app.get("/docs") {|req|
 // raw README markdown is fetched on demand by `/docs/:name/readme`
 // so the initial render stays fast (single SQL row) and the
 // network hop only happens once the user actually lands.
-app.get("/docs/:name") {|req|
+app.get("/packages/:name") {|req|
   var name = req.params["name"]
   var pkg = Catalog.byName(name)
-  if (pkg == null) {
-    var r = Response.new(404)
-    r.html("<!doctype html><body style='font-family:system-ui;padding:48px'>" +
-      "<h1>Package not found</h1><p>No package named <code>" + name + "</code> in the registry.</p>" +
-      "<p><a href='/docs'>← Back to all packages</a></p></body>")
-    return r
-  }
-  return req.render(registry.get("package.html"), {
-    "pkg":         pkg,
-    "readmeUrl":   Catalog.readmeUrl(pkg),
-    "totalCount":  Catalog.count
+  if (pkg == null) return notFound.call("/packages/" + name)
+  var ctx = docsContext.call(name, {
+    "pkg":       pkg,
+    "readmeUrl": Catalog.readmeUrl(pkg),
+    "view":      "readme",
+    "activeNav": "packages"
   })
+  return req.render(registry.get("package.html"), ctx)
+}
+
+// API reference view. Same package detail header, but the body
+// renders the bundled `Docs` JSON section (classes / members /
+// signatures collected from `///` doc comments at publish time)
+// rather than the README. The header CTA flips to "← README" so
+// the user has a one-click way back.
+app.get("/packages/:name/api") {|req|
+  var name = req.params["name"]
+  var pkg = Catalog.byName(name)
+  if (pkg == null) return notFound.call("/packages/" + name + "/api")
+  // `Api.render` shells out to `hatch docs <workspace>` (or
+  // `<bundle>`) and turns the resulting `Vec<ModuleDoc>` JSON
+  // into the page body. Returns `null` when no source / cached
+  // bundle is reachable; the template falls back to the empty
+  // placeholder in that case.
+  var ctx = docsContext.call(name, {
+    "pkg":        pkg,
+    "readmeUrl":  Catalog.readmeUrl(pkg),
+    "view":       "api",
+    "apiModules": Api.fetch(pkg),
+    "activeNav":  "packages"
+  })
+  return req.render(registry.get("package_api.html"), ctx)
 }
 
 // htmx fragment endpoint: return the raw README markdown wrapped
@@ -103,7 +260,7 @@ app.get("/docs/:name") {|req|
 // the markdown as the response body (rather than parsed HTML
 // here) avoids a server-side markdown dependency for v1; the
 // design renders client-side via marked.js loaded by the layout.
-app.get("/docs/:name/readme") {|req|
+app.get("/packages/:name/readme") {|req|
   var name = req.params["name"]
   var pkg = Catalog.byName(name)
   if (pkg == null) {
@@ -111,6 +268,25 @@ app.get("/docs/:name/readme") {|req|
     r.text("not found")
     return r
   }
+
+  // Local-FS fallback for `hatch run` against the monorepo: when a
+  // `../packages/hatch-<short>/README.md` exists next to this site
+  // workspace, serve those bytes verbatim so README authoring
+  // iterates without a push-and-CDN-cache round-trip. Production
+  // (the Fly image) only ever ships the site dir, so this branch
+  // misses there and we fall through to the GitHub raw URL.
+  if (name.startsWith("@hatch:")) {
+    var short = name[7..(name.count - 1)]
+    var localPath = "../packages/hatch-" + short + "/README.md"
+    System.print("readme: local check %(localPath) exists=%(Fs.exists(localPath))")
+    if (Fs.exists(localPath)) {
+      var body = Fs.readText(localPath)
+      var r = Response.new(200)
+      r.html(Catalog.wrapReadme_(body, name))
+      return r
+    }
+  }
+
   var url = Catalog.readmeUrl(pkg)
   if (url == null) {
     var r = Response.new(204)
@@ -120,20 +296,29 @@ app.get("/docs/:name/readme") {|req|
   var fetch = Proc.exec(["curl", "-fsSL", url, "--max-time", "10"])
   var r = Response.new(fetch.ok ? 200 : 404)
   if (fetch.ok) {
-    r.html(
-      "<div id=\"readme-body\" data-markdown=\"true\">" +
-      "<script type=\"text/markdown\" id=\"readme-md\">" + fetch.stdout + "</script>" +
-      "<noscript><pre>" + fetch.stdout + "</pre></noscript>" +
-      "</div>" +
-      "<script>(function(){var el=document.getElementById('readme-md');" +
-      "if(el && window.marked){var src=el.textContent;" +
-      "var html=window.marked.parse(src);" +
-      "var host=document.getElementById('readme-body');" +
-      "host.innerHTML=html;}})();</script>"
-    )
+    r.html(Catalog.wrapReadme_(fetch.stdout, name))
   } else {
     r.html("<p class=\"readme-empty\">No README found for <code>" + name + "</code>.</p>")
   }
+  return r
+}
+
+// Catchall: any path that didn't match a route above renders the
+// cozy 404 with the requested path echoed back. Bare sections
+// (`/blog`, `/guides`) hit this — there's no index page for them
+// because the topbar links go straight to a default slug.
+app.notFound {|req| notFound.call(req.path) }
+
+// Surface request-fiber aborts on stderr. The framework catches
+// them and renders the default 500 page silently, which makes
+// intermittent crashes (a JIT IC mis-dispatch, a stale catalog
+// row, a template lookup miss) impossible to diagnose from the
+// server log alone. Logging here also still renders the page so
+// the user sees the same UX.
+app.error {|req, err|
+  System.print("[error] %(req.method) %(req.path) → %(err)")
+  var r = Response.new(500)
+  r.html("<h1>500 Internal Server Error</h1><pre>%(err)</pre>")
   return r
 }
 

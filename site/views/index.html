@@ -7,7 +7,7 @@
 <!-- HERO -->
 <header class="hero">
   <div>
-    <span class="eyebrow"><span class="dot"></span>v0.4.2 · powered by wrenlift runtime</span>
+    <span class="eyebrow"><span class="dot"></span>v{{ wrenliftVersion }} · powered by wrenlift runtime</span>
     <h1>Crack open<br/>a script. <span class="accent">Hatch</span><br/>does the rest.</h1>
     <p class="lede">
       Hatch is a cozy ecosystem of libraries and frameworks for the
@@ -24,7 +24,7 @@
     </div>
     <div class="hero-meta">
       <span>📦 <b>{{ totalCount }}</b> packages</span>
-      <span>⚡ runs on <b>wrenlift 1.2+</b></span>
+      <span>⚡ runs on <b>wrenlift {{ wrenliftVersion }}</b></span>
       <span>🪺 <b>MIT</b> licensed</span>
     </div>
   </div>
@@ -137,7 +137,7 @@
         <div class="fw-snippet"><span class="cmt"># scaffold a web app</span>
 <span class="pr">$</span> hatch new my-site --template web
 <span class="pr">$</span> cd my-site &amp;&amp; hatch dev</div>
-        <a class="fw-link" href="#">Read the web guide <span class="arr">→</span></a>
+        <a class="fw-link" href="/blog/web">Read the web guide <span class="arr">→</span></a>
       </div>
 
       <div class="fw-tile">
@@ -154,7 +154,7 @@
         <div class="fw-snippet"><span class="cmt"># scaffold a game</span>
 <span class="pr">$</span> hatch new my-game --template game
 <span class="pr">$</span> cd my-game &amp;&amp; hatch play</div>
-        <a class="fw-link" href="#">Read the game guide <span class="arr">→</span></a>
+        <a class="fw-link" href="/blog/game">Read the game guide <span class="arr">→</span></a>
       </div>
     </div>
   </div>
@@ -174,7 +174,7 @@
     {% include "partials/packages.html" %}
 
     <div class="all-link">
-      <a href="/docs">Browse all {{ totalCount }} packages →</a>
+      <a href="/packages">Browse all {{ totalCount }} packages →</a>
     </div>
   </div>
 </section>

@@ -1,0 +1,31 @@
+{# Docs-mode shell. Sits between `layout.html` (head + global
+   chrome) and the per-page docs templates (`docs.html`,
+   `package.html`). Splits the viewport into:
+
+     [   docs-topbar (full width)        ]
+     [ sidebar | main content | toc rail ]
+
+   Per-page templates fill the `docs_main` block; everything else
+   (topbar, sidebar) renders here so individual pages don't repeat
+   themselves. The right TOC rail is wrapped in a block too so a
+   page can override it (most pages just leave the default empty
+   stub). #}
+{% extends "layout.html" %}
+
+{% block body %}
+  {% include "partials/docs_topbar.html" %}
+
+  <div class="docs-shell">
+    {% include "partials/docs_sidebar.html" %}
+
+    <main class="docs-main">
+      {% block docs_main %}{% endblock %}
+    </main>
+
+    <aside class="docs-toc">
+      {% block docs_toc %}{% endblock %}
+    </aside>
+  </div>
+
+  {% include "partials/footer.html" %}
+{% endblock %}

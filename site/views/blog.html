@@ -1,0 +1,29 @@
+{% extends "docs_layout.html" %}
+
+{% block title %}Blog · Hatch{% endblock %}
+
+{% block docs_main %}
+  <header class="docs-browse-head">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">Home</a>
+      <span class="crumb-sep">/</span>
+      <span class="crumb-current">Blog</span>
+    </nav>
+    <h1 class="pkg-title"><span class="pkg-title-name">Blog</span></h1>
+    <p class="pkg-lede">
+      Long-form tutorials and deep dives. Pick a framework and
+      walk through a project end to end.
+    </p>
+  </header>
+
+  <div class="blog-grid">
+    {% for b in blogs %}
+      <a class="blog-card" href="/blog/{{ b.slug }}">
+        <span class="blog-card-tag">{{ b.tag }}</span>
+        <h3 class="blog-card-title">{{ b.title }}</h3>
+        <p class="blog-card-blurb">{{ b.blurb }}</p>
+        <span class="blog-card-cta">Read the {{ b.tag }} guide <span class="arr">→</span></span>
+      </a>
+    {% endfor %}
+  </div>
+{% endblock %}

@@ -1,0 +1,14 @@
+{# Class — `<h3>` (subsection inside a module). Plain display-
+   font title with the `CL` verb pill inline. Members render
+   below as `<h4>`-level entries. #}
+<h3 id="{{ cls.slug }}" class="api-class-name">
+  <span class="api-tag api-tag-cl">CL</span>
+  {{ cls.name }}
+</h3>
+{% if cls.docMd %}
+  <div class="api-md" data-md="{{ cls.docMd }}"></div>
+{% endif %}
+{% for mem in cls.constructors %}{% include "partials/_api_member.html" %}{% endfor %}
+{% for mem in cls.fields %}{% include "partials/_api_member.html" %}{% endfor %}
+{% for mem in cls.accessors %}{% include "partials/_api_member.html" %}{% endfor %}
+{% for mem in cls.functions %}{% include "partials/_api_member.html" %}{% endfor %}

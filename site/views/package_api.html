@@ -1,0 +1,146 @@
+{% extends "docs_layout.html" %}
+
+{% block title %}{{ pkg.name }} {{ pkg.version }} · API reference · Hatch docs{% endblock %}
+
+{% block head %}
+  {# Marked.js + the same CodeMirror upgrade pipeline the README
+     uses. Each `.api-md` slot ships its body as raw markdown
+     inside a `<script type="text/markdown">`; the hook below
+     parses it on first paint and runs `mountWrenCode` so any
+     fenced wren block gets the playground's syntax theme. #}
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+{% endblock %}
+
+{% block docs_main %}
+  {% include "partials/_pkg_header.html" %}
+
+  <div class="install-card">
+    <div class="install-cmd">
+      <span class="install-pr">$</span>
+      <span class="install-text">hatch add {{ pkg.name }}</span>
+    </div>
+    <button class="install-copy" type="button"
+            onclick="(function(b){var t='hatch add {{ pkg.name }}';navigator.clipboard.writeText(t).then(function(){b.textContent='copied';setTimeout(function(){b.textContent='copy';},1500);});})(this)">
+      copy
+    </button>
+  </div>
+
+  {# The landing page styles `section` with 96px vertical padding.
+     The API body lives inside the docs shell — using `<div>`
+     keeps it out of that rule, no need to specialise. #}
+  {# After the body mounts, walk every `.api-md` slot — each
+     contains raw markdown in a `<script type="text/markdown">`
+     — and replace it with `marked.parse`'d HTML. Then run
+     `mountWrenCode` (loaded by `layout.html`) over the api-doc
+     wrapper so any fenced wren block becomes a CodeMirror view
+     with the playground's syntax theme. Idempotent — slots
+     are flagged once parsed. #}
+  <script>
+    (function () {
+      function render() {
+        var slots = document.querySelectorAll(".api-md");
+        if (!slots.length || !window.marked) return false;
+        slots.forEach(function (slot) {
+          if (slot.dataset.rendered === "1") return;
+          // `dataset.md` returns the entity-decoded markdown
+          // text — `&quot;` is `"`, `&lt;` is `<`, etc. Pass
+          // straight to marked.
+          var src = slot.dataset.md;
+          if (!src) return;
+          slot.innerHTML = window.marked.parse(src);
+          slot.dataset.rendered = "1";
+        });
+        var host = document.querySelector(".api-doc");
+        if (host && window.mountWrenCode) window.mountWrenCode(host);
+        return true;
+      }
+      if (!render()) {
+        var t = setInterval(function () { if (render()) clearInterval(t); }, 80);
+        setTimeout(function () { clearInterval(t); }, 5000);
+      }
+    })();
+  </script>
+
+  <div class="pkg-api">
+    {% if apiModules %}
+      {# Wrap in `.pkg-readme` so every type tag inside (h2 / h3
+         / p / code chips / blockquote) inherits the README's
+         typography. Classes render as the same h2 sections the
+         README uses (auto-numbered ord chip), members as h3
+         subsections. No parallel `.api-class-name` /
+         `.api-module-name` rules — same one design language. #}
+      <div class="pkg-readme api-doc">
+        {% for mod in apiModules %}
+          {% include "partials/_api_module.html" %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="api-placeholder">
+        <h2>API reference</h2>
+        <p>
+          We couldn't reach a source tree or cached bundle for
+          <code>{{ pkg.name }}</code>, so there's nothing to render
+          yet. The renderer feeds off <code>hatch docs &lt;target&gt;</code> —
+          install the package locally with <code>hatch install
+          {{ pkg.name }}</code> and refresh.
+        </p>
+        <p>
+          Until then, head back to the
+          <a href="/packages/{{ pkg.name }}">README</a> for hand-authored
+          prose, or browse the source on
+          <a href="{{ pkg.git }}" target="_blank" rel="noopener">GitHub</a>.
+        </p>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block docs_toc %}
+  {# Server-rendered TOC for the API page. The README's TOC is
+     built client-side from rendered headings; here we already
+     have the structured `apiModules` list, so we walk it
+     directly. Modules sit at the top level, classes indent
+     under each module. Members aren't TOC'd — there are too
+     many to fit. The small inline scroll-spy below highlights
+     whichever banner is currently in view. #}
+  <h5>On this page</h5>
+  {% if apiModules %}
+    <ul id="api-toc">
+      {% for mod in apiModules %}
+        <li><a href="#{{ mod.slug }}">{{ mod.name }}</a></li>
+        {% for cls in mod.classes %}
+          <li class="indent"><a href="#{{ cls.slug }}">{{ cls.name }}</a></li>
+        {% endfor %}
+      {% endfor %}
+    </ul>
+    <script>
+      (function () {
+        var toc = document.getElementById("api-toc");
+        if (!toc || !("IntersectionObserver" in window)) return;
+        var links = {};
+        toc.querySelectorAll("a[href^='#']").forEach(function (a) {
+          links[a.getAttribute("href").slice(1)] = a;
+        });
+        var visible = new Set();
+        var heads = Array.from(document.querySelectorAll(
+          ".api-doc h2[id], .api-doc h3.api-class-name[id]"
+        ));
+        var io = new IntersectionObserver(function (items) {
+          items.forEach(function (it) {
+            if (it.isIntersecting) visible.add(it.target);
+            else visible.delete(it.target);
+          });
+          var first = null;
+          heads.forEach(function (h) { if (!first && visible.has(h)) first = h; });
+          if (!first && heads[0]) first = heads[0];
+          Object.keys(links).forEach(function (id) {
+            links[id].classList.toggle("active", first && first.id === id);
+          });
+        }, { rootMargin: "-80px 0px -70% 0px", threshold: 0 });
+        heads.forEach(function (h) { io.observe(h); });
+      })();
+    </script>
+  {% else %}
+    <ul id="api-toc"><li class="muted-row">No API entries.</li></ul>
+  {% endif %}
+{% endblock %}

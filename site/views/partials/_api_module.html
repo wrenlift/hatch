@@ -1,0 +1,13 @@
+{# Module — `<h2>` (top-level division), no wrapper element so
+   the global `section { padding: 96px 32px }` rule on the
+   landing page can't bite us here. #}
+<h2 id="{{ mod.slug }}" class="api-module-name">
+  <span class="api-tag api-tag-mod">MOD</span>
+  {{ mod.name }}
+</h2>
+{% if mod.docMd %}
+  <div class="api-md" data-md="{{ mod.docMd }}"></div>
+{% endif %}
+{% for cls in mod.classes %}
+  {% include "partials/_api_class.html" %}
+{% endfor %}

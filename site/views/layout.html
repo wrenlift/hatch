@@ -21,6 +21,13 @@
   <!-- htmx 2.x for live search + category filter swaps. -->
   <script src="https://unpkg.com/htmx.org@2"></script>
 
+  {# CodeMirror 6 — same Wren stream parser + syntax theme the
+     playground uses, gutter-less. Module loads once per page; the
+     README htmx fragment calls `window.mountWrenCode(host)` after
+     marked.parse() to upgrade `<pre><code class="language-wren">`
+     blocks in place. #}
+  <script type="module" src="/assets/codemirror-wren.js"></script>
+
   {% block head %}{% endblock %}
 </head>
 <body>

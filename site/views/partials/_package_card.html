@@ -1,11 +1,38 @@
-<a class="pkg-card" href="/docs/{{ p.name }}" data-cat="{{ p.cat }}">
+<a class="pkg-card" href="/packages/{{ p.name }}" data-cat="{{ p.cat }}">
   <div class="pkg-head">
     <div class="pkg-icon" style="background:{{ p.catColor }};">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3A2A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-        <path d="m3.27 6.96 8.73 5.05 8.73-5.05"/>
-        <path d="M12 22.08V12"/>
-      </svg>
+      {# Tabler icons, one per category. `cat` comes from
+         Catalog.categorize_ — net/data/sys/dev. #}
+      {% if p.cat == "net" %}
+        {# tabler:world (globe + meridians) — networking. #}
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3A2A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M3.6 9h16.8"/>
+          <path d="M3.6 15h16.8"/>
+          <path d="M11.5 3a17 17 0 0 0 0 18"/>
+          <path d="M12.5 3a17 17 0 0 1 0 18"/>
+        </svg>
+      {% elif p.cat == "data" %}
+        {# tabler:database — data / storage / encoding. #}
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3A2A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <ellipse cx="12" cy="6" rx="8" ry="3"/>
+          <path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/>
+          <path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>
+        </svg>
+      {% elif p.cat == "sys" %}
+        {# tabler:terminal-2 — system / fs / process / OS. #}
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3A2A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 7l5 5l-5 5"/>
+          <path d="M12 19l7 0"/>
+        </svg>
+      {% else %}
+        {# tabler:code — dev tools, parsers, generic libraries. #}
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3A2A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7 8l-4 4l4 4"/>
+          <path d="M17 8l4 4l-4 4"/>
+          <path d="M14 4l-4 16"/>
+        </svg>
+      {% endif %}
     </div>
     <div style="text-align:right;">
       <div class="pkg-name">{{ p.name }}</div>

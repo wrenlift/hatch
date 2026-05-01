@@ -23,7 +23,7 @@
   <nav class="crumbs" aria-label="Breadcrumb">
     <a href="/">Home</a>
     <span class="crumb-sep">/</span>
-    <a href="/docs">Docs</a>
+    <a href="/packages">Packages</a>
     <span class="crumb-sep">/</span>
     <span class="crumb-current">{{ pkg.name }}</span>
   </nav>
@@ -33,17 +33,37 @@
     <span class="pkg-title-pill">v{{ pkg.version }}</span>
   </h1>
 
-  <p class="pkg-lede">{{ pkg.description }}</p>
+  {# `descriptionHtml` already escapes `<>&"'` per character and
+     emits real `<code>…</code>` chips for backtick spans (see
+     `Catalog.inlineCode_`). The triple-brace `{{{ … }}}` form
+     skips the engine's auto-escape so those tags render as HTML
+     rather than as literal `&lt;code&gt;` text. #}
+  <p class="pkg-lede">{{{ pkg.descriptionHtml }}}</p>
 
-  <div class="pkg-pills">
-    <span class="pill pill-status"><span class="dot"></span> stable</span>
-    <span class="pill" style="--pill-accent: {{ pkg.catColor }};">
-      <span class="dot" style="background: {{ pkg.catColor }};"></span>
-      {{ pkg.catLabel }}
-    </span>
-    <span class="pill">updated {{ pkg.relativeAge }}</span>
-    {% if pkg.git %}
-      <a class="pill pill-link" href="{{ pkg.git }}" target="_blank" rel="noopener">source ↗</a>
+  <div class="pkg-pills-row">
+    <div class="pkg-pills">
+      <span class="pill pill-status"><span class="dot"></span> stable</span>
+      <span class="pill" style="--pill-accent: {{ pkg.catColor }};">
+        <span class="dot" style="background: {{ pkg.catColor }};"></span>
+        {{ pkg.catLabel }}
+      </span>
+      <span class="pill">updated {{ pkg.relativeAge }}</span>
+      {% if pkg.git %}
+        <a class="pill pill-link" href="{{ pkg.git }}" target="_blank" rel="noopener">source ↗</a>
+      {% endif %}
+    </div>
+    {# Toggle between README prose and the auto-generated API
+       reference. `view` is set by the route — `"readme"` on
+       `/docs/:name`, `"api"` on `/docs/:name/api` — and flips
+       which doc the button hands off to. #}
+    {% if view == "api" %}
+      <a class="pkg-doc-cta" href="/packages/{{ pkg.name }}">
+        <span>README</span><span class="arrow">←</span>
+      </a>
+    {% else %}
+      <a class="pkg-doc-cta" href="/packages/{{ pkg.name }}/api">
+        <span>API reference</span><span class="arrow">→</span>
+      </a>
     {% endif %}
   </div>
 </div>

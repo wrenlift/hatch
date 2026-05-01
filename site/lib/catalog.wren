@@ -132,22 +132,27 @@ class Catalog {
   /// `lowercase` method; we ASCII-lowercase by hand since every
   /// package name we care about is ASCII anyway.
   static categorize_(name, desc) {
+    var n = Catalog.lower_(name)
     var s = Catalog.lower_(name + " " + (desc == null ? "" : desc))
 
-    // Networking — talks to the wire.
-    var netKeywords = ["http", "websocket", "socket", "tcp", "udp", "dns", "url", "https"]
-    for (kw in netKeywords) if (s.contains(kw)) return "net"
-
-    // Data — encoding, storage, structure.
+    var netKeywords  = ["http", "websocket", "socket", "tcp", "udp", "dns", "url", "https"]
     var dataKeywords = ["json", "yaml", "toml", "csv", "sqlite", "regex", "hash",
-                         "crypto", "uuid", "buffers", "tar", "zip", "image"]
-    for (kw in dataKeywords) if (s.contains(kw)) return "data"
+                         "crypto", "uuid", "tar", "zip", "image"]
+    var sysKeywords  = ["fs", "io", "os", "path", "proc", "time", "datetime",
+                         "log", "fmt", "events", "audio", "physics", "gpu",
+                         "window", "game", "assets", "random"]
 
-    // System — fs, processes, time, OS-ish.
-    var sysKeywords = ["fs", "io", "os", "path", "proc", "time", "datetime",
-                        "log", "fmt", "events", "audio", "physics", "gpu",
-                        "window", "game", "assets", "random"]
-    for (kw in sysKeywords) if (s.contains(kw)) return "sys"
+    // Name-based pass first — the package name is a stronger
+    // signal than the description and prevents `@hatch:gpu`
+    // landing in `data` because its blurb mentions "Buffers".
+    for (kw in netKeywords)  if (n.contains(kw)) return "net"
+    for (kw in dataKeywords) if (n.contains(kw)) return "data"
+    for (kw in sysKeywords)  if (n.contains(kw)) return "sys"
+
+    // Fallback: description-level scan.
+    for (kw in netKeywords)  if (s.contains(kw)) return "net"
+    for (kw in dataKeywords) if (s.contains(kw)) return "data"
+    for (kw in sysKeywords)  if (s.contains(kw)) return "sys"
 
     return "dev"
   }
@@ -166,6 +171,26 @@ class Catalog {
 
   // -- Public read API --
 
+  /// Distinct `@hatch:*` packages (latest version per name,
+  /// alphabetical). The sidebar template shows the first
+  /// `SIDEBAR_PREVIEW` rows and tucks the rest behind a "Show all"
+  /// toggle — we still hand back the full list so the toggle
+  /// expands without a round-trip.
+  static standardLibrary {
+    return Catalog.db.query(
+      "SELECT name, MAX(version) AS version FROM packages " +
+      "WHERE name LIKE '@hatch:%' GROUP BY name ORDER BY name"
+    )
+  }
+
+  /// Same shape, non-`@hatch:*` rows.
+  static community {
+    return Catalog.db.query(
+      "SELECT name, MAX(version) AS version FROM packages " +
+      "WHERE name NOT LIKE '@hatch:%' GROUP BY name ORDER BY name"
+    )
+  }
+
   /// Latest row for a single package by exact name. Returns `null`
   /// if no row matches — the docs page surfaces that as a 404.
   /// Used by the `/docs/:name` route; the row is fed straight into
@@ -182,29 +207,114 @@ class Catalog {
     return decorated[0]
   }
 
-  /// Map a catalog name to a public README URL. For `@hatch:*`
-  /// packages we know the on-disk layout under the wrenlift/hatch
-  /// monorepo — `@hatch:foo` lives at `packages/hatch-foo/README.md`.
-  /// For everything else we fall back to the row's `git` field,
-  /// rewritten through GitHub's `/raw/main/README.md` shape if it's
-  /// a github.com URL. Returns `null` when we can't construct one
-  /// (the route then renders a "no README" placeholder).
+  /// Map a catalog row to a public README URL. Resolution order:
+  ///
+  ///   1. `pkg.readme` set + absolute URL → use verbatim.
+  ///   2. `pkg.readme` set + relative path → resolve against
+  ///      `pkg.git` via the host's raw-URL convention.
+  ///   3. `pkg.readme` absent → assume `README.md` at the repo
+  ///      root, derived from `pkg.git`.
+  ///   4. `pkg.git` is empty / non-GitHub → `null` (the route
+  ///      renders the empty-state placeholder).
+  ///
+  /// Each package's `hatchfile` declares `readme = "..."` (or
+  /// leaves it empty for the default); the publisher writes that
+  /// value into the catalog row. No hardcoded per-package paths
+  /// or per-scope conventions live here — third-party packages
+  /// resolve through the same code path as `@hatch:*` ones.
   static readmeUrl(row) {
-    var name = row["name"]
-    if (name.startsWith("@hatch:")) {
-      var short = name[7..(name.count - 1)]
-      return "https://raw.githubusercontent.com/wrenlift/hatch/main/packages/hatch-" + short + "/README.md"
+    var readme = row.containsKey("readme") ? row["readme"] : null
+    if (readme != null && readme != "") {
+      if (readme.startsWith("http://") || readme.startsWith("https://")) {
+        return readme
+      }
+      var base = Catalog.gitRawBase_(row)
+      if (base == null) return null
+      var path = readme.startsWith("/") ? readme : "/" + readme
+      return base + path
     }
+    var base = Catalog.gitRawBase_(row)
+    if (base == null) return null
+    return base + "/README.md"
+  }
+
+  /// Build a `<host-raw>/<branch>` prefix from the row's `git`
+  /// URL. Today only GitHub is wired up — other forges (GitLab
+  /// `/-/raw/`, Gitea `/raw/branch/`) need their own arms. Returns
+  /// `null` for unknown hosts so the caller falls through to
+  /// "no README" rather than emitting a broken URL.
+  static gitRawBase_(row) {
     var git = row.containsKey("git") ? row["git"] : ""
     if (git == null || git == "") return null
-    // Strip a trailing `.git` so `/blob/main/README.md` lands on
-    // the right tree.
     if (git.endsWith(".git")) git = git[0..(git.count - 5)]
     if (git.startsWith("https://github.com/")) {
-      return git.replace("https://github.com/", "https://raw.githubusercontent.com/") +
-        "/main/README.md"
+      return git.replace("https://github.com/", "https://raw.githubusercontent.com/") + "/main"
     }
     return null
+  }
+
+  /// Wrap raw README markdown in the inline-script harness that
+  /// runs `marked.parse` client-side and then upgrades any
+  /// `language-wren` fences via `window.mountWrenCode` (CodeMirror,
+  /// gutter-less, same theme as the playground). The `<noscript>`
+  /// fallback shows the raw markdown so JS-disabled clients still
+  /// see the content. Both the local-FS and remote-fetch branches
+  /// of the route call this so the swap shape stays identical.
+  static wrapReadme_(markdown, name) {
+    // Wren's parser ends a `return` statement at the first
+    // newline if there's no expression on the same line — a
+    // bare `return` followed by a multi-line concat returns
+    // `null`. Keeping the first segment on the return line
+    // anchors the expression so the trailing `+` continuations
+    // get folded in.
+    var html = "<div id=\"readme-body\" data-markdown=\"true\">"
+    html = html + "<script type=\"text/markdown\" id=\"readme-md\">" + markdown + "</script>"
+    html = html + "<noscript><pre>" + markdown + "</pre></noscript>"
+    html = html + "</div>"
+    html = html + "<script>(function(){var el=document.getElementById('readme-md');"
+    html = html + "if(el && window.marked){var src=el.textContent;"
+    html = html + "var html=window.marked.parse(src);"
+    html = html + "var host=document.getElementById('readme-body');"
+    html = html + "host.innerHTML=html;"
+    html = html + "if(window.mountWrenCode){window.mountWrenCode(host);}"
+    html = html + "else{var t=setInterval(function(){"
+    html = html + "if(window.mountWrenCode){clearInterval(t);window.mountWrenCode(host);}"
+    html = html + "},80);setTimeout(function(){clearInterval(t);},5000);}"
+    // Build the right-rail "On this page" TOC from the rendered
+    // h2 + h3 elements. Each gets a slug id (lowercase, dashed)
+    // so anchors work; h3 entries indent under their owning h2.
+    // IntersectionObserver flags the heading currently in view —
+    // its TOC entry gets `.active` for the toast highlight.
+    html = html + "var toc=document.getElementById('readme-toc');"
+    html = html + "if(toc){toc.innerHTML='';"
+    html = html + "var slug=function(s){return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');};"
+    html = html + "var heads=host.querySelectorAll('h2,h3');"
+    html = html + "var entries=[];"
+    html = html + "heads.forEach(function(h){"
+    html = html + "  var id=h.id||slug(h.textContent);if(!id)return;h.id=id;"
+    html = html + "  var li=document.createElement('li');"
+    html = html + "  if(h.tagName==='H3')li.className='indent';"
+    html = html + "  var a=document.createElement('a');a.href='#'+id;a.textContent=h.textContent.trim();"
+    html = html + "  li.appendChild(a);toc.appendChild(li);"
+    html = html + "  entries.push({el:h,link:a});"
+    html = html + "});"
+    html = html + "if(entries.length && 'IntersectionObserver' in window){"
+    html = html + "  var byEl=new Map(entries.map(function(e){return [e.el,e.link];}));"
+    html = html + "  var visible=new Set();"
+    html = html + "  var io=new IntersectionObserver(function(items){"
+    html = html + "    items.forEach(function(it){"
+    html = html + "      if(it.isIntersecting)visible.add(it.target);else visible.delete(it.target);"
+    html = html + "    });"
+    html = html + "    var first=null;"
+    html = html + "    entries.forEach(function(e){if(!first && visible.has(e.el))first=e.el;});"
+    html = html + "    if(!first && entries[0])first=entries[0].el;"
+    html = html + "    entries.forEach(function(e){e.link.classList.toggle('active',e.el===first);});"
+    html = html + "  },{rootMargin:'-80px 0px -70% 0px',threshold:0});"
+    html = html + "  entries.forEach(function(e){io.observe(e.el);});"
+    html = html + "  if(entries[0])entries[0].link.classList.add('active');"
+    html = html + "}}"
+    html = html + "}})();</script>"
+    return html
   }
 
   /// Distinct-name count out of the catalog.
@@ -277,9 +387,62 @@ class Catalog {
       copy["catColor"]    = colors.containsKey(cat) ? colors[cat] : "#EFDDA8"
       copy["catLabel"]    = labels.containsKey(cat) ? labels[cat] : cat
       copy["relativeAge"] = Catalog.shortDate_(row["created_at"])
+      copy["descriptionHtml"] = Catalog.inlineCode_(row["description"])
       out.add(copy)
     }
     return out
+  }
+
+  /// Convert a plain-text description into HTML, mapping
+  /// backtick-quoted spans to `<code>…</code>` chips. The rest of
+  /// the string is HTML-escaped so a `<` or `&` in the wild
+  /// description doesn't break the page. Output is consumed via
+  /// `{{ … | raw }}` in the lede template.
+  ///
+  /// Pairing rule: a backtick opens a chip, the next backtick
+  /// closes it. Unmatched trailing backticks pass through as
+  /// literals so an obvious typo doesn't swallow content.
+  static inlineCode_(s) {
+    if (s == null || s == "") return ""
+    var out = ""
+    var inCode = false
+    var buf = ""
+    for (i in 0...s.count) {
+      var ch = s[i]
+      if (ch == "`") {
+        if (inCode) {
+          out = out + "<code>" + Catalog.htmlEscape_(buf) + "</code>"
+          buf = ""
+          inCode = false
+        } else {
+          out = out + Catalog.htmlEscape_(buf)
+          buf = ""
+          inCode = true
+        }
+      } else {
+        buf = buf + ch
+      }
+    }
+    // Trailing buffer: if we were still inside a code span (no
+    // closer), spit it back out as literal text with the leading
+    // backtick restored.
+    if (inCode) {
+      out = out + "`" + Catalog.htmlEscape_(buf)
+    } else {
+      out = out + Catalog.htmlEscape_(buf)
+    }
+    return out
+  }
+
+  /// Minimal HTML escaper for `<`, `>`, `&`, `"`, `'`.
+  static htmlEscape_(s) {
+    if (s == null) return ""
+    var r = s.replace("&", "&amp;")
+    r = r.replace("<", "&lt;")
+    r = r.replace(">", "&gt;")
+    r = r.replace("\"", "&quot;")
+    r = r.replace("'", "&#39;")
+    return r
   }
 
   /// "2026-04-30T19:31:51.372215+00:00" -> "Apr 30, 2026".

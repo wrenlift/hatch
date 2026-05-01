@@ -1,0 +1,37 @@
+{% extends "layout.html" %}
+
+{% block title %}Page not found · Hatch{% endblock %}
+
+{% block body %}
+  {% include "partials/nav.html" %}
+
+  <main class="four-oh-four wrap">
+    <div class="four-oh-four-art">
+      <img src="/assets/hatch-404.svg"
+           alt="A small chick hatching between the two 4s of '404'"
+           onerror="this.style.display='none'" />
+    </div>
+
+    <div class="four-oh-four-copy">
+      <span class="eyebrow"><span class="dot"></span>404 · page not found</span>
+      <h1 class="four-oh-four-title">Nothing's here. <span class="accent">Yet.</span></h1>
+      <p class="lede">
+        Either the URL is mistyped, the page hasn't been written, or a package by that name isn't in the registry.
+      </p>
+
+      <div class="cta-row">
+        <a class="btn" href="/"><span>Home</span><span class="arrow">→</span></a>
+        <a class="btn ghost" href="/packages"><span>Browse packages</span></a>
+        <a class="btn ghost" href="/guides/intro"><span>Read the guides</span></a>
+      </div>
+
+      {% if requestedPath %}
+        <p class="four-oh-four-path">
+          You asked for <code>{{ requestedPath }}</code>.
+        </p>
+      {% endif %}
+    </div>
+  </main>
+
+  {% include "partials/footer.html" %}
+{% endblock %}

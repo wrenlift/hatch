@@ -1,0 +1,19 @@
+{# Single member entry — h3 with verb pill + signature title,
+   then the doc comment as a marked-rendered slot. The raw
+   markdown ships in a `<script type="text/markdown">` tag;
+   the inline hook in `package_api.html` runs marked.parse +
+   mountWrenCode on every `.api-md` slot after the page mounts,
+   matching how the README renders. #}
+<h3 class="api-entry">
+  <span class="api-tag {{ mem.tagClass }}">{{ mem.tag }}</span>
+  <code>{{ mem.displaySignature }}</code>
+</h3>
+{% if mem.docMd %}
+  {# Markdown source travels via `data-md` rather than a child
+     `<script type="text/markdown">`. Inside `<script>` the
+     browser doesn't decode HTML entities (so `&quot;` reaches
+     marked literally and renders as `&quot;`), but `data-*`
+     attribute reads via `el.dataset.md` ARE decoded — same
+     escaped form on disk, real characters in JS. #}
+  <div class="api-md" data-md="{{ mem.docMd }}"></div>
+{% endif %}

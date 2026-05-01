@@ -1,4 +1,4 @@
-{% extends "layout.html" %}
+{% extends "docs_layout.html" %}
 
 {% block title %}{{ pkg.name }} {{ pkg.version }} · Hatch docs{% endblock %}
 
@@ -12,22 +12,38 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 {% endblock %}
 
-{% block body %}
-  {% include "partials/nav.html" %}
+{% block docs_main %}
+  {% include "partials/_pkg_header.html" %}
 
-  <main class="pkg-detail wrap">
-    {% include "partials/_pkg_header.html" %}
+  <div class="install-card">
+    <div class="install-cmd">
+      <span class="install-pr">$</span>
+      <span class="install-text">hatch add {{ pkg.name }}</span>
+    </div>
+    <button class="install-copy" type="button"
+            onclick="(function(b){var t='hatch add {{ pkg.name }}';navigator.clipboard.writeText(t).then(function(){b.textContent='copied';setTimeout(function(){b.textContent='copy';},1500);});})(this)">
+      copy
+    </button>
+  </div>
 
-    <section class="pkg-readme"
-             hx-get="/docs/{{ pkg.name }}/readme"
-             hx-trigger="load"
-             hx-swap="innerHTML">
-      <div class="readme-loading">
-        <span class="spinner" aria-hidden="true"></span>
-        loading README…
-      </div>
-    </section>
-  </main>
-
-  {% include "partials/footer.html" %}
+  <section class="pkg-readme"
+           hx-get="/packages/{{ pkg.name }}/readme"
+           hx-trigger="load"
+           hx-swap="innerHTML">
+    <div class="readme-loading">
+      <span class="spinner" aria-hidden="true"></span>
+      loading README…
+    </div>
+  </section>
 {% endblock %}
+
+{% block docs_toc %}
+  {# "On this page" rail. Populated client-side from the rendered
+     README's h2 + h3 elements after `Catalog.wrapReadme_` finishes
+     marked.parse. The header stays mounted with the empty list so
+     it doesn't pop in late; we just append the `<li>`s when they
+     arrive. #}
+  <h5>On this page</h5>
+  <ul id="readme-toc"></ul>
+{% endblock %}
+

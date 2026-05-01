@@ -1,0 +1,138 @@
+{# Docs sidebar — the persistent left nav across `/docs` and
+   `/docs/:name`. Sections:
+
+     1. Getting Started — fixed link list (intro / install / etc).
+     2. API · Standard library — `@hatch:*` packages. Shows the first
+        `SIDEBAR_PREVIEW` items with a "Show all N packages →" button
+        that toggles `.expanded` on the list to reveal the rest.
+        Filter input narrows visible rows client-side.
+     3. Community packages — non-`@hatch:*`, same UX.
+     4. Reference — fixed.
+
+   Icons are inline Tabler SVGs (search icon for the filter
+   widgets — same family the rest of the design uses).
+#}
+{# `6` is the preview cap. Inlined rather than `{% set %}`-bound
+   because hatch:template's set may not propagate cleanly into the
+   inner for-loop scope, so the comparison stays literal. #}
+
+<aside class="docs-sidebar">
+  <div class="nav-section">
+    <h4>Getting started</h4>
+    <ul>
+      <li><a href="/guides/intro">Introduction</a></li>
+      <li><a href="/guides/install">Install &amp; setup</a></li>
+      <li><a href="/guides/hatchfile">The hatchfile</a></li>
+      <li><a href="/guides/cli">CLI cheatsheet</a></li>
+    </ul>
+  </div>
+
+  <div class="nav-section with-controls">
+    <h4>API · Standard library</h4>
+    <div class="nav-search">
+      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+        <circle cx="10.5" cy="10.5" r="6.5" />
+        <path d="m20 20-4.6-4.6" />
+      </svg>
+      <input type="search" id="navStdFilter" placeholder="Filter packages…" aria-label="Filter standard library" />
+    </div>
+    <ul id="navStdList">
+      {% for p in stdlib %}
+        <li class="{% if loop.index >= 6 and currentPkg != p.name %}extra{% endif %}">
+          <a href="/packages/{{ p.name }}"
+             {% if currentPkg == p.name %}class="active"{% endif %}>
+            {{ p.name }}
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+    {% if stdlib | length > 6 %}
+      <a class="nav-more" href="#" data-toggle="navStdList"
+         data-label-collapsed="Show all {{ stdlib | length }} packages →"
+         data-label-expanded="Show fewer ↑">Show all {{ stdlib | length }} packages →</a>
+    {% endif %}
+  </div>
+
+  <div class="nav-section with-controls">
+    <h4>Community packages</h4>
+    <div class="nav-search">
+      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+        <circle cx="10.5" cy="10.5" r="6.5" />
+        <path d="m20 20-4.6-4.6" />
+      </svg>
+      <input type="search" id="navCommFilter" placeholder="Filter community…" aria-label="Filter community packages" />
+    </div>
+    <ul id="navCommList">
+      {% for p in community %}
+        <li class="{% if loop.index >= 6 and currentPkg != p.name %}extra{% endif %}">
+          <a href="/packages/{{ p.name }}"
+             {% if currentPkg == p.name %}class="active"{% endif %}>
+            {{ p.name }}
+          </a>
+        </li>
+      {% endfor %}
+      {% if community | length == 0 %}
+        <li class="muted-row">No community packages yet — register yours via <a href="https://github.com/wrenlift/hatch/issues">an issue</a>.</li>
+      {% endif %}
+    </ul>
+    {% if community | length > 6 %}
+      <a class="nav-more" href="#" data-toggle="navCommList"
+         data-label-collapsed="Show all {{ community | length }} community →"
+         data-label-expanded="Show fewer ↑">Show all {{ community | length }} community →</a>
+    {% endif %}
+  </div>
+
+  <div class="nav-section">
+    <h4>Reference</h4>
+    <ul>
+      <li><a href="/guides/hatchfile">Hatchfile spec</a></li>
+      <li><a href="/guides/authoring">Authoring docs</a></li>
+      <li class="muted"><a href="https://github.com/wrenlift/hatch/releases">Changelog</a></li>
+    </ul>
+  </div>
+</aside>
+
+<script>
+  // Two filter inputs + two show-all toggles. Filter is purely
+  // client-side over the currently-visible rows; the show-all
+  // button flips `.expanded` on the list so CSS reveals the
+  // tucked `.extra` rows. Both inputs and toggles are scoped by
+  // `data-toggle` attributes so a third / fourth section can
+  // be added later without rewiring.
+  (function () {
+    function wireFilter(inputId, listId) {
+      var input = document.getElementById(inputId);
+      var list  = document.getElementById(listId);
+      if (!input || !list) return;
+      input.addEventListener("input", function () {
+        var q = input.value.toLowerCase();
+        // While the filter is active, treat every row as candidate
+        // — including the ones tucked behind the show-all toggle,
+        // otherwise typing `fp` matches @hatch:fp but the row stays
+        // hidden under `.extra`. The class flips `.extra` back to
+        // `display: list-item`; data-filter-hidden then narrows
+        // to actual hits.
+        list.classList.toggle("filtering", q.length > 0);
+        list.querySelectorAll("li").forEach(function (li) {
+          var t = (li.textContent || "").toLowerCase();
+          li.dataset.filterHidden = t.indexOf(q) >= 0 ? "" : "1";
+        });
+      });
+    }
+    function wireToggle(link) {
+      var listId = link.dataset.toggle;
+      var list   = document.getElementById(listId);
+      if (!list) return;
+      link.addEventListener("click", function (e) {
+        e.preventDefault();
+        var expanded = list.classList.toggle("expanded");
+        link.textContent = expanded
+          ? link.dataset.labelExpanded
+          : link.dataset.labelCollapsed;
+      });
+    }
+    wireFilter("navStdFilter", "navStdList");
+    wireFilter("navCommFilter", "navCommList");
+    document.querySelectorAll(".nav-more[data-toggle]").forEach(wireToggle);
+  })();
+</script>
