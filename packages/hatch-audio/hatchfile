@@ -2,6 +2,8 @@ name        = "@hatch:audio"
 version     = "0.1.2"
 entry       = "audio"
 description = "Audio playback. cpal-backed output stream + a tiny mixer; WAV decoding via hound. `Audio.context()` opens the device; `Sound.load(bytes)` decodes a WAV; `audio.play(sound)` schedules immediate playback against the global mixer. Wires into `@hatch:game` for free."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:audio"
+readme   = "README.md"
 
 native_search_paths = ["libs"]
 

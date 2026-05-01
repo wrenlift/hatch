@@ -2,6 +2,8 @@ name        = "@hatch:game"
 version     = "0.2.11"
 entry       = "game"
 description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering — subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:game"
+readme   = "README.md"
 
 [dependencies]
 "@hatch:window" = "0.2.6"

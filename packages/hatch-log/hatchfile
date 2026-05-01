@@ -2,6 +2,8 @@ name        = "@hatch:log"
 version     = "0.1.1"
 entry       = "log"
 description = "Level-filtered structured logger with ANSI colors."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:log"
+readme   = "README.md"
 
 [dependencies]
 "@hatch:fmt" = "0.1.0"

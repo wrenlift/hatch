@@ -2,6 +2,8 @@ name        = "@hatch:random"
 version     = "0.1.1"
 entry       = "random"
 description = "Random numbers, sampling, shuffle — one-shot statics + seedable streams."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:random"
+readme   = "README.md"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

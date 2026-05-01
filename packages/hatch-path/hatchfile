@@ -2,6 +2,8 @@ name        = "@hatch:path"
 version     = "0.1.1"
 entry       = "path"
 description = "Filesystem path manipulation: join, split, parent, ext, normalize."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:path"
+readme   = "README.md"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

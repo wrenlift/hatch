@@ -2,6 +2,8 @@ name        = "@hatch:toml"
 version     = "0.1.1"
 entry       = "toml"
 description = "TOML parser and serializer, backed by the Rust `toml` crate."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:toml"
+readme   = "README.md"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

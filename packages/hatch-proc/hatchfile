@@ -2,6 +2,8 @@ name        = "@hatch:proc"
 version     = "0.3.1"
 entry       = "proc"
 description = "Subprocess spawn with lifecycle, streaming IO (blocking + fiber-cooperative), and pipelines."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:proc"
+readme   = "README.md"
 
 [dependencies]
 "@hatch:io" = "0.2.0"

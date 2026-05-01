@@ -2,6 +2,8 @@ name        = "@hatch:csv"
 version     = "0.1.1"
 entry       = "csv"
 description = "RFC 4180 CSV parser + serializer. Handles quoting, embedded newlines, header rows."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:csv"
+readme   = "README.md"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

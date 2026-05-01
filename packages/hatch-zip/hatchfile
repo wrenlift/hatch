@@ -2,6 +2,8 @@ name        = "@hatch:zip"
 version     = "0.1.1"
 entry       = "zip"
 description = "Read and write ZIP archives entirely in memory (store / deflate / zstd)."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:zip"
+readme   = "README.md"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

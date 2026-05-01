@@ -2,6 +2,8 @@ name        = "@hatch:url"
 version     = "0.1.1"
 entry       = "url"
 description = "URL parser, builder, and percent-encoder."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:url"
+readme   = "README.md"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

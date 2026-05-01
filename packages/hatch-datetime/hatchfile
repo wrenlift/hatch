@@ -2,6 +2,8 @@ name        = "@hatch:datetime"
 version     = "0.1.1"
 entry       = "datetime"
 description = "Timezone-aware DateTime value type, Duration arithmetic, RFC 3339 parse + format."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:datetime"
+readme   = "README.md"
 
 [dependencies]
 "@hatch:time" = "0.1.0"

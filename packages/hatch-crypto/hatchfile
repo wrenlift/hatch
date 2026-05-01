@@ -2,6 +2,8 @@ name        = "@hatch:crypto"
 version     = "0.2.1"
 entry       = "crypto"
 description = "AES-256-GCM authenticated encryption + Ed25519 sign/verify + CSPRNG."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:crypto"
+readme   = "README.md"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

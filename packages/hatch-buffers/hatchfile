@@ -2,6 +2,8 @@ name        = "@hatch:buffers"
 version     = "0.1.1"
 entry       = "buffers"
 description = "Spec coverage for the built-in ByteArray / Float32Array / Float64Array types."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:buffers"
+readme   = "README.md"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

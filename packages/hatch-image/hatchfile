@@ -2,6 +2,8 @@ name        = "@hatch:image"
 version     = "0.1.3"
 entry       = "image"
 description = "Image encode + decode. PNG / JPG / BMP / WebP in, RGBA8 buffer out — `Image.decode(bytes)` feeds straight into `@hatch:gpu`'s `Device.uploadImage(image)`, and `Image.encodePng(...)` writes synthesized buffers back out. Backed by the `image` crate."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:image"
+readme   = "README.md"
 
 native_search_paths = ["libs"]
 

@@ -2,6 +2,8 @@ name        = "@hatch:window"
 version     = "0.2.7"
 entry       = "window"
 description = "Window + input for `@hatch:game` (and any consumer that wants its own window). winit on native, page-attached canvas on web — same `Window.create({...})` API, same `pollEvents` / `closeRequested` / `size` surface. Hands `@hatch:gpu` the handle it needs to build a Surface; bring-your-own canvas via `Window.attach(elementId)` on web."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:window"
+readme   = "README.md"
 
 native_search_paths = ["libs"]
 

@@ -2,6 +2,8 @@ name        = "@hatch:fmt"
 version     = "0.1.1"
 entry       = "fmt"
 description = "ANSI color + padding + small numeric helpers for terminal output."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:fmt"
+readme   = "README.md"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

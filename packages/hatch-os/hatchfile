@@ -2,6 +2,8 @@ name        = "@hatch:os"
 version     = "0.1.1"
 entry       = "os"
 description = "Process-level primitives: platform, env vars, argv, exit, tty."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:os"
+readme   = "README.md"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

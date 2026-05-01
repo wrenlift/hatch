@@ -2,6 +2,8 @@ name        = "@hatch:assets"
 version     = "0.2.1"
 entry       = "assets"
 description = "Content-addressable assets database with hot-reload. Two backends behind one API — filesystem-backed on native (Fs.walk + content hashes + Hatch.watchFile), manifest-driven on web (fetch + lazy reads, page ships an `assets-manifest.json`). Edit a shader / texture / config file, see registered subscribers fire."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:assets"
+readme   = "README.md"
 
 # `@hatch:fs` + `@hatch:hash` back assets_native.wren on host
 # builds; `@hatch:json` parses the manifest on web. None of them

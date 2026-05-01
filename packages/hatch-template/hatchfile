@@ -2,6 +2,8 @@ name        = "@hatch:template"
 version     = "0.1.2"
 entry       = "template"
 description = "Jinja/Twig-style templating for HTML and XML with first-class htmx support — fragments, components, slots, conditionals, loops, response helpers."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:template"
+readme   = "README.md"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

@@ -2,6 +2,8 @@ name        = "@hatch:regex"
 version     = "0.1.1"
 entry       = "regex"
 description = "Compiled regular expressions with capture groups, replace, and split."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:regex"
+readme   = "README.md"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

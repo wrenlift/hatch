@@ -2,6 +2,8 @@ name        = "@hatch:physics"
 version     = "0.1.3"
 entry       = "physics"
 description = "Rapier-backed physics. `World2D` and `World3D` from one import — bodies, colliders, gravity, force / impulse, position + velocity reads. Bundles rapier2d + rapier3d in a single cdylib so games never have to choose between dimensions at the package level. Wires into `@hatch:game` for a step-per-frame physics loop."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:physics"
+readme   = "README.md"
 
 native_search_paths = ["libs"]
 
