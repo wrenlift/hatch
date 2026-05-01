@@ -688,11 +688,18 @@ class Http_ {
   }
 
   /// Serialize a Response onto the socket.
+  ///
+  /// `resp.body` may be a String (HTML / text), a `ByteArray` /
+  /// `List<Num>` (binary; static-file path), or null. The
+  /// underlying `TcpStream.write` accepts all three via
+  /// `bytes_from_value`, so we keep bytes as bytes end-to-end —
+  /// converting an 880KB PNG to a String per byte was the static
+  /// handler's old O(n²) trap.
   static writeResponse(conn, resp) {
     var status  = resp.status
     var reason  = Http_.reason(status)
     var body    = resp.body
-    var bodyLen = body == null ? 0 : body.bytes.count
+    var bodyLen = Http_.bodyLen_(body)
 
     // Default Content-Type if the handler didn't set one.
     if (!resp.headers.containsKey("Content-Type")) {
@@ -707,6 +714,14 @@ class Http_ {
     out = out + "\r\n"
     conn.write(out)
     if (bodyLen > 0) conn.write(body)
+  }
+
+  static bodyLen_(body) {
+    if (body == null) return 0
+    if (body is String) return body.bytes.count
+    // ByteArray + List<Num> both expose .count for element count;
+    // for u8 buffers that equals the byte length.
+    return body.count
   }
 
   /// ── parsing helpers ───────────────────────────────────────────
@@ -939,9 +954,13 @@ class Static {
       var r = Response.new(200)
       r.header("Content-Type", Static.mimeOf_(rel))
       r.header("Content-Length", bytes.count.toString)
-      // Body stays as bytes — the writer accepts either String or
-      // List<Num> via TcpStream.write.
-      r.body = Static.bytesToString_(bytes)
+      // Hand the raw bytes through. `TcpStream.write` accepts a
+      // List<Num> / ByteArray / String via the runtime's
+      // `bytes_from_value` coercion, and `writeResponse` reads
+      // `bodyLen` via `Http_.bodyLen_`. Round-tripping through
+      // `String.fromByte` per element was O(n²) — death on
+      // anything bigger than a kilobyte.
+      r.body = bytes
       return r
     }
   }
