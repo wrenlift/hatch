@@ -7,8 +7,12 @@ name: Deploy hatch.wrenlift.com
 # bundles.
 #
 # Secrets required (set on the hatch repo):
-#   FLY_API_TOKEN — `fly auth token`'s output, scoped to the
-#                   hatch-wrenlift app.
+#   FLY_IO_TOKEN — `fly auth token`'s output, scoped to the
+#                  hatch-wrenlift app. The flyctl binary still
+#                  reads `FLY_API_TOKEN` from the environment,
+#                  so the workflow exports the secret under that
+#                  name below — only the GitHub Secret name uses
+#                  the FLY_IO_TOKEN spelling.
 
 on:
   push:
@@ -35,7 +39,7 @@ jobs:
 
       - name: Deploy
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_IO_TOKEN }}
         run: |
           set -eu
           # `--remote-only` builds on Fly's machines instead of the
