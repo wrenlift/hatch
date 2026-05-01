@@ -2,6 +2,24 @@
 # The source of truth is the Supabase `packages` table;
 # this file refreshes every few hours via .github/workflows/sync-index.yml.
 
+[packages."@hatch:assert-0.2.2"]
+name = "@hatch:assert"
+version = "0.2.2"
+git = "https://github.com/wrenlift/hatch"
+description = "Fluent assertion primitives for Wren test specs."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T19:31:51.372215+00:00"
+updated_at = "2026-04-30T19:31:51.372215+00:00"
+
+[packages."@hatch:assert-0.2.1"]
+name = "@hatch:assert"
+version = "0.2.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Fluent assertion primitives for Wren test specs."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T18:29:17.62774+00:00"
+updated_at = "2026-04-30T18:29:17.62774+00:00"
+
 [packages."@hatch:assert-0.2.0"]
 name = "@hatch:assert"
 version = "0.2.0"
@@ -91,6 +109,24 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-23T22:18:18.276114+00:00"
 updated_at = "2026-04-23T22:18:18.276114+00:00"
 
+[packages."@hatch:ecs-0.2.2"]
+name = "@hatch:ecs"
+version = "0.2.2"
+git = "https://github.com/wrenlift/hatch"
+description = "Entity-component-system for Wren. `World` storage + fluent `Query.with(C).without(C)` filters, component-instance bundles for one-call spawns, typed `Resources` and `Events<T>`, deferred `Commands` for safe mid-loop mutation, hierarchy via `setParent` / `childrenOf`, `onAdd` / `onRemove` lifecycle hooks, and a `Schedule` with `before` / `after` ordering for system dispatch. Pure Wren \u2014 composes with `@hatch:game`'s frame loop, runs anywhere Wren runs."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T19:31:52.685886+00:00"
+updated_at = "2026-04-30T19:31:52.685886+00:00"
+
+[packages."@hatch:ecs-0.2.1"]
+name = "@hatch:ecs"
+version = "0.2.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Entity-component-system for Wren. `World` storage + fluent `Query.with(C).without(C)` filters, component-instance bundles for one-call spawns, typed `Resources` and `Events<T>`, deferred `Commands` for safe mid-loop mutation, hierarchy via `setParent` / `childrenOf`, `onAdd` / `onRemove` lifecycle hooks, and a `Schedule` with `before` / `after` ordering for system dispatch. Pure Wren \u2014 composes with `@hatch:game`'s frame loop, runs anywhere Wren runs."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T18:34:52.985669+00:00"
+updated_at = "2026-04-30T18:34:52.985669+00:00"
+
 [packages."@hatch:ecs-0.2.0"]
 name = "@hatch:ecs"
 version = "0.2.0"
@@ -154,6 +190,51 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:03.569318+00:00"
 updated_at = "2026-04-20T16:29:03.569318+00:00"
 
+[packages."@hatch:game-0.2.11"]
+name = "@hatch:game"
+version = "0.2.11"
+git = "https://github.com/wrenlift/hatch"
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering \u2014 subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T19:19:11.124723+00:00"
+updated_at = "2026-04-30T19:19:11.124723+00:00"
+
+[packages."@hatch:game-0.2.10"]
+name = "@hatch:game"
+version = "0.2.10"
+git = "https://github.com/wrenlift/hatch"
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering \u2014 subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T18:26:44.129098+00:00"
+updated_at = "2026-04-30T18:26:44.129098+00:00"
+
+[packages."@hatch:game-0.2.9"]
+name = "@hatch:game"
+version = "0.2.9"
+git = "https://github.com/wrenlift/hatch"
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering \u2014 subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T18:05:42.99541+00:00"
+updated_at = "2026-04-30T18:05:42.99541+00:00"
+
+[packages."@hatch:game-0.2.8"]
+name = "@hatch:game"
+version = "0.2.8"
+git = "https://github.com/wrenlift/hatch"
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering \u2014 subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T17:36:58.245051+00:00"
+updated_at = "2026-04-30T17:36:58.245051+00:00"
+
+[packages."@hatch:game-0.2.7"]
+name = "@hatch:game"
+version = "0.2.7"
+git = "https://github.com/wrenlift/hatch"
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering \u2014 subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T15:48:21.312478+00:00"
+updated_at = "2026-04-30T15:48:21.312478+00:00"
+
 [packages."@hatch:game-0.2.6"]
 name = "@hatch:game"
 version = "0.2.6"
@@ -189,6 +270,42 @@ description = "Tiny game-loop scaffold for the WrenLift game framework. `Game.ru
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-28T12:43:44.455346+00:00"
 updated_at = "2026-04-28T12:43:44.455346+00:00"
+
+[packages."@hatch:gpu-0.2.8"]
+name = "@hatch:gpu"
+version = "0.2.8"
+git = "https://github.com/wrenlift/hatch"
+description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, CommandEncoder, RenderPass on the bottom; Camera2D/3D, Renderer2D (sprite batcher), Renderer3D (lit), Mesh, Material on top. wgpu on native, WebGPU on web \u2014 same Wren API both targets."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T19:11:18.161894+00:00"
+updated_at = "2026-04-30T19:11:18.161894+00:00"
+
+[packages."@hatch:gpu-0.2.7"]
+name = "@hatch:gpu"
+version = "0.2.7"
+git = "https://github.com/wrenlift/hatch"
+description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, CommandEncoder, RenderPass on the bottom; Camera2D/3D, Renderer2D (sprite batcher), Renderer3D (lit), Mesh, Material on top. wgpu on native, WebGPU on web \u2014 same Wren API both targets."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T17:58:05.595836+00:00"
+updated_at = "2026-04-30T17:58:05.595836+00:00"
+
+[packages."@hatch:gpu-0.2.6"]
+name = "@hatch:gpu"
+version = "0.2.6"
+git = "https://github.com/wrenlift/hatch"
+description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, CommandEncoder, RenderPass on the bottom; Camera2D/3D, Renderer2D (sprite batcher), Renderer3D (lit), Mesh, Material on top. wgpu on native, WebGPU on web \u2014 same Wren API both targets."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T17:44:56.484523+00:00"
+updated_at = "2026-04-30T17:44:56.484523+00:00"
+
+[packages."@hatch:gpu-0.2.5"]
+name = "@hatch:gpu"
+version = "0.2.5"
+git = "https://github.com/wrenlift/hatch"
+description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, CommandEncoder, RenderPass on the bottom; Camera2D/3D, Renderer2D (sprite batcher), Renderer3D (lit), Mesh, Material on top. wgpu on native, WebGPU on web \u2014 same Wren API both targets."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T15:08:48.070221+00:00"
+updated_at = "2026-04-30T15:08:48.070221+00:00"
 
 [packages."@hatch:gpu-0.2.4"]
 name = "@hatch:gpu"
@@ -271,6 +388,24 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T20:41:56.64897+00:00"
 updated_at = "2026-04-20T20:41:56.64897+00:00"
 
+[packages."@hatch:json-0.1.2"]
+name = "@hatch:json"
+version = "0.1.2"
+git = "https://github.com/wrenlift/hatch"
+description = "JSON parser and serializer. Pure Wren, no native deps."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T19:30:47.136356+00:00"
+updated_at = "2026-04-30T19:30:47.136356+00:00"
+
+[packages."@hatch:json-0.1.1"]
+name = "@hatch:json"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "JSON parser and serializer. Pure Wren, no native deps."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T18:29:28.729013+00:00"
+updated_at = "2026-04-30T18:29:28.729013+00:00"
+
 [packages."@hatch:json-0.1.0"]
 name = "@hatch:json"
 version = "0.1.0"
@@ -288,6 +423,24 @@ description = "Level-filtered structured logger with ANSI colors."
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:04.47264+00:00"
 updated_at = "2026-04-20T16:29:04.47264+00:00"
+
+[packages."@hatch:math-0.1.3"]
+name = "@hatch:math"
+version = "0.1.3"
+git = "https://github.com/wrenlift/hatch"
+description = "Vector + matrix + quaternion math \u2014 Vec2 / Vec3 / Vec4 / Mat4 / Quat, easings, and scalar helpers. Built for interactive apps and games."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T19:31:40.548962+00:00"
+updated_at = "2026-04-30T19:31:40.548962+00:00"
+
+[packages."@hatch:math-0.1.2"]
+name = "@hatch:math"
+version = "0.1.2"
+git = "https://github.com/wrenlift/hatch"
+description = "Vector + matrix + quaternion math \u2014 Vec2 / Vec3 / Vec4 / Mat4 / Quat, easings, and scalar helpers. Built for interactive apps and games."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T18:32:40.858474+00:00"
+updated_at = "2026-04-30T18:32:40.858474+00:00"
 
 [packages."@hatch:math-0.1.1"]
 name = "@hatch:math"
@@ -415,6 +568,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-19T01:14:29.494179+00:00"
 updated_at = "2026-04-19T01:14:29.494179+00:00"
 
+[packages."@hatch:time-0.1.1"]
+name = "@hatch:time"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Clocks, sleep, and UTC timestamp formatting."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T19:31:45.50976+00:00"
+updated_at = "2026-04-30T19:31:45.50976+00:00"
+
 [packages."@hatch:time-0.1.0"]
 name = "@hatch:time"
 version = "0.1.0"
@@ -459,6 +621,24 @@ description = "Server-rendered, htmx-native web framework for Wren. Router, midd
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-25T14:09:48.115122+00:00"
 updated_at = "2026-04-25T14:09:48.115122+00:00"
+
+[packages."@hatch:window-0.2.6"]
+name = "@hatch:window"
+version = "0.2.6"
+git = "https://github.com/wrenlift/hatch"
+description = "Window + input for `@hatch:game` (and any consumer that wants its own window). winit on native, page-attached canvas on web \u2014 same `Window.create({...})` API, same `pollEvents` / `closeRequested` / `size` surface. Hands `@hatch:gpu` the handle it needs to build a Surface; bring-your-own canvas via `Window.attach(elementId)` on web."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T19:10:11.38474+00:00"
+updated_at = "2026-04-30T19:10:11.38474+00:00"
+
+[packages."@hatch:window-0.2.5"]
+name = "@hatch:window"
+version = "0.2.5"
+git = "https://github.com/wrenlift/hatch"
+description = "Window + input for `@hatch:game` (and any consumer that wants its own window). winit on native, page-attached canvas on web \u2014 same `Window.create({...})` API, same `pollEvents` / `closeRequested` / `size` surface. Hands `@hatch:gpu` the handle it needs to build a Surface; bring-your-own canvas via `Window.attach(elementId)` on web."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-04-30T18:20:43.489397+00:00"
+updated_at = "2026-04-30T18:20:43.489397+00:00"
 
 [packages."@hatch:window-0.2.4"]
 name = "@hatch:window"
