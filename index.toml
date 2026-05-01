@@ -37,6 +37,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-19T01:03:42.125747+00:00"
 updated_at = "2026-04-19T01:03:42.125747+00:00"
 
+[packages."@hatch:assets-0.2.1"]
+name = "@hatch:assets"
+version = "0.2.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Content-addressable assets database with hot-reload. Two backends behind one API \u2014 filesystem-backed on native (Fs.walk + content hashes + Hatch.watchFile), manifest-driven on web (fetch + lazy reads, page ships an `assets-manifest.json`). Edit a shader / texture / config file, see registered subscribers fire."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:06.926149+00:00"
+updated_at = "2026-05-01T08:13:06.926149+00:00"
+
 [packages."@hatch:assets-0.1.0"]
 name = "@hatch:assets"
 version = "0.1.0"
@@ -55,6 +64,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-28T12:43:43.181081+00:00"
 updated_at = "2026-04-28T12:43:43.181081+00:00"
 
+[packages."@hatch:buffers-0.1.1"]
+name = "@hatch:buffers"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Spec coverage for the built-in ByteArray / Float32Array / Float64Array types."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:00.268362+00:00"
+updated_at = "2026-05-01T08:13:00.268362+00:00"
+
 [packages."@hatch:buffers-0.1.0"]
 name = "@hatch:buffers"
 version = "0.1.0"
@@ -64,6 +82,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-23T22:18:18.685259+00:00"
 updated_at = "2026-04-23T22:18:18.685259+00:00"
 
+[packages."@hatch:cli-0.1.1"]
+name = "@hatch:cli"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Clap-style argument parser for Wren command-line tools."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:01.845727+00:00"
+updated_at = "2026-05-01T08:13:01.845727+00:00"
+
 [packages."@hatch:cli-0.1.0"]
 name = "@hatch:cli"
 version = "0.1.0"
@@ -72,6 +99,15 @@ description = "Clap-style argument parser for Wren command-line tools."
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:03.289781+00:00"
 updated_at = "2026-04-20T16:29:03.289781+00:00"
+
+[packages."@hatch:crypto-0.2.1"]
+name = "@hatch:crypto"
+version = "0.2.1"
+git = "https://github.com/wrenlift/hatch"
+description = "AES-256-GCM authenticated encryption + Ed25519 sign/verify + CSPRNG."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:12:55.564978+00:00"
+updated_at = "2026-05-01T08:12:55.564978+00:00"
 
 [packages."@hatch:crypto-0.2.0"]
 name = "@hatch:crypto"
@@ -91,6 +127,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-23T22:18:16.944877+00:00"
 updated_at = "2026-04-23T22:18:16.944877+00:00"
 
+[packages."@hatch:csv-0.1.1"]
+name = "@hatch:csv"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "RFC 4180 CSV parser + serializer. Handles quoting, embedded newlines, header rows."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:04.497183+00:00"
+updated_at = "2026-05-01T08:13:04.497183+00:00"
+
 [packages."@hatch:csv-0.1.0"]
 name = "@hatch:csv"
 version = "0.1.0"
@@ -99,6 +144,15 @@ description = "RFC 4180 CSV parser + serializer. Handles quoting, embedded newli
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-21T17:18:52.958698+00:00"
 updated_at = "2026-04-21T17:18:52.958698+00:00"
+
+[packages."@hatch:datetime-0.1.1"]
+name = "@hatch:datetime"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Timezone-aware DateTime value type, Duration arithmetic, RFC 3339 parse + format."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:05.981618+00:00"
+updated_at = "2026-05-01T08:13:05.981618+00:00"
 
 [packages."@hatch:datetime-0.1.0"]
 name = "@hatch:datetime"
@@ -145,6 +199,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-28T12:43:43.3785+00:00"
 updated_at = "2026-04-28T12:43:43.3785+00:00"
 
+[packages."@hatch:events-0.2.1"]
+name = "@hatch:events"
+version = "0.2.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Signals, EventEmitter, and a cooperative Scheduler for fiber concurrency."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:07.487747+00:00"
+updated_at = "2026-05-01T08:13:07.487747+00:00"
+
 [packages."@hatch:events-0.2.0"]
 name = "@hatch:events"
 version = "0.2.0"
@@ -163,6 +226,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T23:42:13.029958+00:00"
 updated_at = "2026-04-20T23:42:13.029958+00:00"
 
+[packages."@hatch:fmt-0.1.1"]
+name = "@hatch:fmt"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "ANSI color + padding + small numeric helpers for terminal output."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:24.055794+00:00"
+updated_at = "2026-05-01T08:13:24.055794+00:00"
+
 [packages."@hatch:fmt-0.1.0"]
 name = "@hatch:fmt"
 version = "0.1.0"
@@ -172,6 +244,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-19T01:21:37.977631+00:00"
 updated_at = "2026-04-19T01:21:37.977631+00:00"
 
+[packages."@hatch:fp-0.1.1"]
+name = "@hatch:fp"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Fluent + functional collection operations \u2014 map / filter / reduce / flatMap / groupBy / partition / zip / sortBy / scan / chunked / windowed / distinct and the usual suspects."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:27.816388+00:00"
+updated_at = "2026-05-01T08:13:27.816388+00:00"
+
 [packages."@hatch:fp-0.1.0"]
 name = "@hatch:fp"
 version = "0.1.0"
@@ -180,6 +261,15 @@ description = "Fluent + functional collection operations \u2014 map / filter / r
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-23T22:18:04.501443+00:00"
 updated_at = "2026-04-23T22:18:04.501443+00:00"
+
+[packages."@hatch:fs-0.1.1"]
+name = "@hatch:fs"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Filesystem I/O \u2014 read, write, stat, list, walk."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:11.880042+00:00"
+updated_at = "2026-05-01T08:13:11.880042+00:00"
 
 [packages."@hatch:fs-0.1.0"]
 name = "@hatch:fs"
@@ -334,6 +424,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:03.749537+00:00"
 updated_at = "2026-04-20T16:29:03.749537+00:00"
 
+[packages."@hatch:http-0.3.1"]
+name = "@hatch:http"
+version = "0.3.1"
+git = "https://github.com/wrenlift/hatch"
+description = "HTTP/1.1 client with TLS, streaming bodies, and fiber-cooperative reads."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:16.858426+00:00"
+updated_at = "2026-05-01T08:13:16.858426+00:00"
+
 [packages."@hatch:http-0.3.0"]
 name = "@hatch:http"
 version = "0.3.0"
@@ -361,6 +460,24 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:03.93575+00:00"
 updated_at = "2026-04-20T16:29:03.93575+00:00"
 
+[packages."@hatch:image-0.1.2"]
+name = "@hatch:image"
+version = "0.1.2"
+git = "https://github.com/wrenlift/hatch"
+description = "Image encode + decode. PNG / JPG / BMP / WebP in, RGBA8 buffer out \u2014 `Image.decode(bytes)` feeds straight into `@hatch:gpu`'s `Device.uploadImage(image)`, and `Image.encodePng(...)` writes synthesized buffers back out. Backed by the `image` crate."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T09:25:46.867776+00:00"
+updated_at = "2026-05-01T09:25:46.867776+00:00"
+
+[packages."@hatch:image-0.1.1"]
+name = "@hatch:image"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Image encode + decode. PNG / JPG / BMP / WebP in, RGBA8 buffer out \u2014 `Image.decode(bytes)` feeds straight into `@hatch:gpu`'s `Device.uploadImage(image)`, and `Image.encodePng(...)` writes synthesized buffers back out. Backed by the `image` crate."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:15:44.938085+00:00"
+updated_at = "2026-05-01T08:15:44.938085+00:00"
+
 [packages."@hatch:image-0.1.0"]
 name = "@hatch:image"
 version = "0.1.0"
@@ -369,6 +486,15 @@ description = "Image encode + decode for the WrenLift game and tooling stack. PN
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-28T12:43:43.572525+00:00"
 updated_at = "2026-04-28T12:43:43.572525+00:00"
+
+[packages."@hatch:io-0.2.1"]
+name = "@hatch:io"
+version = "0.2.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Byte buffers plus Reader / Writer streams with fiber-cooperative `withTryFn`."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:06.871633+00:00"
+updated_at = "2026-05-01T08:13:06.871633+00:00"
 
 [packages."@hatch:io-0.2.0"]
 name = "@hatch:io"
@@ -415,6 +541,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:04.119101+00:00"
 updated_at = "2026-04-20T16:29:04.119101+00:00"
 
+[packages."@hatch:log-0.1.1"]
+name = "@hatch:log"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Level-filtered structured logger with ANSI colors."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:19.010533+00:00"
+updated_at = "2026-05-01T08:13:19.010533+00:00"
+
 [packages."@hatch:log-0.1.0"]
 name = "@hatch:log"
 version = "0.1.0"
@@ -460,6 +595,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-23T22:18:18.505131+00:00"
 updated_at = "2026-04-23T22:18:18.505131+00:00"
 
+[packages."@hatch:os-0.1.1"]
+name = "@hatch:os"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Process-level primitives: platform, env vars, argv, exit, tty."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:11.986478+00:00"
+updated_at = "2026-05-01T08:13:11.986478+00:00"
+
 [packages."@hatch:os-0.1.0"]
 name = "@hatch:os"
 version = "0.1.0"
@@ -468,6 +612,15 @@ description = "Process-level primitives: platform, env vars, argv, exit, tty."
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:04.654436+00:00"
 updated_at = "2026-04-20T16:29:04.654436+00:00"
+
+[packages."@hatch:path-0.1.1"]
+name = "@hatch:path"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Filesystem path manipulation: join, split, parent, ext, normalize."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:32.932195+00:00"
+updated_at = "2026-05-01T08:13:32.932195+00:00"
 
 [packages."@hatch:path-0.1.0"]
 name = "@hatch:path"
@@ -478,6 +631,24 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:04.839683+00:00"
 updated_at = "2026-04-20T16:29:04.839683+00:00"
 
+[packages."@hatch:physics-0.1.2"]
+name = "@hatch:physics"
+version = "0.1.2"
+git = "https://github.com/wrenlift/hatch"
+description = "Rapier-backed physics. `World2D` and `World3D` from one import \u2014 bodies, colliders, gravity, force / impulse, position + velocity reads. Bundles rapier2d + rapier3d in a single cdylib so games never have to choose between dimensions at the package level. Wires into `@hatch:game` for a step-per-frame physics loop."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:55:53.268927+00:00"
+updated_at = "2026-05-01T08:55:53.268927+00:00"
+
+[packages."@hatch:physics-0.1.1"]
+name = "@hatch:physics"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Rapier-backed physics. `World2D` and `World3D` from one import \u2014 bodies, colliders, gravity, force / impulse, position + velocity reads. Bundles rapier2d + rapier3d in a single cdylib so games never have to choose between dimensions at the package level. Wires into `@hatch:game` for a step-per-frame physics loop."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:16:33.433868+00:00"
+updated_at = "2026-05-01T08:16:33.433868+00:00"
+
 [packages."@hatch:physics-0.1.0"]
 name = "@hatch:physics"
 version = "0.1.0"
@@ -486,6 +657,15 @@ description = "Rapier-backed physics for the WrenLift game framework. World2D an
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-28T12:43:43.786756+00:00"
 updated_at = "2026-04-28T12:43:43.786756+00:00"
+
+[packages."@hatch:proc-0.3.1"]
+name = "@hatch:proc"
+version = "0.3.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Subprocess spawn with lifecycle, streaming IO (blocking + fiber-cooperative), and pipelines."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:20.233101+00:00"
+updated_at = "2026-05-01T08:13:20.233101+00:00"
 
 [packages."@hatch:proc-0.3.0"]
 name = "@hatch:proc"
@@ -514,6 +694,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:05.321799+00:00"
 updated_at = "2026-04-20T16:29:05.321799+00:00"
 
+[packages."@hatch:random-0.1.1"]
+name = "@hatch:random"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Random numbers, sampling, shuffle \u2014 one-shot statics + seedable streams."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:18.926964+00:00"
+updated_at = "2026-05-01T08:13:18.926964+00:00"
+
 [packages."@hatch:random-0.1.0"]
 name = "@hatch:random"
 version = "0.1.0"
@@ -522,6 +711,15 @@ description = "Random numbers, sampling, shuffle \u2014 one-shot statics + seeda
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-21T17:19:00.691723+00:00"
 updated_at = "2026-04-21T17:19:00.691723+00:00"
+
+[packages."@hatch:regex-0.1.1"]
+name = "@hatch:regex"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Compiled regular expressions with capture groups, replace, and split."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:17.678395+00:00"
+updated_at = "2026-05-01T08:13:17.678395+00:00"
 
 [packages."@hatch:regex-0.1.0"]
 name = "@hatch:regex"
@@ -532,6 +730,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:27:05.125073+00:00"
 updated_at = "2026-04-20T16:27:05.125073+00:00"
 
+[packages."@hatch:socket-0.1.1"]
+name = "@hatch:socket"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "TCP listeners + connections and UDP datagram sockets. Blocking and non-blocking variants suitable for fiber-cooperative schedulers."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:23.235939+00:00"
+updated_at = "2026-05-01T08:13:23.235939+00:00"
+
 [packages."@hatch:socket-0.1.0"]
 name = "@hatch:socket"
 version = "0.1.0"
@@ -540,6 +747,24 @@ description = "TCP listeners + connections and UDP datagram sockets. Blocking an
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-23T22:18:17.761353+00:00"
 updated_at = "2026-04-23T22:18:17.761353+00:00"
+
+[packages."@hatch:sqlite-0.1.2"]
+name = "@hatch:sqlite"
+version = "0.1.2"
+git = "https://github.com/wrenlift/hatch"
+description = "Embedded SQLite. `Database.open(path)` returns a connection; prepared statements with named parameter binding, rows iterated as Maps, transactions, error handling. Backed by rusqlite (bundled libsqlite \u2014 no system dependency)."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:55:37.110106+00:00"
+updated_at = "2026-05-01T08:55:37.110106+00:00"
+
+[packages."@hatch:sqlite-0.1.1"]
+name = "@hatch:sqlite"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Embedded SQLite. `Database.open(path)` returns a connection; prepared statements with named parameter binding, rows iterated as Maps, transactions, error handling. Backed by rusqlite (bundled libsqlite \u2014 no system dependency)."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:16:19.2575+00:00"
+updated_at = "2026-05-01T08:16:19.2575+00:00"
 
 [packages."@hatch:sqlite-0.1.0"]
 name = "@hatch:sqlite"
@@ -550,6 +775,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-21T16:45:36.535754+00:00"
 updated_at = "2026-04-21T16:45:36.535754+00:00"
 
+[packages."@hatch:template-0.1.2"]
+name = "@hatch:template"
+version = "0.1.2"
+git = "https://github.com/wrenlift/hatch"
+description = "Jinja/Twig-style templating for HTML and XML with first-class htmx support \u2014 fragments, components, slots, conditionals, loops, response helpers."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:18.048976+00:00"
+updated_at = "2026-05-01T08:13:18.048976+00:00"
+
 [packages."@hatch:template-0.1.1"]
 name = "@hatch:template"
 version = "0.1.1"
@@ -558,6 +792,15 @@ description = "Jinja/Twig-style templating for HTML and XML with first-class htm
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-25T14:10:27.193352+00:00"
 updated_at = "2026-04-25T14:10:27.193352+00:00"
+
+[packages."@hatch:test-0.1.1"]
+name = "@hatch:test"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Tiny test runner for *.spec.wren files."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:15.402714+00:00"
+updated_at = "2026-05-01T08:13:15.402714+00:00"
 
 [packages."@hatch:test-0.1.0"]
 name = "@hatch:test"
@@ -586,6 +829,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:05.631148+00:00"
 updated_at = "2026-04-20T16:29:05.631148+00:00"
 
+[packages."@hatch:toml-0.1.1"]
+name = "@hatch:toml"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "TOML parser and serializer, backed by the Rust `toml` crate."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:40.595804+00:00"
+updated_at = "2026-05-01T08:13:40.595804+00:00"
+
 [packages."@hatch:toml-0.1.0"]
 name = "@hatch:toml"
 version = "0.1.0"
@@ -594,6 +846,15 @@ description = "TOML parser and serializer, backed by the Rust `toml` crate."
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-21T08:53:03.585835+00:00"
 updated_at = "2026-04-21T08:53:03.585835+00:00"
+
+[packages."@hatch:url-0.1.1"]
+name = "@hatch:url"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "URL parser, builder, and percent-encoder."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:36.004656+00:00"
+updated_at = "2026-05-01T08:13:36.004656+00:00"
 
 [packages."@hatch:url-0.1.0"]
 name = "@hatch:url"
@@ -604,6 +865,15 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:05.816411+00:00"
 updated_at = "2026-04-20T16:29:05.816411+00:00"
 
+[packages."@hatch:uuid-0.1.1"]
+name = "@hatch:uuid"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "UUID v4/v5/v7 generation, parsing, and byte conversion."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:32.064364+00:00"
+updated_at = "2026-05-01T08:13:32.064364+00:00"
+
 [packages."@hatch:uuid-0.1.0"]
 name = "@hatch:uuid"
 version = "0.1.0"
@@ -612,6 +882,15 @@ description = "UUID v4/v5/v7 generation, parsing, and byte conversion."
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:27:14.724314+00:00"
 updated_at = "2026-04-20T16:27:14.724314+00:00"
+
+[packages."@hatch:web-0.1.2"]
+name = "@hatch:web"
+version = "0.1.2"
+git = "https://github.com/wrenlift/hatch"
+description = "Server-rendered, htmx-native web framework for Wren. Router, middleware, content-negotiated rendering via @hatch:template, HTTP/1.1 server on top of @hatch:socket."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:19:59.835353+00:00"
+updated_at = "2026-05-01T08:19:59.835353+00:00"
 
 [packages."@hatch:web-0.1.0"]
 name = "@hatch:web"
@@ -657,6 +936,15 @@ description = "Default window provider for the WrenLift game framework \u2014 wi
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-28T12:43:43.984051+00:00"
 updated_at = "2026-04-28T12:43:43.984051+00:00"
+
+[packages."@hatch:zip-0.1.1"]
+name = "@hatch:zip"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Read and write ZIP archives entirely in memory (store / deflate / zstd)."
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-01T08:13:24.165773+00:00"
+updated_at = "2026-05-01T08:13:24.165773+00:00"
 
 [packages."@hatch:zip-0.1.0"]
 name = "@hatch:zip"
