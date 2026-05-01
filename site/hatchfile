@@ -8,15 +8,7 @@ description = "hatch.wrenlift.com — landing page for Hatch. Server-rendered wi
 # while @hatch:http ships @hatch:json@0.1.0 — the bundler rejects
 # two versions of the same module. Catalog fetch shells out via
 # @hatch:proc instead.
-#
-# `@hatch:sqlite` is path-linked while the per-arch bundle work
-# is in flight: published 0.1.3 ships a single macOS dylib (arm64+
-# x86_64 collide on the canonical filename in CI staging — the
-# alphabetically-later x86_64 wins), so an Apple-Silicon host
-# can't dlopen it. Pinning to the local checkout uses the host's
-# arm64 build directly. Flip back to the version pin once the
-# per-os-arch publish lands.
-"@hatch:web"    = { path = "../packages/hatch-web" }
-"@hatch:sqlite" = { path = "../packages/hatch-sqlite" }
+"@hatch:web"    = "0.1.3"
+"@hatch:sqlite" = "0.1.3"
 "@hatch:proc"   = "0.3.1"
 "@hatch:toml"   = "0.1.0"
