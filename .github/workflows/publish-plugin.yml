@@ -179,6 +179,19 @@ jobs:
         if: matrix.use_cross == true
         run: cargo install cross --locked
 
+      - name: Install ALSA dev headers (Linux native)
+        # `wlift_audio` -> `cpal` -> `alsa-sys` needs `libasound2-dev`
+        # at build time. The `cross` container path is covered by
+        # the wren_lift Cross.toml's `pre-build`; this step covers
+        # the *native* ubuntu-latest runner where the matrix builds
+        # x86_64-unknown-linux-gnu directly. Cheap to keep on every
+        # plugin (one apt-get) — only fires for use_cross != true,
+        # so cross-builds don't double-pay.
+        if: runner.os == 'Linux' && matrix.use_cross != true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config
+
       - name: Cache cargo artifacts
         uses: actions/cache@v4
         with:
