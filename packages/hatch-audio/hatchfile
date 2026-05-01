@@ -1,7 +1,7 @@
 name        = "@hatch:audio"
 version     = "0.1.2"
 entry       = "audio"
-description = "General-purpose audio playback for WrenLift apps. cpal-backed output stream + a tiny mixer; WAV decoding via hound. `Audio.context()` opens the device, `Sound.load(bytes)` decodes a clip, `audio.play(sound)` schedules immediate playback against the global mixer. Composes with `@hatch:game`'s frame loop, but works in any context that needs sound."
+description = "General-purpose audio playback for WrenLift apps. cpal-backed output stream + a tiny mixer; WAV decoding via hound. `Audio.context()` opens the device, `Sound.load(bytes)` decodes a clip, `audio.play(sound)` schedules immediate playback against the global mixer."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:audio"
 readme   = "README.md"
 
