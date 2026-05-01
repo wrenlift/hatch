@@ -12,8 +12,17 @@ repo  = "https://github.com/wrenlift/WrenLift.git"
 rev   = "e02ffd76a7b78988be61bfb92076bbbeb592bb6d"
 crate = "wlift_physics"
 
-[native_libs]
-wlift_physics = { macos = "libs/libwlift_physics.dylib", linux = "libs/libwlift_physics.so", windows = "libs/wlift_physics.dll" }
+[native_libs.wlift_physics]
+# CI populates `libs/<label>/`; bare-OS keys are the local-dev
+# fallback. See hatch-sqlite's manifest for the full rationale.
+"macos-arm64"    = "libs/macos-arm64/libwlift_physics.dylib"
+"macos-x86_64"   = "libs/macos-x86_64/libwlift_physics.dylib"
+"linux-x86_64"   = "libs/linux-x86_64/libwlift_physics.so"
+"linux-arm64"    = "libs/linux-arm64/libwlift_physics.so"
+"windows-x86_64" = "libs/windows-x86_64/wlift_physics.dll"
+macos            = "libs/libwlift_physics.dylib"
+linux            = "libs/libwlift_physics.so"
+windows          = "libs/wlift_physics.dll"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

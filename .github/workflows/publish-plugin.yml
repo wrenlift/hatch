@@ -307,21 +307,31 @@ jobs:
           path: dylibs
           pattern: "*"
 
-      - name: Stage dylibs into the package's libs/ dir
+      - name: Stage dylibs into the package's libs/<os-arch>/ dirs
         shell: bash
         run: |
           set -eu
           pkg="${{ needs.resolve.outputs.package }}"
           dest="packages/${pkg}/libs"
           mkdir -p "$dest"
-          # Each per-label dir holds exactly one file; copy it
-          # verbatim — the matrix already produced the canonical
-          # platform-named filename (libwlift_foo.dylib etc.).
+          # Each artifact uploaded by the matrix carries the
+          # canonical platform-named filename (libwlift_foo.dylib
+          # / libwlift_foo.so / wlift_foo.dll). macOS arm64 and
+          # macOS x86_64 produce the SAME filename in different
+          # dirs, as do Linux x86_64 and Linux arm64 — flat copy
+          # would clobber one with the other (the alphabetically-
+          # later dir wins). Stage each label into its own
+          # `libs/<label>/` so the per-os-arch keys in the
+          # hatchfile resolve to distinct paths and
+          # `pack_bundled_native_libs` embeds every variant as a
+          # separate `<lib>__<label>` section.
           for d in dylibs/*/; do
-            cp "$d"/* "$dest/"
+            label=$(basename "$d")
+            mkdir -p "$dest/$label"
+            cp "$d"/* "$dest/$label/"
           done
-          echo "::group::final libs/"
-          ls -la "$dest"
+          echo "::group::final libs/ tree"
+          find "$dest" -type f
           echo "::endgroup::"
 
       - name: Install hatch + wlift CLI

@@ -36,8 +36,23 @@ crate = "wlift_sqlite"
 # and strips this manifest entry — downstream consumers load the
 # dylib from the bundled bytes, not the filesystem.
 
-[native_libs]
-wlift_sqlite = { macos = "libs/libwlift_sqlite.dylib", linux = "libs/libwlift_sqlite.so", windows = "libs/wlift_sqlite.dll" }
+[native_libs.wlift_sqlite]
+# Per-os-arch keys are populated by `publish-plugin.yml`'s build
+# matrix — each cross-build artefact lands in `libs/<label>/`
+# and the publish-time packer embeds every variant as a separate
+# `wlift_sqlite__<label>` section the runtime extractor scores
+# against the host. Bare-OS keys point at the flat `libs/`
+# location so local `cargo build && cp target/release/...
+# packages/hatch-sqlite/libs/` dev loops keep working —
+# `resolve_for(os, arch)` tries the more-specific key first.
+"macos-arm64"    = "libs/macos-arm64/libwlift_sqlite.dylib"
+"macos-x86_64"   = "libs/macos-x86_64/libwlift_sqlite.dylib"
+"linux-x86_64"   = "libs/linux-x86_64/libwlift_sqlite.so"
+"linux-arm64"    = "libs/linux-arm64/libwlift_sqlite.so"
+"windows-x86_64" = "libs/windows-x86_64/wlift_sqlite.dll"
+macos            = "libs/libwlift_sqlite.dylib"
+linux            = "libs/libwlift_sqlite.so"
+windows          = "libs/wlift_sqlite.dll"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

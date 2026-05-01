@@ -38,10 +38,20 @@ crate     = "wlift_gpu"
 # `wlift_gpu_web.wasm` matching the `wasm = …` entry below.
 web_crate = "wlift_gpu_web"
 
-# Per-platform dylib paths. CI populates libs/ via the
-# plugin_source build.
-[native_libs]
-wlift_gpu = { macos = "libs/libwlift_gpu.dylib", linux = "libs/libwlift_gpu.so", windows = "libs/wlift_gpu.dll", wasm = "libs/wlift_gpu_web.wasm" }
+# Per-platform dylib paths. CI (publish-plugin.yml) populates
+# `libs/<label>/` per matrix entry; bare-OS keys are the local-
+# dev fallback for hand-copied builds. See hatch-sqlite's
+# manifest for the full rationale.
+[native_libs.wlift_gpu]
+"macos-arm64"    = "libs/macos-arm64/libwlift_gpu.dylib"
+"macos-x86_64"   = "libs/macos-x86_64/libwlift_gpu.dylib"
+"linux-x86_64"   = "libs/linux-x86_64/libwlift_gpu.so"
+"linux-arm64"    = "libs/linux-arm64/libwlift_gpu.so"
+"windows-x86_64" = "libs/windows-x86_64/wlift_gpu.dll"
+macos            = "libs/libwlift_gpu.dylib"
+linux            = "libs/libwlift_gpu.so"
+windows          = "libs/wlift_gpu.dll"
+wasm             = "libs/wlift_gpu_web.wasm"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }

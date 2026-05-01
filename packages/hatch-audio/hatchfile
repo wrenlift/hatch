@@ -12,8 +12,18 @@ repo  = "https://github.com/wrenlift/WrenLift.git"
 rev   = "e02ffd76a7b78988be61bfb92076bbbeb592bb6d"
 crate = "wlift_audio"
 
-[native_libs]
-wlift_audio = { macos = "libs/libwlift_audio.dylib", linux = "libs/libwlift_audio.so", windows = "libs/wlift_audio.dll" }
+[native_libs.wlift_audio]
+# CI (publish-plugin.yml) populates `libs/<label>/`; bare-OS keys
+# are the local-dev fallback for hand-copied builds. See
+# hatch-sqlite's manifest for the full rationale.
+"macos-arm64"    = "libs/macos-arm64/libwlift_audio.dylib"
+"macos-x86_64"   = "libs/macos-x86_64/libwlift_audio.dylib"
+"linux-x86_64"   = "libs/linux-x86_64/libwlift_audio.so"
+"linux-arm64"    = "libs/linux-arm64/libwlift_audio.so"
+"windows-x86_64" = "libs/windows-x86_64/wlift_audio.dll"
+macos            = "libs/libwlift_audio.dylib"
+linux            = "libs/libwlift_audio.so"
+windows          = "libs/wlift_audio.dll"
 
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }
