@@ -1,4 +1,4 @@
-Window and input for `@hatch:game` and any other consumer that wants its own window. `winit` on native, page-attached canvas on web — same `Window.create({...})` call, same `pollEvents` / `closeRequested` / `size` surface. Hands `@hatch:gpu` the platform handle it needs to build a `Surface`; on web you can bring your own canvas via `Window.attach(elementId)`.
+Window and input for any WrenLift app. `winit` on native, page-attached canvas on web — same `Window.create({...})` call, same `pollEvents` / `closeRequested` / `size` surface across targets. Hands `@hatch:gpu` the platform handle it needs to build a `Surface`; on web you can bring your own canvas via `Window.attach(elementId)`.
 
 ## Overview
 

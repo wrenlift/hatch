@@ -9,7 +9,7 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-rev   = "ac32d4fdd8aa3db58aadfa2e6131bb77008059aa"
+rev   = "fd7448627da0327a2b0765440b2a7e90b49ca441"
 crate = "wlift_image"
 
 [native_libs.wlift_image]

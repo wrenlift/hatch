@@ -1,4 +1,4 @@
-Audio playback for the WrenLift game framework. A cpal-backed output stream feeds a small voice mixer; WAV bytes decode through hound. `Audio.context()` opens the device, `Sound.load(bytes)` decodes a clip, and `Audio.play(sound)` schedules an immediate voice on the global mixer. Wires into `@hatch:game` automatically.
+General-purpose audio playback for WrenLift apps. A cpal-backed output stream feeds a small voice mixer; WAV bytes decode through hound. `Audio.context()` opens the device, `Sound.load(bytes)` decodes a clip, and `Audio.play(sound)` schedules an immediate voice on the global mixer. Composes with `@hatch:game` for game audio, but works in any context that needs sound.
 
 ## Overview
 
