@@ -1,28 +1,30 @@
-// @hatch:time — clocks and UTC timestamp formatting.
+// `@hatch:time` — clocks and UTC timestamp formatting.
 //
-//   import "@hatch:time" for Time, Clock
+// ```wren
+// import "@hatch:time" for Time, Clock
 //
-//   // Clocks
-//   Clock.unix                    // Num seconds since 1970-01-01
-//   Clock.mono                    // Num monotonic seconds (for
-//                                 // durations, not wall-clock)
-//   Clock.sleep(0.5)              // block 500ms
-//   Clock.sleepMs(250)
+// // Clocks
+// Clock.unix                    // Num seconds since 1970-01-01
+// Clock.mono                    // Num monotonic seconds (for
+//                               // durations, not wall-clock)
+// Clock.sleep(0.5)              // block 500ms
+// Clock.sleepMs(250)
 //
-//   var elapsed = Clock.elapsed {
-//     doWork()
-//   }                             // Num seconds
+// var elapsed = Clock.elapsed {
+//   doWork()
+// }                             // Num seconds
 //
-//   // Point in time — instances of Time
-//   var t = Time.now              // now
-//   var t = Time.fromUnix(1776700800)
+// // Point in time — instances of Time
+// var t = Time.now              // now
+// var t = Time.fromUnix(1776700800)
 //
-//   t.year / t.month / t.day
-//   t.hour / t.minute / t.second
-//   t.millisecond / t.weekday     // weekday: 0=Mon … 6=Sun
-//   t.unix                        // Num seconds since epoch
-//   t.iso                         // "2026-04-20T00:00:00Z"
-//   t.format("YYYY-MM-DD HH:mm:ss")
+// t.year / t.month / t.day
+// t.hour / t.minute / t.second
+// t.millisecond / t.weekday     // weekday: 0=Mon … 6=Sun
+// t.unix                        // Num seconds since epoch
+// t.iso                         // "2026-04-20T00:00:00Z"
+// t.format("YYYY-MM-DD HH:mm:ss")
+// ```
 //
 // UTC only for v0.1. Localtime needs tz data we don't ship yet.
 

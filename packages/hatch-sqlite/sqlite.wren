@@ -1,39 +1,41 @@
-// @hatch:sqlite — embedded SQLite.
+// `@hatch:sqlite` — embedded SQLite.
 //
-//   import "@hatch:sqlite" for Database
+// ```wren
+// import "@hatch:sqlite" for Database
 //
-//   var db = Database.openMemory()
-//   db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")
-//   db.execute("INSERT INTO users (name, age) VALUES (?, ?)", ["alice", 30])
-//   db.execute("INSERT INTO users (name, age) VALUES (?, ?)", ["bob",   25])
+// var db = Database.openMemory()
+// db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")
+// db.execute("INSERT INTO users (name, age) VALUES (?, ?)", ["alice", 30])
+// db.execute("INSERT INTO users (name, age) VALUES (?, ?)", ["bob",   25])
 //
-//   for (row in db.query("SELECT * FROM users WHERE age > ? ORDER BY id", [20])) {
-//     System.print("%(row["id"]) — %(row["name"]) (%(row["age"]))")
-//   }
+// for (row in db.query("SELECT * FROM users WHERE age > ? ORDER BY id", [20])) {
+//   System.print("%(row["id"]) — %(row["name"]) (%(row["age"]))")
+// }
 //
-//   // Named parameters:
-//   db.execute("UPDATE users SET age = :age WHERE name = :name", {
-//     "age":  31,
-//     "name": "alice"
-//   })
+// // Named parameters:
+// db.execute("UPDATE users SET age = :age WHERE name = :name", {
+//   "age":  31,
+//   "name": "alice"
+// })
 //
-//   // Transaction helper — commits on success, rolls back on abort.
-//   db.transaction {
-//     db.execute("INSERT INTO users (name) VALUES (?)", ["carol"])
-//     db.execute("INSERT INTO users (name) VALUES (?)", ["dan"])
-//   }
+// // Transaction helper — commits on success, rolls back on abort.
+// db.transaction {
+//   db.execute("INSERT INTO users (name) VALUES (?)", ["carol"])
+//   db.execute("INSERT INTO users (name) VALUES (?)", ["dan"])
+// }
 //
-//   db.close
+// db.close
+// ```
 //
-// Type mapping:
+// ## Type mapping
 //
-//   SQL value        Wren value
-//   ---------        ----------
-//   NULL             null
-//   INTEGER          Num  (beware: >2^53 loses precision)
-//   REAL             Num
-//   TEXT             String
-//   BLOB             List<Num>  (each byte 0..=255)
+// | SQL value | Wren value                              |
+// |-----------|-----------------------------------------|
+// | `NULL`    | `null`                                  |
+// | `INTEGER` | `Num` (beware: `>2^53` loses precision) |
+// | `REAL`    | `Num`                                   |
+// | `TEXT`    | `String`                                |
+// | `BLOB`    | `List<Num>` (each byte `0..=255`)       |
 //
 // Backed by the `rusqlite` crate with bundled SQLite. The plugin
 // ships as a platform-specific dylib inside this package's
@@ -125,11 +127,12 @@ class Database {
   inTransaction   { SqliteCore.inTransaction(_id) }
 
   // --- Transaction helper -----------------------------------------------
-  ///
-  ///   db.transaction {
-  ///     db.execute("INSERT ...")
-  ///     db.execute("INSERT ...")
-  ///   }
+  /// ```wren
+  /// db.transaction {
+  ///   db.execute("INSERT ...")
+  ///   db.execute("INSERT ...")
+  /// }
+  /// ```
   ///
   /// Commits if the block returns normally; rolls back if the
   /// block aborts. The abort propagates to the caller so failing

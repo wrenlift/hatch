@@ -1,31 +1,34 @@
-// @hatch:math — vectors, matrices, quaternions, easings.
+// `@hatch:math` — vectors, matrices, quaternions, easings.
 //
-//   import "@hatch:math" for Vec2, Vec3, Vec4, Mat4, Quat, Math, Ease
+// ```wren
+// import "@hatch:math" for Vec2, Vec3, Vec4, Mat4, Quat, Math, Ease
 //
-//   var p   = Vec3.new(1, 2, 3)
-//   var v   = Vec3.new(0, 9.8, 0)
-//   var dt  = 0.016
-//   var pNext = p + v * dt
+// var p   = Vec3.new(1, 2, 3)
+// var v   = Vec3.new(0, 9.8, 0)
+// var dt  = 0.016
+// var pNext = p + v * dt
 //
-//   var m = Mat4.translation(1, 0, 0) * Mat4.rotationY(Math.PI / 4)
-//   var q = Quat.fromAxisAngle(Vec3.unitY, Math.PI / 2)
+// var m = Mat4.translation(1, 0, 0) * Mat4.rotationY(Math.PI / 4)
+// var q = Quat.fromAxisAngle(Vec3.unitY, Math.PI / 2)
 //
-//   var eased = Ease.inOutQuad(0.35)
+// var eased = Ease.inOutQuad(0.35)
+// ```
 //
-// Conventions
-// -----------
-// * Row-major `Mat4` storage — `m.at(row, col)` / `m.set(row, col, v)`.
-// * Right-handed coordinates with OpenGL-style clip space
+// ## Conventions
+//
+// - Row-major `Mat4` storage — `m.at(row, col)` /
+//   `m.set(row, col, v)`.
+// - Right-handed coordinates with OpenGL-style clip space
 //   (`-1..1` depth, `y` up) for `Mat4.perspective` and `lookAt`.
-// * All factory names spell out intent — `Vec3.unitY` rather than
-//   `Vec3.up`, `Mat4.rotationX` rather than `Mat4.rx`.
-// * Every binary op (`+`, `*`, etc.) returns a fresh instance.
+// - All factory names spell out intent — `Vec3.unitY` rather
+//   than `Vec3.up`, `Mat4.rotationX` rather than `Mat4.rx`.
+// - Every binary op (`+`, `*`, etc.) returns a fresh instance.
 //   For hot loops with fixed buffers, every type exposes
 //   in-place companions: `addInto(a, b)`, `mulInto(a, s)` etc.,
 //   which write into `this` without allocating.
-// * `==` is exact bit-equality. Use `Math.approxEq(a, b, eps)` or
-//   the `approxEq(other[, eps])` method on each type for fuzzy
-//   comparison under accumulated floating-point error.
+// - `==` is exact bit-equality. Use `Math.approxEq(a, b, eps)`
+//   or the `approxEq(other[, eps])` method on each type for
+//   fuzzy comparison under accumulated floating-point error.
 
 /// Scalar math helpers and constants — `Math.PI`, `Math.TAU`,
 /// `Math.lerp(a, b, t)`, `Math.clamp(x, lo, hi)`, etc. Pure

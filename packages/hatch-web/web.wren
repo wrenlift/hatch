@@ -1,27 +1,28 @@
-// @hatch:web — server-rendered, htmx-native web framework.
+// `@hatch:web` — server-rendered, htmx-native web framework.
 //
-// The shape:
+// ```wren
+// import "@hatch:web" for App
+// import "@hatch:template" for Template
 //
-//   import "@hatch:web" for App
-//   import "@hatch:template" for Template
+// var tpl = Template.parse("<h1>Hello {{ name }}</h1>")
+// var app = App.new()
+// app.get("/")            {|req| req.render(tpl, { "name": "world" }) }
+// app.get("/hi/:who")     {|req| "Hi %(req.param("who"))!" }
+// app.listen("127.0.0.1:3000")
+// ```
 //
-//   var tpl = Template.parse("<h1>Hello {{ name }}</h1>")
-//   var app = App.new()
-//   app.get("/")            {|req| req.render(tpl, { "name": "world" }) }
-//   app.get("/hi/:who")     {|req| "Hi %(req.param("who"))!" }
-//   app.listen("127.0.0.1:3000")
+// Routes receive a `Request` and may return:
 //
-// Routes receive a Request and may return:
-//   * a String             — 200 text/html body
-//   * a Response           — full control
-//   * an HxResponse        — @hatch:template builder
-//   * null                 — 204 No Content
+// - a `String` — 200 `text/html` body.
+// - a `Response` — full control.
+// - an `HxResponse` — `@hatch:template` builder.
+// - `null` — 204 No Content.
 //
-// Middleware is a Fn taking (req, next): next.call(req) forwards,
-// anything else short-circuits. Middleware run outermost-first,
-// handler innermost.
+// Middleware is a `Fn` taking `(req, next)`: `next.call(req)`
+// forwards, anything else short-circuits. Middleware run
+// outermost-first, handler innermost.
 //
-// HTTP/1.1 cleartext on top of @hatch:socket — no TLS, no h2,
+// HTTP/1.1 cleartext on top of `@hatch:socket` — no TLS, no h2,
 // no WebSockets yet. Content-Length bodies only. One request
 // per connection (no keep-alive). Pipelining and keep-alive
 // are planned.
@@ -81,8 +82,10 @@ class Request {
 
   /// Add a one-shot flash visible to the next request.
   ///
-  ///   req.setFlash("notice", "Saved!")
-  ///   return Response.redirect("/")
+  /// ```wren
+  /// req.setFlash("notice", "Saved!")
+  /// return Response.redirect("/")
+  /// ```
   setFlash(key, value) {
     if (_flashNext == null) _flashNext = {}
     _flashNext[key] = value
@@ -90,11 +93,14 @@ class Request {
 
   /// Fragment-scoped stylesheet. Lazily created on first access.
   /// Styles added here are injected inline with the fragment's
-  /// HTML, so htmx swaps bring them along without leaking globally.
+  /// HTML, so htmx swaps bring them along without leaking
+  /// globally.
   ///
-  ///   var btn = Css.tw("bg-blue-500 text-white px-4 py-2 rounded")
-  ///   req.style(btn)                               // register
-  ///   return "<button class='%(btn.className)'>ok</button>"
+  /// ```wren
+  /// var btn = Css.tw("bg-blue-500 text-white px-4 py-2 rounded")
+  /// req.style(btn)                               // register
+  /// return "<button class='%(btn.className)'>ok</button>"
+  /// ```
   fragmentSheet {
     if (_fragSheet == null) _fragSheet = Stylesheet.new()
     return _fragSheet
@@ -107,14 +113,17 @@ class Request {
     return s
   }
 
-  /// Validate the form body against a Form schema. Equivalent to
-  /// `form.validate(req.form)` — just spares the handler one line.
+  /// Validate the form body against a `Form` schema. Equivalent
+  /// to `form.validate(req.form)` — just spares the handler one
+  /// line.
   ///
-  ///   app.post("/signup") {|req|
-  ///     var r = req.validate(signup)
-  ///     if (!r.valid) return renderWithErrors(req, r)
-  ///     ...
-  ///   }
+  /// ```wren
+  /// app.post("/signup") {|req|
+  ///   var r = req.validate(signup)
+  ///   if (!r.valid) return renderWithErrors(req, r)
+  ///   ...
+  /// }
+  /// ```
   validate(form) { form.validate(this.form) }
 
   /// Internal — App.handle sets this so render() can include the
@@ -371,9 +380,11 @@ class Router {
 
   /// Mount a sub-router at a prefix.
   ///
-  ///   var admin = Router.new_("/admin")
-  ///   admin.get("/users") {|req| ... }
-  ///   app.mount(admin)
+  /// ```wren
+  /// var admin = Router.new_("/admin")
+  /// admin.get("/users") {|req| ... }
+  /// app.mount(admin)
+  /// ```
   mount(subRouter) {
     for (r in subRouter.routes) _routes.add(r)
   }
@@ -455,13 +466,16 @@ class App {
     _middleware = []
   }
 
-  /// App-wide stylesheet. Styles registered here are injected into
-  /// the <head> of every full-page response via `req.render`, deduped
-  /// by class name. htmx fragment responses skip it (the page already
-  /// has it; repeating would bloat the swap payload).
+  /// App-wide stylesheet. Styles registered here are injected
+  /// into the `<head>` of every full-page response via
+  /// `req.render`, deduped by class name. htmx fragment responses
+  /// skip it (the page already has it; repeating would bloat the
+  /// swap payload).
   ///
-  ///   var base = Css.tw("font-sans text-gray-900 leading-normal")
-  ///   app.globalCss(base)
+  /// ```wren
+  /// var base = Css.tw("font-sans text-gray-900 leading-normal")
+  /// app.globalCss(base)
+  /// ```
   globalCss(style) {
     _globalSheet.add(style)
     return this
@@ -926,17 +940,19 @@ class ByteBuf_ {
 
 /// ── Static file serving ────────────────────────────────────────────────
 ///
-///   app.use(Static.serve("/assets", "./public"))
+/// ```wren
+/// app.use(Static.serve("/assets", "./public"))
+/// ```
 ///
-/// Serves GET/HEAD requests whose path starts with the URL prefix.
-/// Maps them to files under `root`. `..` in the path is rejected
-/// out of hand. On a miss, hands off to the next middleware so
-/// your dynamic routes still win for unknown paths — a 404 only
-/// comes from the router, not here.
+/// Serves `GET` / `HEAD` requests whose path starts with the URL
+/// prefix. Maps them to files under `root`. `..` in the path is
+/// rejected out of hand. On a miss, hands off to the next
+/// middleware so your dynamic routes still win for unknown paths
+/// — a 404 only comes from the router, not here.
 ///
-/// Content-Type is inferred from extension. A tiny MIME table
+/// `Content-Type` is inferred from extension. A tiny MIME table
 /// covers the common web assets; unknown extensions fall back to
-/// application/octet-stream.
+/// `application/octet-stream`.
 
 class Static {
   static serve(urlPrefix, root) {
@@ -1029,11 +1045,14 @@ class Static {
 
 /// ── Signed-cookie session ──────────────────────────────────────────────
 ///
-///   app.use(Session.cookie("my-secret"))
+/// ```wren
+/// app.use(Session.cookie("my-secret"))
+/// ```
 ///
 /// Parses the `_session` cookie on the way in (verifies HMAC,
-/// decodes JSON) and attaches a mutable Map as `req.session`.
-/// On the way out, re-serializes + signs and writes a Set-Cookie.
+/// decodes JSON) and attaches a mutable `Map` as `req.session`.
+/// On the way out, re-serializes + signs and writes a
+/// `Set-Cookie`.
 ///
 /// HMAC-SHA256 over the payload. Constant-time comparison on
 /// verify so an attacker can't probe for byte-wise matches.
@@ -1181,18 +1200,21 @@ class Session {
 
 /// ── CSRF protection ────────────────────────────────────────────────────
 ///
-///   app.use(Session.cookie("..."))   // required — CSRF lives in session
-///   app.use(Csrf.middleware)
+/// ```wren
+/// app.use(Session.cookie("..."))   // required — CSRF lives in session
+/// app.use(Csrf.middleware)
+/// ```
 ///
 /// On any request with a session, ensures `session["_csrf"]` is
 /// populated with a fresh random token. Exposes it at
 /// `req.csrfToken` so templates / handlers can embed it.
 ///
-/// For state-changing methods (POST / PUT / PATCH / DELETE), the
-/// middleware demands a matching token in either the form body
-/// (field "_csrf") or the "X-CSRF-Token" header. Missing or
-/// mismatched → 403. SameSite=Lax on the session cookie covers
-/// most of the CSRF risk already; this is defense in depth.
+/// For state-changing methods (`POST` / `PUT` / `PATCH` /
+/// `DELETE`), the middleware demands a matching token in either
+/// the form body (field `"_csrf"`) or the `"X-CSRF-Token"`
+/// header. Missing or mismatched → 403. `SameSite=Lax` on the
+/// session cookie covers most of the CSRF risk already; this is
+/// defense in depth.
 
 class Csrf {
   static TOKEN_BYTES_ { 32 }
@@ -1277,16 +1299,20 @@ class Csrf {
 
 /// ── Flash messages ─────────────────────────────────────────────────────
 ///
-///   // in handler
-///   req.flash["notice"] = "Signed in as %(user.name)"
-///   return Response.redirect("/")
+/// ```wren
+/// // in handler
+/// req.flash["notice"] = "Signed in as %(user.name)"
+/// return Response.redirect("/")
+/// ```
 ///
-///   // in template
-///   {% if flash.containsKey("notice") %}
-///     <div class="flash">{{ flash["notice"] }}</div>
-///   {% endif %}
+/// ```jinja
+/// {# in template #}
+/// {% if flash.containsKey("notice") %}
+///   <div class="flash">{{ flash["notice"] }}</div>
+/// {% endif %}
+/// ```
 ///
-/// The Session middleware already hoists `_flash` out of the
+/// The `Session` middleware already hoists `_flash` out of the
 /// session on the way in and stashes anything written during the
 /// handler back under `_flash` on the way out, so a one-shot
 /// notice survives exactly one redirect and then evaporates.

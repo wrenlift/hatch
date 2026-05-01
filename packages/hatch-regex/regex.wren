@@ -1,31 +1,33 @@
-// @hatch:regex — compiled regular expressions.
+// `@hatch:regex` — compiled regular expressions.
 //
-//   import "@hatch:regex" for Regex
+// ```wren
+// import "@hatch:regex" for Regex
 //
-//   // Compile once, reuse.
-//   var email = Regex.compile("(\\w+)@(\\w+\\.\\w+)")
+// // Compile once, reuse.
+// var email = Regex.compile("(\\w+)@(\\w+\\.\\w+)")
 //
-//   email.isMatch("ping@host.io")              // true
-//   email.find("ping@host.io").text            // "ping@host.io"
-//   email.find("ping@host.io").groups          // ["ping@host.io", "ping", "host.io"]
+// email.isMatch("ping@host.io")              // true
+// email.find("ping@host.io").text            // "ping@host.io"
+// email.find("ping@host.io").groups          // ["ping@host.io", "ping", "host.io"]
 //
-//   // Flags as a second arg: i, m, s, U, x.
-//   Regex.compile("hello", "i").isMatch("HELLO")   // true
+// // Flags as a second arg: i, m, s, U, x.
+// Regex.compile("hello", "i").isMatch("HELLO")   // true
 //
-//   // Replace — $1, $2, $name, $$ available in the replacement.
-//   Regex.compile("(\\w+)").replaceAll("hi bob", "<$1>")  // "<hi> <bob>"
+// // Replace — $1, $2, $name, $$ available in the replacement.
+// Regex.compile("(\\w+)").replaceAll("hi bob", "<$1>")  // "<hi> <bob>"
 //
-//   // Split.
-//   Regex.compile(",\\s*").split("a, b ,c,   d")          // ["a", "b", "c", "d"]
+// // Split.
+// Regex.compile(",\\s*").split("a, b ,c,   d")          // ["a", "b", "c", "d"]
 //
-//   // Escape user input before embedding in a pattern.
-//   Regex.escape("1.0")       // "1\.0"
+// // Escape user input before embedding in a pattern.
+// Regex.escape("1.0")       // "1\.0"
+// ```
 //
-// `Regex` instances hold a numeric id into a runtime registry. The
-// runtime keeps the compiled automaton alive until `regex.free` is
-// called (or the VM exits). For short scripts you can leak — for
-// long-running servers that build lots of patterns, call `free`
-// when done.
+// `Regex` instances hold a numeric id into a runtime registry.
+// The runtime keeps the compiled automaton alive until
+// `regex.free` is called (or the VM exits). For short scripts
+// you can leak — for long-running servers that build lots of
+// patterns, call `free` when done.
 //
 // Backed by the `regex` crate (linear-time NFA, Unicode-aware).
 // Pattern syntax: docs.rs/regex/latest/regex/#syntax — it's a

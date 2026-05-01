@@ -1,43 +1,51 @@
-// @hatch:http — synchronous HTTP client.
+// `@hatch:http` — synchronous HTTP client with TLS, streaming
+// bodies, and fiber-cooperative reads.
 //
-//   import "@hatch:http" for Http
+// ```wren
+// import "@hatch:http" for Http
 //
-//   // One-shot verb helpers
-//   var res = Http.get("https://api.example.com/users")
-//   var res = Http.post("https://api.example.com/users", {
-//     "json": {"name": "alice"}
-//   })
-//   var res = Http.delete(url)
-//   var res = Http.put(url, {"body": "raw text"})
-//   var res = Http.patch(url, {"json": {"done": true}})
+// // One-shot verb helpers
+// var res = Http.get("https://api.example.com/users")
+// var res = Http.post("https://api.example.com/users", {
+//   "json": {"name": "alice"}
+// })
+// var res = Http.delete(url)
+// var res = Http.put(url, {"body": "raw text"})
+// var res = Http.patch(url, {"json": {"done": true}})
+// ```
 //
-//   // Generic: Http.request(method, url, options)
-//   //
-//   // Options map accepts:
-//   //   "headers" : Map<String, String | List<String>>
-//   //   "query"   : Map<String, String|Num>  — appended to URL
-//   //   "body"    : String                    — raw body
-//   //   "json"    : any                       — JSON.encode + sets
-//   //                                           Content-Type
-//   //   "form"    : Map                       — urlencoded body +
-//   //                                           Content-Type
-//   //   "bearer"  : String                    — Authorization: Bearer …
-//   //   "basicAuth": [user, password]          — Authorization: Basic …
-//   //   "userAgent": String                    — overrides default
-//   //   "accept"  : String                    — shortcut for Accept header
-//   //   "timeout" : Num seconds               — default 30
+// ## Generic dispatch
 //
-//   // Response shape
-//   res.status                 // 200
-//   res.ok                     // 200 <= status < 300
-//   res.body                   // String (response text)
-//   res.json                   // parsed via @hatch:json
-//   res.header("content-type") // first value, case-insensitive
-//   res.headers("set-cookie")  // List<String>, case-insensitive
-//   res.headerMap              // raw Map<String, List<String>>
+// `Http.request(method, url, options)` underneath the verb
+// helpers accepts:
+//
+// | Option       | Type                              | Notes                                                |
+// |--------------|-----------------------------------|------------------------------------------------------|
+// | `headers`    | `Map<String, String \| List>`     | Case-insensitive keys.                               |
+// | `query`      | `Map<String, String \| Num>`      | Appended to the URL.                                 |
+// | `body`       | `String`                          | Raw bytes.                                           |
+// | `json`       | `any`                             | `JSON.encode`-d, sets `Content-Type`.                |
+// | `form`       | `Map`                             | URL-encoded body, sets `Content-Type`.               |
+// | `bearer`     | `String`                          | Sets `Authorization: Bearer …`.                      |
+// | `basicAuth`  | `[user, password]`                | Sets `Authorization: Basic …`.                       |
+// | `userAgent`  | `String`                          | Overrides the default UA.                            |
+// | `accept`     | `String`                          | Shortcut for the `Accept` header.                    |
+// | `timeout`    | `Num`                             | Seconds. Default `30`.                               |
+//
+// ## Response shape
+//
+// ```wren
+// res.status                 // 200
+// res.ok                     // 200 <= status < 300
+// res.body                   // String (response text)
+// res.json                   // parsed via @hatch:json
+// res.header("content-type") // first value, case-insensitive
+// res.headers("set-cookie")  // List<String>, case-insensitive
+// res.headerMap              // raw Map<String, List<String>>
+// ```
 //
 // Transport errors (DNS, connect, TLS, timeout) and malformed
-// headers abort the fiber — wrap in `Fiber.new { ... }.try()` to
+// headers abort the fiber — wrap in `Fiber.new { … }.try()` to
 // catch. Native-code panics from transitive Rust deps likewise
 // surface as fiber aborts, not process exits.
 
@@ -112,15 +120,17 @@ class Response {
 /// SSE feeds, chunked endpoints — anything where pulling the whole
 /// body into memory is wrong.
 ///
-///   var r = Http.stream("GET", "https://…/big-file")
-///   r.status               // 200
-///   r.header("content-type")
-///   var line = r.body.readLine
-///   while (line != null) {
-///     // ...
-///     line = r.body.readLine
-///   }
-///   r.close                // frees the underlying connection; idempotent
+/// ```wren
+/// var r = Http.stream("GET", "https://…/big-file")
+/// r.status               // 200
+/// r.header("content-type")
+/// var line = r.body.readLine
+/// while (line != null) {
+///   // ...
+///   line = r.body.readLine
+/// }
+/// r.close                // frees the underlying connection; idempotent
+/// ```
 class StreamingResponse {
   construct new_(id, status, headers) {
     _id      = id

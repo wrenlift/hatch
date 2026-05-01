@@ -1,32 +1,34 @@
-// @hatch:ecs — entity-component-system for Wren.
+// `@hatch:ecs` — entity-component-system for Wren.
 //
-//   import "@hatch:ecs" for World, Schedule
+// ```wren
+// import "@hatch:ecs" for World, Schedule
 //
-//   class Position { construct new(x, y) { _x = x; _y = y; }; ... }
-//   class Velocity { construct new(x, y) { _x = x; _y = y; }; ... }
-//   class Sprite   { construct new(image) { _image = image }; ... }
+// class Position { construct new(x, y) { _x = x; _y = y; }; ... }
+// class Velocity { construct new(x, y) { _x = x; _y = y; }; ... }
+// class Sprite   { construct new(image) { _image = image }; ... }
 //
-//   var world = World.new()
-//   var hero  = world.spawnWith([
-//     Position.new(100, 100),
-//     Velocity.new(50, 0),
-//     Sprite.new(heroTexture),
-//   ])
+// var world = World.new()
+// var hero  = world.spawnWith([
+//   Position.new(100, 100),
+//   Velocity.new(50, 0),
+//   Sprite.new(heroTexture),
+// ])
 //
-//   var schedule = Schedule.new()
-//   schedule.add("physics") {|w, ctx|
-//     for (e in w.query.with(Position).with(Velocity).iterate) {
-//       var p = w.get(e, Position)
-//       var v = w.get(e, Velocity)
-//       p.x = p.x + v.x * ctx["dt"]
-//       p.y = p.y + v.y * ctx["dt"]
-//     }
+// var schedule = Schedule.new()
+// schedule.add("physics") {|w, ctx|
+//   for (e in w.query.with(Position).with(Velocity).iterate) {
+//     var p = w.get(e, Position)
+//     var v = w.get(e, Velocity)
+//     p.x = p.x + v.x * ctx["dt"]
+//     p.y = p.y + v.y * ctx["dt"]
 //   }
-//   schedule.add("render") {|w, ctx| ... }
-//   schedule.after("render", "physics")
+// }
+// schedule.add("render") {|w, ctx| ... }
+// schedule.after("render", "physics")
 //
-//   // Per frame
-//   schedule.run(world, { "dt": 1/60 })
+// // Per frame
+// schedule.run(world, { "dt": 1/60 })
+// ```
 //
 // Storage stays pleasantly direct: `Map<ComponentClass, Map<id,
 // instance>>` — class-keyed pools, monotonic u53 ids. Plenty fast
@@ -34,34 +36,34 @@
 // work at; trades zero-cost archetype iteration for a smaller
 // surface area you can actually hold in your head.
 //
-// What's bundled
-// --------------
+// ## What's bundled
 //
-//   * `World` — entities, components, queries (the simple
-//     `world.query([A, B])` form is still here).
-//   * `Query` — fluent builder with `.with(C) / .without(C)` filters
-//     for when the simple form isn't enough.
-//   * `Bundle` — group a set of components so `world.spawnWith
-//     (bundle)` attaches them all in one call.
-//   * `Resources` — typed singleton storage on the world (input
-//     state, current camera, asset db, …).
-//   * `Events<T>` — per-type broadcast buffer. Push during one
-//     system, drain during the next; cleared at the end of each
-//     frame by `world.flushEvents`.
-//   * `Commands` — deferred mutation buffer. Useful inside a
-//     query body where you need to spawn / despawn entities
-//     without invalidating the active iteration; apply the buffer
-//     after the loop with `world.applyCommands(cmds)`.
-//   * `Schedule` — named system functions with `.before(label,
-//     other) / .after(label, other)` ordering hints; `run(world,
-//     ctx)` topologically orders and dispatches each.
-//   * Hooks — `world.onAdd(Class) {|w, e, c| …}` /
-//     `world.onRemove(Class) {|w, e| …}` for component-lifecycle
-//     callbacks (animations, audio, indexing).
-//   * Hierarchy — `world.setParent(child, parent)` /
-//     `world.childrenOf(parent)`. Backed by built-in `Parent` /
-//     `Children` components so queries can include / exclude
-//     them like any other.
+// - `World` — entities, components, queries (the simple
+//   `world.query([A, B])` form is still here).
+// - `Query` — fluent builder with `.with(C)` / `.without(C)`
+//   filters for when the simple form isn't enough.
+// - `Bundle` — group a set of components so
+//   `world.spawnWith(bundle)` attaches them all in one call.
+// - `Resources` — typed singleton storage on the world (input
+//   state, current camera, asset db, …).
+// - `Events<T>` — per-type broadcast buffer. Push during one
+//   system, drain during the next; cleared at the end of each
+//   frame by `world.flushEvents`.
+// - `Commands` — deferred mutation buffer. Useful inside a
+//   query body where you need to spawn / despawn entities
+//   without invalidating the active iteration; apply the buffer
+//   after the loop with `world.applyCommands(cmds)`.
+// - `Schedule` — named system functions with
+//   `.before(label, other)` / `.after(label, other)` ordering
+//   hints; `run(world, ctx)` topologically orders and dispatches
+//   each.
+// - Hooks — `world.onAdd(Class) {|w, e, c| …}` /
+//   `world.onRemove(Class) {|w, e| …}` for component-lifecycle
+//   callbacks (animations, audio, indexing).
+// - Hierarchy — `world.setParent(child, parent)` /
+//   `world.childrenOf(parent)`. Backed by built-in `Parent` /
+//   `Children` components so queries can include / exclude them
+//   like any other.
 
 // ---------------------------------------------------------------
 /// Built-in components for the hierarchy layer. Plain classes;
@@ -278,7 +280,10 @@ class Query {
   }
 
   /// Shorter call-as-a-block style:
-  ///   world.query.with(A).with(B).each {|w, e| ... }
+  ///
+  /// ```wren
+  /// world.query.with(A).with(B).each {|w, e| ... }
+  /// ```
   each(block) {
     for (e in iterate) block.call(_world, e)
   }

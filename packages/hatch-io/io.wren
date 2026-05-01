@@ -1,6 +1,8 @@
-// @hatch:io — byte buffers and stream interfaces.
+// `@hatch:io` — byte buffers and stream interfaces.
 //
-//   import "@hatch:io" for Buffer, Reader, Writer, BufferReader, BufferWriter, StringReader
+// ```wren
+// import "@hatch:io" for Buffer, Reader, Writer, BufferReader, BufferWriter, StringReader
+// ```
 //
 // ## Buffer
 //
@@ -8,13 +10,15 @@
 // bytes fine, but lacks ergonomic slicing / string round-tripping.
 // `Buffer` wraps one and adds conveniences:
 //
-//   var b = Buffer.fromString("hello")
-//   b.count                // 5
-//   b.byteAt(0)            // 104 (h)
-//   b.toString             // "hello"
-//   b.append(" world")
-//   b.slice(0, 5).toString // "hello"
-//   b.indexOf(0x20)        // 5 — the space
+// ```wren
+// var b = Buffer.fromString("hello")
+// b.count                // 5
+// b.byteAt(0)            // 104 (h)
+// b.toString             // "hello"
+// b.append(" world")
+// b.slice(0, 5).toString // "hello"
+// b.indexOf(0x20)        // 5 — the space
+// ```
 //
 // `Buffer.fromBytes(list)` and `buffer.toList` let you drop back
 // to a plain `List<Num>` at module boundaries (e.g. to feed
@@ -28,35 +32,40 @@
 // the base class supplies line-oriented, string, and buffer
 // conveniences.
 //
-//   class MyReader is Reader {
-//     construct new(src) { _src = src; _pos = 0 }
-//     readRaw_(maxBytes) {
-//       if (_pos >= _src.count) return null
-//       var end = _pos + maxBytes
-//       if (end > _src.count) end = _src.count
-//       var chunk = _src[_pos..(end - 1)]
-//       _pos = end
-//       return chunk
-//     }
+// ```wren
+// class MyReader is Reader {
+//   construct new(src) { _src = src; _pos = 0 }
+//   readRaw_(maxBytes) {
+//     if (_pos >= _src.count) return null
+//     var end = _pos + maxBytes
+//     if (end > _src.count) end = _src.count
+//     var chunk = _src[_pos..(end - 1)]
+//     _pos = end
+//     return chunk
 //   }
+// }
+// ```
 //
 // Bundled concrete types:
 //
-//   BufferReader(buffer)          // read an in-memory Buffer
-//   BufferWriter()                // append into a Buffer
-//   StringReader(str)             // treat a String as a Reader
+// | Type                 | Purpose                            |
+// |----------------------|------------------------------------|
+// | `BufferReader(buf)`  | Read an in-memory `Buffer`.        |
+// | `BufferWriter()`     | Append into a `Buffer`.            |
+// | `StringReader(str)`  | Treat a `String` as a `Reader`.    |
 //
 // The design is explicit: `Reader.read(n)` returns up to `n`
-// bytes as a Buffer (never longer; possibly shorter; empty at
+// bytes as a `Buffer` (never longer; possibly shorter; empty at
 // EOF). `Reader.readAll` loops until EOF. `Reader.readLine`
 // buffers internally until it sees `\n` or EOF, then returns the
-// line as a String (trailing `\n` and any preceding `\r`
+// line as a `String` (trailing `\n` and any preceding `\r`
 // stripped). Byte-oriented IO stays explicit to avoid surprises
 // with non-UTF-8 data.
 //
-// Writers are simpler: `Writer.write(data)` accepts a Buffer,
-// String, or `List<Num>`. `Writer.close` is a no-op unless the
-// concrete subclass needs it (e.g. `ProcessWriter` closes stdin).
+// Writers are simpler: `Writer.write(data)` accepts a `Buffer`,
+// `String`, or `List<Num>`. `Writer.close` is a no-op unless the
+// concrete subclass needs it (e.g. `ProcessWriter` closes
+// stdin).
 
 import "io" for IoCore
 
@@ -281,16 +290,19 @@ class Reader {
   }
 
   /// Fiber-cooperative constructor. `tryReadFn` returns one of:
-  ///   * `null`               — EOF; no more bytes ever.
-  ///   * `[]`                 — "nothing right now, try again."
-  ///   * `List<Num>` (non-empty) — bytes.
+  ///
+  /// - `null` — EOF; no more bytes ever.
+  /// - `[]` — "nothing right now, try again."
+  /// - `List<Num>` (non-empty) — bytes.
   ///
   /// The wrapper spins on the try-read and calls `Fiber.yield()`
   /// on every "would block" result, so other fibers in the same
   /// VM can make progress while this one waits on IO.
   ///
-  ///   var r = Reader.withTryFn {|max| ProcCore.tryReadStdoutBytes(pid, max) }
-  ///   // Use inside a Fiber.new { ... } to actually get concurrency.
+  /// ```wren
+  /// var r = Reader.withTryFn {|max| ProcCore.tryReadStdoutBytes(pid, max) }
+  /// // Use inside a Fiber.new { ... } to actually get concurrency.
+  /// ```
   static withTryFn(tryReadFn) {
     var r = Reader.new()
     r.setReadFn_ {|max|
@@ -454,7 +466,10 @@ class Writer {
   }
 
   /// Alternate constructor for cross-module consumers.
-  ///   var w = Writer.withFn {|bytes| ... }
+  ///
+  /// ```wren
+  /// var w = Writer.withFn {|bytes| ... }
+  /// ```
   static withFn(writeFn) {
     var w = Writer.new()
     w.setWriteFn_(writeFn)

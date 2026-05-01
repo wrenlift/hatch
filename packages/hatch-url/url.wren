@@ -1,28 +1,30 @@
-/// @hatch:url — URL parser, builder, and percent-encoder.
+/// `@hatch:url` — URL parser, builder, and percent-encoder.
 ///
-///   import "@hatch:url" for Url
+/// ```wren
+/// import "@hatch:url" for Url
 ///
-///   // Parse → value type with named parts
-///   var u = Url.parse("https://user:pass@example.com:8080/path?q=s&x=1#frag")
-///   u.scheme     // "https"
-///   u.host       // "example.com"
-///   u.port       // 8080   (Num, or null)
-///   u.username   // "user"
-///   u.password   // "pass"
-///   u.path       // "/path"
-///   u.query      // "q=s&x=1"
-///   u.queryMap   // {"q": "s", "x": "1"}
-///   u.fragment   // "frag"
+/// // Parse → value type with named parts
+/// var u = Url.parse("https://user:pass@example.com:8080/path?q=s&x=1#frag")
+/// u.scheme     // "https"
+/// u.host       // "example.com"
+/// u.port       // 8080   (Num, or null)
+/// u.username   // "user"
+/// u.password   // "pass"
+/// u.path       // "/path"
+/// u.query      // "q=s&x=1"
+/// u.queryMap   // {"q": "s", "x": "1"}
+/// u.fragment   // "frag"
 ///
-///   u.toString   // round-trips back to the canonical form
+/// u.toString   // round-trips back to the canonical form
 ///
-///   // Percent-encode / decode a component.
-///   Url.encode("a b/c")            // "a%20b%2Fc"
-///   Url.decode("a%20b%2Fc")        // "a b/c"
+/// // Percent-encode / decode a component.
+/// Url.encode("a b/c")            // "a%20b%2Fc"
+/// Url.decode("a%20b%2Fc")        // "a b/c"
 ///
-///   // Encode / decode a `key=value&key=value` query string.
-///   Url.encodeQuery({"a": 1, "b": "two"})   // "a=1&b=two"
-///   Url.decodeQuery("a=1&b=two")             // {"a": "1", "b": "two"}
+/// // Encode / decode a `key=value&key=value` query string.
+/// Url.encodeQuery({"a": 1, "b": "two"})   // "a=1&b=two"
+/// Url.decodeQuery("a=1&b=two")             // {"a": "1", "b": "two"}
+/// ```
 ///
 /// Scope: "good-enough" URL handling for HTTP requests and link
 /// generation. Follows RFC 3986 loosely — no IRI (punycode IDN)

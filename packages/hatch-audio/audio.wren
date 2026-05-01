@@ -1,21 +1,23 @@
-// @hatch:audio — playback for the WrenLift game framework.
+// `@hatch:audio` — playback for the WrenLift game framework.
 //
-//   import "@hatch:audio"  for Audio, Sound
-//   import "@hatch:assets" for Assets
+// ```wren
+// import "@hatch:audio"  for Audio, Sound
+// import "@hatch:assets" for Assets
 //
-//   Audio.context()                       // open the output stream
+// Audio.context()                       // open the output stream
 //
-//   var assets = Assets.open("assets")
-//   var bang   = Sound.load(assets.bytes("bang.wav"))
+// var assets = Assets.open("assets")
+// var bang   = Sound.load(assets.bytes("bang.wav"))
 //
-//   // Trigger a one-shot. Each play() schedules a fresh voice;
-//   // overlapping triggers naturally stack.
-//   Audio.play(bang)
-//   Audio.play(bang, {"volume": 0.6})
-//   Audio.play(bang, {"loop": true})         // loops until stopped
+// // Trigger a one-shot. Each play() schedules a fresh voice;
+// // overlapping triggers naturally stack.
+// Audio.play(bang)
+// Audio.play(bang, {"volume": 0.6})
+// Audio.play(bang, {"loop": true})         // loops until stopped
 //
-//   // Hard cut every active voice.
-//   Audio.stopAll()
+// // Hard cut every active voice.
+// Audio.stopAll()
+// ```
 //
 // Backed by cpal for the output stream + hound for WAV decode.
 // Output is f32 stereo at the device's preferred sample rate.
@@ -54,8 +56,11 @@ class Audio {
   static context() { AudioCore.contextInit() }
 
   /// Trigger immediate playback.
-  ///   "volume":  Num   in 0..=1, default 1
-  ///   "loop":    Bool, default false
+  ///
+  /// | Option   | Type   | Notes                  |
+  /// |----------|--------|------------------------|
+  /// | `volume` | `Num`  | In `0..=1`, default 1. |
+  /// | `loop`   | `Bool` | Default `false`.       |
   static play(sound) { play(sound, {}) }
   static play(sound, options) {
     if (!(options is Map)) options = {}

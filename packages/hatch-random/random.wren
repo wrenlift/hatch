@@ -1,25 +1,27 @@
-// @hatch:random — random numbers, sampling, shuffling.
+// `@hatch:random` — random numbers, sampling, shuffling.
 //
-//   import "@hatch:random" for Rand
+// ```wren
+// import "@hatch:random" for Rand
 //
-//   Rand.float              // 0.0 ≤ x < 1.0
-//   Rand.float(10)          // 0.0 ≤ x < 10.0
-//   Rand.float(-1, 1)       // -1.0 ≤ x < 1.0
-//   Rand.int(6)             // 0 ≤ n < 6
-//   Rand.int(1, 7)          // 1 ≤ n < 7   (dice)
-//   Rand.bool               // 50/50 true/false
-//   Rand.sample(["a", "b", "c"])        // one element
-//   Rand.sample([1,2,3,4,5], 2)         // k distinct elements
-//   Rand.shuffle([1,2,3])   // in place; returns the list
+// Rand.float              // 0.0 ≤ x < 1.0
+// Rand.float(10)          // 0.0 ≤ x < 10.0
+// Rand.float(-1, 1)       // -1.0 ≤ x < 1.0
+// Rand.int(6)             // 0 ≤ n < 6
+// Rand.int(1, 7)          // 1 ≤ n < 7   (dice)
+// Rand.bool               // 50/50 true/false
+// Rand.sample(["a", "b", "c"])        // one element
+// Rand.sample([1,2,3,4,5], 2)         // k distinct elements
+// Rand.shuffle([1,2,3])   // in place; returns the list
 //
-//   // Seed the shared default stream for deterministic runs
-//   // (useful in tests, bench harnesses, etc.).
-//   Rand.seed = 42
+// // Seed the shared default stream for deterministic runs
+// // (useful in tests, bench harnesses, etc.).
+// Rand.seed = 42
 //
-//   // For independent / reproducible streams, grab a fresh one:
-//   var stream = Rand.stream(99)
-//   stream.int(100)
-//   stream.int(100)         // different draw, same seeded sequence
+// // For independent / reproducible streams, grab a fresh one:
+// var stream = Rand.stream(99)
+// stream.int(100)
+// stream.int(100)         // different draw, same seeded sequence
+// ```
 //
 // Static `Rand.*` methods all route through a single module-level
 // default stream. That stream is initialised unseeded at import
@@ -63,11 +65,13 @@ class Rand {
 
   // --- Stream management -----------------------------------------------
 
-  /// Seed the shared default stream. Accepts any Num; the PRNG
+  /// Seed the shared default stream. Accepts any `Num`; the PRNG
   /// converts internally. Useful for deterministic tests:
   ///
-  ///   Rand.seed = 1234
-  ///   Rand.int(100) // always the same sequence across runs
+  /// ```wren
+  /// Rand.seed = 1234
+  /// Rand.int(100) // always the same sequence across runs
+  /// ```
   static seed=(n) {
     if (!(n is Num)) Fiber.abort("Rand.seed: must be a number")
     default_ = Random.new(n)

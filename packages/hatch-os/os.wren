@@ -1,26 +1,28 @@
-// @hatch:os — process-level primitives.
+// `@hatch:os` — process-level primitives.
 //
-//   import "@hatch:os" for Os
+// ```wren
+// import "@hatch:os" for Os
 //
-//   Os.platform                   // "macos" / "linux" / "windows" / …
-//   Os.arch                       // "aarch64" / "x86_64" / …
-//   Os.isUnix                     // convenience flag
-//   Os.isWindows
+// Os.platform                   // "macos" / "linux" / "windows" / …
+// Os.arch                       // "aarch64" / "x86_64" / …
+// Os.isUnix                     // convenience flag
+// Os.isWindows
 //
-//   Os.env("HOME")                // String or null
-//   Os.env("PORT", "8080")        // fetch with default
-//   Os.setEnv("KEY", "value")
-//   Os.unsetEnv("KEY")
-//   Os.envMap                     // Map<String, String> snapshot
+// Os.env("HOME")                // String or null
+// Os.env("PORT", "8080")        // fetch with default
+// Os.setEnv("KEY", "value")
+// Os.unsetEnv("KEY")
+// Os.envMap                     // Map<String, String> snapshot
 //
-//   Os.args                       // List<String>, first is the program
-//   Os.argv                       // alias, skips the program name
+// Os.args                       // List<String>, first is the program
+// Os.argv                       // alias, skips the program name
 //
-//   Os.isatty(Os.STDOUT)          // Bool
-//   Os.STDIN / STDOUT / STDERR    // 0 / 1 / 2
+// Os.isatty(Os.STDOUT)          // Bool
+// Os.STDIN / STDOUT / STDERR    // 0 / 1 / 2
 //
-//   Os.username                   // best-effort via $USER / $USERNAME
-//   Os.exit(0)                    // never returns
+// Os.username                   // best-effort via $USER / $USERNAME
+// Os.exit(0)                    // never returns
+// ```
 //
 // Backed by the runtime `os` module. Exists so consumers don't
 // need to know whether a given feature is native or pure-Wren —

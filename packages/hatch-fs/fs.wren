@@ -1,30 +1,32 @@
-// @hatch:fs — filesystem I/O.
+// `@hatch:fs` — filesystem I/O.
 //
-//   import "@hatch:fs" for Fs
+// ```wren
+// import "@hatch:fs" for Fs
 //
-//   Fs.readText(path)                  // string
-//   Fs.writeText(path, contents)
-//   Fs.readLines(path)                 // List<String>
-//   Fs.writeLines(path, list)
-//   Fs.readBytes(path)                 // List<Num>, 0..255
-//   Fs.writeBytes(path, bytes)
+// Fs.readText(path)                  // string
+// Fs.writeText(path, contents)
+// Fs.readLines(path)                 // List<String>
+// Fs.writeLines(path, list)
+// Fs.readBytes(path)                 // List<Num>, 0..255
+// Fs.writeBytes(path, bytes)
 //
-//   Fs.exists(path) / Fs.isFile(path) / Fs.isDir(path)
-//   Fs.size(path)                      // byte count
-//   Fs.listDir(path)                   // sorted entry names
-//   Fs.walk(path)                      // recursive list, relative
+// Fs.exists(path) / Fs.isFile(path) / Fs.isDir(path)
+// Fs.size(path)                      // byte count
+// Fs.listDir(path)                   // sorted entry names
+// Fs.walk(path)                      // recursive list, relative
 //
-//   Fs.mkdir(path) / Fs.mkdirs(path)
-//   Fs.remove(path)                    // single file / empty dir
-//   Fs.removeTree(path)                // recursive
-//   Fs.rename(from, to)
+// Fs.mkdir(path) / Fs.mkdirs(path)
+// Fs.remove(path)                    // single file / empty dir
+// Fs.removeTree(path)                // recursive
+// Fs.rename(from, to)
 //
-//   Fs.cwd / Fs.home / Fs.tmpDir
+// Fs.cwd / Fs.home / Fs.tmpDir
+// ```
 //
 // All operations are synchronous and abort on failure — wrap in
 // `Fiber.new { ... }.try()` to catch.
 //
-// Backed by the runtime `fs` module (Rust std::fs). Unix-ish
+// Backed by the runtime `fs` module (Rust `std::fs`). Unix-ish
 // paths; on Windows the native layer still works but callers
 // should prefer forward slashes via `@hatch:path` until
 // platform-aware path helpers land.

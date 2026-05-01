@@ -1,54 +1,62 @@
-// @hatch:proc — subprocess spawn & capture with fiber-friendly
+// `@hatch:proc` — subprocess spawn & capture with fiber-friendly
 // lifecycle, IPC, and chaining.
 //
-//   import "@hatch:proc" for Proc, Process, Pipeline
+// ```wren
+// import "@hatch:proc" for Proc, Process, Pipeline
+// ```
 //
 // One-liner (blocking run + wait):
 //
-//   var r = Proc.exec(["echo", "hi"])
-//   r.code / r.stdout / r.stderr / r.ok / r.timedOut
+// ```wren
+// var r = Proc.exec(["echo", "hi"])
+// r.code / r.stdout / r.stderr / r.ok / r.timedOut
+// ```
 //
 // Handle-based (fiber-friendly, streaming stdin, kill, chain):
 //
-//   var p = Proc.run(["long-running", "--flag"], {
-//     "cwd": "/tmp",
-//     "env": {"FOO": "bar"}
-//   })
+// ```wren
+// var p = Proc.run(["long-running", "--flag"], {
+//   "cwd": "/tmp",
+//   "env": {"FOO": "bar"}
+// })
 //
-//   // 1. Lifecycle
-//   p.alive                // Bool
-//   p.pid                  // Num
-//   p.tryWait              // Result or null (non-blocking)
-//   p.wait                 // Result (blocks until exit)
-//   p.kill                 // terminate the child
-//   p.forget               // drop the registry entry
+// // 1. Lifecycle
+// p.alive                // Bool
+// p.pid                  // Num
+// p.tryWait              // Result or null (non-blocking)
+// p.wait                 // Result (blocks until exit)
+// p.kill                 // terminate the child
+// p.forget               // drop the registry entry
 //
-//   // 2. IPC
-//   p.writeStdin("line 1\n")
-//   p.writeStdin("line 2\n")
-//   p.closeStdin           // sends EOF
+// // 2. IPC
+// p.writeStdin("line 1\n")
+// p.writeStdin("line 2\n")
+// p.closeStdin           // sends EOF
 //
-//   // 3. Chaining (each hop takes the previous one's stdout)
-//   var pipeline = Pipeline.of([
-//     ["cat", "/etc/hosts"],
-//     ["grep", "localhost"],
-//     ["wc", "-l"]
-//   ])
-//   var r = pipeline.wait
-//   System.print(r.stdout)
+// // 3. Chaining (each hop takes the previous one's stdout)
+// var pipeline = Pipeline.of([
+//   ["cat", "/etc/hosts"],
+//   ["grep", "localhost"],
+//   ["wc", "-l"]
+// ])
+// var r = pipeline.wait
+// System.print(r.stdout)
 //
-//   // Or manually:
-//   var p1 = Proc.run(["cat", "/etc/hosts"])
-//   var p2 = Proc.run(["wc", "-l"], {"stdinFrom": p1})
-//   System.print(p2.wait.stdout)
+// // Or manually:
+// var p1 = Proc.run(["cat", "/etc/hosts"])
+// var p2 = Proc.run(["wc", "-l"], {"stdinFrom": p1})
+// System.print(p2.wait.stdout)
+// ```
 //
 // Fiber pattern:
 //
-//   var fib = Fiber.new {
-//     var p = Proc.run(["slow-thing"])
-//     while (p.alive) Fiber.yield()
-//     return p.tryWait
-//   }
+// ```wren
+// var fib = Fiber.new {
+//   var p = Proc.run(["slow-thing"])
+//   while (p.alive) Fiber.yield()
+//   return p.tryWait
+// }
+// ```
 
 import "proc"     for ProcCore
 import "@hatch:io" for Reader, Writer
@@ -128,13 +136,15 @@ class Process {
   /// long-running processes whose output you want to consume
   /// incrementally (line by line, chunk by chunk).
   ///
-  ///   var p = Proc.run(["tail", "-f", "/var/log/app.log"])
-  ///   var r = p.stdoutReader
-  ///   var line = r.readLine
-  ///   while (line != null) {
-  ///     System.print(line)
-  ///     line = r.readLine
-  ///   }
+  /// ```wren
+  /// var p = Proc.run(["tail", "-f", "/var/log/app.log"])
+  /// var r = p.stdoutReader
+  /// var line = r.readLine
+  /// while (line != null) {
+  ///   System.print(line)
+  ///   line = r.readLine
+  /// }
+  /// ```
   ///
   /// Calling `wait` on the process while a reader is active is
   /// safe — the remaining bytes will be drained and the final
@@ -149,17 +159,20 @@ class Process {
     return Reader.withFn {|max| ProcCore.readStderrBytes(pid, max) }
   }
 
-  /// Fiber-cooperative stdout reader. Use inside `Fiber.new { ... }`
-  /// to drain output without blocking sibling fibers:
+  /// Fiber-cooperative stdout reader. Use inside
+  /// `Fiber.new { ... }` to drain output without blocking sibling
+  /// fibers:
   ///
-  ///   var fib = Fiber.new {
-  ///     var r = p.stdoutAsync
-  ///     var line = r.readLine
-  ///     while (line != null) {
-  ///       // ...
-  ///       line = r.readLine
-  ///     }
+  /// ```wren
+  /// var fib = Fiber.new {
+  ///   var r = p.stdoutAsync
+  ///   var line = r.readLine
+  ///   while (line != null) {
+  ///     // ...
+  ///     line = r.readLine
   ///   }
+  /// }
+  /// ```
   stdoutAsync {
     var pid = _id
     return Reader.withTryFn {|max| ProcCore.tryReadStdoutBytes(pid, max) }
@@ -170,16 +183,18 @@ class Process {
     return Reader.withTryFn {|max| ProcCore.tryReadStderrBytes(pid, max) }
   }
 
-  /// A `Writer` that feeds stdin. Accepts Buffer / String / List<Num>.
-  /// `close` (or `flush` if that's all you want) sends EOF via
-  /// `closeStdin`.
+  /// A `Writer` that feeds stdin. Accepts `Buffer` / `String` /
+  /// `List<Num>`. `close` (or `flush` if that's all you want)
+  /// sends EOF via `closeStdin`.
   ///
-  ///   var p = Proc.run(["cat"])
-  ///   var w = p.stdinWriter
-  ///   w.write("hello\n")
-  ///   w.write(Buffer.fromBytes([0xC3, 0xA9]))
-  ///   w.close
-  ///   System.print(p.wait.stdout)
+  /// ```wren
+  /// var p = Proc.run(["cat"])
+  /// var w = p.stdinWriter
+  /// w.write("hello\n")
+  /// w.write(Buffer.fromBytes([0xC3, 0xA9]))
+  /// w.close
+  /// System.print(p.wait.stdout)
+  /// ```
   stdinWriter {
     var pid = _id
     var w = Writer.withFn {|bytes| ProcCore.writeStdinBytes(pid, bytes) }

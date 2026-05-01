@@ -1,53 +1,50 @@
-/// @hatch:csv — RFC 4180 CSV parsing + serialization.
+/// `@hatch:csv` — RFC 4180 CSV parsing + serialization.
 ///
-///   import "@hatch:csv" for Csv
+/// ```wren
+/// import "@hatch:csv" for Csv
 ///
-///   // Simplest form: rows as List<List<String>>.
-///   var rows = Csv.parse("a,b,c\n1,2,3\n4,5,6")
-///   rows[0][0]                  // "a"
-///   rows[1][2]                  // "3"
+/// // Simplest form: rows as List<List<String>>.
+/// var rows = Csv.parse("a,b,c\n1,2,3\n4,5,6")
+/// rows[0][0]                  // "a"
+/// rows[1][2]                  // "3"
 ///
-///   // With a header row: rows as List<Map<String, String>>.
-///   var people = Csv.parse(
-///     "name,age\nalice,30\nbob,25",
-///     {"header": true}
-///   )
-///   people[0]["name"]           // "alice"
-///   people[1]["age"]            // "25"
+/// // With a header row: rows as List<Map<String, String>>.
+/// var people = Csv.parse(
+///   "name,age\nalice,30\nbob,25",
+///   {"header": true}
+/// )
+/// people[0]["name"]           // "alice"
+/// people[1]["age"]            // "25"
 ///
-///   // Encode a list of maps (keys become the header row).
-///   Csv.encode(
-///     [{"name": "alice", "age": 30}, {"name": "bob", "age": 25}],
-///     {"header": true}
-///   )
-///   // name,age\r\nalice,30\r\nbob,25\r\n
+/// // Encode a list of maps (keys become the header row).
+/// Csv.encode(
+///   [{"name": "alice", "age": 30}, {"name": "bob", "age": 25}],
+///   {"header": true}
+/// )
+/// // name,age\r\nalice,30\r\nbob,25\r\n
 ///
-///   // Encode a list of lists (no header).
-///   Csv.encode([["x", "y"], [1, 2]])
-///   // x,y\r\n1,2\r\n
+/// // Encode a list of lists (no header).
+/// Csv.encode([["x", "y"], [1, 2]])
+/// // x,y\r\n1,2\r\n
+/// ```
 ///
-/// Options:
+/// ## Options
 ///
-///   delimiter   — column separator (default `,`). One character.
-///   quote       — quoting character (default `"`). One character.
-///   header      — parse: treat first row as column names, return
-///                         List<Map>. default false.
-///               — encode: include a header row derived from the
-///                         first record's keys (Map rows) or the
-///                         caller's explicit `columns` option.
-///                         default false.
-///   columns     — encode: explicit column order (List<String>). If
-///                 omitted for Map rows, keys of the first record
-///                 are used; order isn't guaranteed across Wren
-///                 Map implementations so specify this when the
-///                 layout matters.
-///   lineEnding  — encode: "\r\n" (RFC 4180, default) or "\n".
+/// | Option       | Notes                                                                                                                                                                          |
+/// |--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+/// | `delimiter`  | Column separator (default `,`). One character.                                                                                                                                 |
+/// | `quote`      | Quoting character (default `"`). One character.                                                                                                                                |
+/// | `header`     | Parse: treat first row as column names, return `List<Map>`. Default `false`. Encode: include a header row derived from the first record's keys or `columns`. Default `false`. |
+/// | `columns`    | Encode: explicit column order (`List<String>`). If omitted for `Map` rows, keys of the first record are used; order isn't guaranteed across `Map` impls — specify this when the layout matters. |
+/// | `lineEnding` | Encode: `"\r\n"` (RFC 4180, default) or `"\n"`.                                                                                                                                |
 ///
-/// Values on encode:
-///   * Strings pass through (with quoting when they contain the
-///     delimiter, quote char, or newline).
-///   * Num/Bool/null convert via `.toString`; null → empty cell.
-///   * Anything else aborts.
+/// ## Values on encode
+///
+/// - Strings pass through (with quoting when they contain the
+///   delimiter, quote char, or newline).
+/// - `Num` / `Bool` / `null` convert via `.toString`; `null` →
+///   empty cell.
+/// - Anything else aborts.
 ///
 /// Parse is forgiving about line endings — `\r\n`, `\n`, and bare
 /// `\r` all terminate a row.

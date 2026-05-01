@@ -1,44 +1,47 @@
-// @hatch:toml — TOML parsing and serialization.
+// `@hatch:toml` — TOML parsing and serialization.
 //
-//   import "@hatch:toml" for Toml
+// ```wren
+// import "@hatch:toml" for Toml
 //
-//   var config = Toml.parse("""
-//     name = "hatch"
-//     version = "0.1.0"
-//     [deps]
-//     json = "1.0"
-//   """)
-//   config["name"]          // "hatch"
-//   config["deps"]["json"]  // "1.0"
+// var config = Toml.parse("""
+//   name = "hatch"
+//   version = "0.1.0"
+//   [deps]
+//   json = "1.0"
+// """)
+// config["name"]          // "hatch"
+// config["deps"]["json"]  // "1.0"
 //
-//   Toml.encode({
-//     "name": "app",
-//     "port": 8080,
-//     "db": {"host": "localhost"}
-//   })
-//   // name = "app"
-//   // port = 8080
-//   // [db]
-//   // host = "localhost"
+// Toml.encode({
+//   "name": "app",
+//   "port": 8080,
+//   "db": {"host": "localhost"}
+// })
+// // name = "app"
+// // port = 8080
+// // [db]
+// // host = "localhost"
+// ```
 //
-// Type mapping:
+// ## Type mapping
 //
-//   TOML            Wren
-//   ----            ----
-//   string          String
-//   integer/float   Num
-//   boolean         Bool
-//   datetime        String (RFC 3339)
-//   array           List
-//   table           Map<String, _>
+// | TOML            | Wren                |
+// |-----------------|---------------------|
+// | string          | `String`            |
+// | integer / float | `Num`               |
+// | boolean         | `Bool`              |
+// | datetime        | `String` (RFC 3339) |
+// | array           | `List`              |
+// | table           | `Map<String, _>`    |
 //
 // Encoding round-trips cleanly for everything except datetimes,
-// which come back as Strings — if you need a datetime output,
+// which come back as `String`s — if you need a datetime output,
 // pass it as a pre-formatted RFC 3339 string.
 //
-// Top-level value for `encode` must be a Map (TOML documents are
-// always tables). Malformed input aborts the fiber with a message
-// from the parser; wrap in `Fiber.new { … }.try()` to catch.
+// Top-level value for `encode` must be a `Map` (TOML documents
+// are always tables). Malformed input aborts the fiber with a
+// message from the parser; wrap in `Fiber.new { … }.try()` to
+// catch.
 //
 // Backed by the Rust `toml` crate — canonical behaviour for the
 // full TOML v1.0.0 spec.

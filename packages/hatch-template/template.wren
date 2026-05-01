@@ -1,33 +1,45 @@
-/// @hatch:template — Jinja/Twig-style templating for HTML and XML.
+/// `@hatch:template` — Jinja / Twig-style templating for HTML
+/// and XML.
 ///
-///   import "@hatch:template" for Template, Hx
+/// ```wren
+/// import "@hatch:template" for Template, Hx
 ///
-///   var tpl = Template.parse("<h1>Hello {{ name }}</h1>")
-///   tpl.render({ "name": "world" })          //= "<h1>Hello world</h1>"
+/// var tpl = Template.parse("<h1>Hello {{ name }}</h1>")
+/// tpl.render({ "name": "world" })          //= "<h1>Hello world</h1>"
+/// ```
 ///
-/// Syntax:
-///   {{ expr }}           — interpolation (HTML-escaped)
-///   {{{ expr }}}         — raw interpolation (unescaped)
-///   {% if expr %}        — conditional (elif / else / endif)
-///   {% for x in expr %}  — loop over a sequence (endfor)
-///   {% slot name %}      — named slot with default body (endslot)
-///   {% fragment name %}  — addressable partial for htmx responses (endfragment)
-///   {% set x = expr %}   — bind a variable in current scope
-///   {% include "name" %} — render a registered component by name
-///   {# comment #}        — stripped at parse time
+/// ## Syntax
 ///
-/// Expressions:
-///   Paths: user.name, items[0], ctx["key"]
-///   Literals: 42, 1.5, "str", 'str', true, false, null
-///   Comparisons: == != < <= > >=
-///   Booleans: and / or / not
-///   Filters: {{ x | upper }} / {{ x | default("—") }}
-///   Builtins: escape, raw, upper, lower, default, length, join
+/// | Form                   | Meaning                                                |
+/// |------------------------|--------------------------------------------------------|
+/// | `{{ expr }}`           | Interpolation (HTML-escaped).                          |
+/// | `{{{ expr }}}`         | Raw interpolation (unescaped).                         |
+/// | `{% if expr %}`        | Conditional (`elif` / `else` / `endif`).               |
+/// | `{% for x in expr %}`  | Loop over a sequence (`endfor`).                       |
+/// | `{% slot name %}`      | Named slot with default body (`endslot`).              |
+/// | `{% fragment name %}`  | Addressable partial for htmx responses (`endfragment`). |
+/// | `{% set x = expr %}`   | Bind a variable in current scope.                      |
+/// | `{% include "name" %}` | Render a registered component by name.                 |
+/// | `{# comment #}`        | Stripped at parse time.                                |
 ///
-/// htmx:
-///   tpl.renderFragment("name", ctx)     — render a {% fragment %} block only
-///   ctx["#hx"] = { "request": true }    — exposed as `hx` in templates
-///   Hx.response(body).trigger("x")      — build HX-* response headers
+/// ## Expressions
+///
+/// - Paths: `user.name`, `items[0]`, `ctx["key"]`.
+/// - Literals: `42`, `1.5`, `"str"`, `'str'`, `true`, `false`, `null`.
+/// - Comparisons: `==` `!=` `<` `<=` `>` `>=`.
+/// - Booleans: `and` / `or` / `not`.
+/// - Filters: `{{ x | upper }}` / `{{ x | default("—") }}`.
+/// - Builtins: `escape`, `raw`, `upper`, `lower`, `default`,
+///   `length`, `join`.
+///
+/// ## htmx
+///
+/// - `tpl.renderFragment("name", ctx)` — render a
+///   `{% fragment %}` block only.
+/// - `ctx["#hx"] = { "request": true }` — exposed as `hx` in
+///   templates.
+/// - `Hx.response(body).trigger("x")` — build `HX-*` response
+///   headers.
 
 class TemplateError {
   construct new(msg) { _msg = msg }
@@ -1512,9 +1524,11 @@ class Template {
 
   /// Render with optional context map.
   ///
-  ///   tpl.render({ "user": u })                    — plain render
-  ///   tpl.render({ "user": u, "#slots": slots })   — named slot bodies
-  ///   tpl.render({ "user": u, "#hx": hx })         — expose as `hx` path
+  /// ```wren
+  /// tpl.render({ "user": u })                    // plain render
+  /// tpl.render({ "user": u, "#slots": slots })   // named slot bodies
+  /// tpl.render({ "user": u, "#hx": hx })         // expose as `hx` path
+  /// ```
   render(ctx) {
     ctx = ctx == null ? {} : ctx
     // Wrap ctx in a child scope so {% set %} doesn't mutate the caller's map.
@@ -1531,10 +1545,13 @@ class Template {
     return Render_.renderFullWithFrags(_ast, scope, comps, slots, {}, _registry, _frags)
   }
 
-  /// Render only the named {% fragment %} block. The rest of the template
-  /// is walked but only emits output once we're inside the target fragment.
+  /// Render only the named `{% fragment %}` block. The rest of
+  /// the template is walked but only emits output once we're
+  /// inside the target fragment.
   ///
-  ///   tpl.renderFragment("user-row", { "user": u })
+  /// ```wren
+  /// tpl.renderFragment("user-row", { "user": u })
+  /// ```
   ///
   /// If the fragment has params, its ctx keys populate them.
   renderFragment(name, ctx) {
@@ -1563,17 +1580,17 @@ class Template {
 }
 
 // --- htmx response helper --------------------------------------------------
+/// Thin bag of body + headers. No HTTP opinions — the caller
+/// picks a transport. Every chainable method returns `this` so a
+/// response can be built inline:
 ///
-/// Thin bag of body + headers. No HTTP opinions — the caller picks a
-/// transport. Every chainable method returns `this` so a response can
-/// be built inline:
-///
-///   var r = Hx.response(tpl.renderFragment("row", ctx))
-///     .trigger("user-updated", { "id": 42 })
-///     .pushUrl("/users/42")
-///     .reswap("outerHTML")
-///   // r.body → string, r.headers → map of header → value
-
+/// ```wren
+/// var r = Hx.response(tpl.renderFragment("row", ctx))
+///   .trigger("user-updated", { "id": 42 })
+///   .pushUrl("/users/42")
+///   .reswap("outerHTML")
+/// // r.body → string, r.headers → map of header → value
+/// ```
 class HxResponse {
   construct new(body) {
     _body = body
@@ -1671,9 +1688,12 @@ class Hx {
   static response(body) { HxResponse.new(body) }
   static response() { HxResponse.new("") }
 
-  /// Detect from a request headers map — any of the common framework shapes.
+  /// Detect from a request headers map — any of the common
+  /// framework shapes.
   ///
-  ///   Hx.isRequest(req.headers)    //= true if HX-Request present / truthy
+  /// ```wren
+  /// Hx.isRequest(req.headers)    //= true if HX-Request present / truthy
+  /// ```
   static isRequest(headers) {
     if (headers == null) return false
     for (k in headers.keys) {

@@ -1,32 +1,38 @@
-// @hatch:events — in-process pub/sub: Signal for single-channel,
-// EventEmitter for Node-style named events.
+// `@hatch:events` — in-process pub/sub: `Signal` for
+// single-channel, `EventEmitter` for Node-style named events.
 //
-//   import "@hatch:events" for Signal, EventEmitter
+// ```wren
+// import "@hatch:events" for Signal, EventEmitter
+// ```
 //
 // ## Signal — one event channel, many listeners
 //
-//   var onExit = Signal.new
-//   var disconnect = onExit.connect {|code| System.print("exit: %(code)") }
-//   onExit.emit(0)                // fires the listener
-//   disconnect.call()             // or `onExit.disconnect(fn)` with the original fn
+// ```wren
+// var onExit = Signal.new
+// var disconnect = onExit.connect {|code| System.print("exit: %(code)") }
+// onExit.emit(0)                // fires the listener
+// disconnect.call()             // or `onExit.disconnect(fn)` with the original fn
+// ```
 //
-// Signal's .connect returns a disconnect closure so you can pass
-// it around without keeping a handle to the original Fn. Listeners
-// fire in registration order.
+// `Signal.connect` returns a disconnect closure so you can pass
+// it around without keeping a handle to the original `Fn`.
+// Listeners fire in registration order.
 //
 // ## EventEmitter — multiple named events
 //
-//   var bus = EventEmitter.new
-//   bus.on("data")   {|chunk| handle(chunk) }
-//   bus.on("error")  {|err|   System.print("err: %(err)") }
-//   bus.once("end")  { System.print("done") }
-//   bus.emit("data", chunk)
-//   bus.emit("end")
+// ```wren
+// var bus = EventEmitter.new
+// bus.on("data")   {|chunk| handle(chunk) }
+// bus.on("error")  {|err|   System.print("err: %(err)") }
+// bus.once("end")  { System.print("done") }
+// bus.emit("data", chunk)
+// bus.emit("end")
+// ```
 //
 // `once(event, fn)` fires exactly once and removes itself. `off`
-// accepts the original Fn reference. `offAll(event)` clears every
-// listener for a single event; `offAll` with no arg wipes the
-// whole emitter.
+// accepts the original `Fn` reference. `offAll(event)` clears
+// every listener for a single event; `offAll` with no arg wipes
+// the whole emitter.
 //
 // Both classes guard against listener-mutation-during-emit by
 // iterating over a snapshot. A listener that `off`s itself (or
@@ -263,17 +269,19 @@ class EventEmitter {
 /// Round-robin runner for cooperatively-yielding fibers. Each
 /// fiber runs until it calls `Fiber.yield()` or finishes; the
 /// scheduler then moves on to the next. Best paired with the
-/// `Reader.withTryFn` from @hatch:io so IO-bound fibers release
-/// the runner while waiting on bytes.
+/// `Reader.withTryFn` from `@hatch:io` so IO-bound fibers
+/// release the runner while waiting on bytes.
 ///
-///   import "@hatch:events" for Scheduler
+/// ```wren
+/// import "@hatch:events" for Scheduler
 ///
-///   var fibers = [
-///     Fiber.new { Http.getStream(url1).bodyAsync.readAll.toString },
-///     Fiber.new { Http.getStream(url2).bodyAsync.readAll.toString },
-///     Fiber.new { Http.getStream(url3).bodyAsync.readAll.toString },
-///   ]
-///   var results = Scheduler.runAll(fibers)
+/// var fibers = [
+///   Fiber.new { Http.getStream(url1).bodyAsync.readAll.toString },
+///   Fiber.new { Http.getStream(url2).bodyAsync.readAll.toString },
+///   Fiber.new { Http.getStream(url3).bodyAsync.readAll.toString },
+/// ]
+/// var results = Scheduler.runAll(fibers)
+/// ```
 ///
 /// Returns a list of results aligned with the input: each slot
 /// holds the fiber's return value, or — on abort — the error

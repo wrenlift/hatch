@@ -1,31 +1,34 @@
-// @hatch:datetime — timezone-aware DateTime + Duration arithmetic.
+// `@hatch:datetime` — timezone-aware `DateTime` + `Duration`
+// arithmetic.
 //
-//   import "@hatch:datetime" for DateTime, Duration
+// ```wren
+// import "@hatch:datetime" for DateTime, Duration
 //
-//   DateTime.now                              // now, UTC
-//   DateTime.utc(2026, 4, 21, 15, 30)         // 2026-04-21T15:30:00Z
-//   DateTime.parse("2026-04-21T15:30:00+02:00")
+// DateTime.now                              // now, UTC
+// DateTime.utc(2026, 4, 21, 15, 30)         // 2026-04-21T15:30:00Z
+// DateTime.parse("2026-04-21T15:30:00+02:00")
 //
-//   var dt = DateTime.now
-//   dt.year / dt.month / dt.day
-//   dt.hour / dt.minute / dt.second
-//   dt.weekday            // 0=Mon … 6=Sun
-//   dt.offsetMinutes      // signed int; 0 for UTC, 60 for +01:00
-//   dt.iso                // "2026-04-21T15:30:00+02:00" / "…Z"
-//   dt.format("YYYY-MM-DD HH:mm:ss ZZ")
+// var dt = DateTime.now
+// dt.year / dt.month / dt.day
+// dt.hour / dt.minute / dt.second
+// dt.weekday            // 0=Mon … 6=Sun
+// dt.offsetMinutes      // signed int; 0 for UTC, 60 for +01:00
+// dt.iso                // "2026-04-21T15:30:00+02:00" / "…Z"
+// dt.format("YYYY-MM-DD HH:mm:ss ZZ")
 //
-//   // Arithmetic returns fresh DateTime values.
-//   var later    = dt.add(Duration.hours(2))
-//   var earlier  = dt.subtract(Duration.minutes(15))
-//   var between  = later.diff(earlier)             // → Duration
-//   between.seconds                                // Num (integer)
-//   between.minutes                                // fractional Num
+// // Arithmetic returns fresh DateTime values.
+// var later    = dt.add(Duration.hours(2))
+// var earlier  = dt.subtract(Duration.minutes(15))
+// var between  = later.diff(earlier)             // → Duration
+// between.seconds                                // Num (integer)
+// between.minutes                                // fractional Num
 //
-//   // Compare by the underlying UTC instant — offset doesn't matter.
-//   DateTime.parse("2026-01-01T12:00:00+00:00") ==
-//     DateTime.parse("2026-01-01T13:00:00+01:00")       // true
+// // Compare by the underlying UTC instant — offset doesn't matter.
+// DateTime.parse("2026-01-01T12:00:00+00:00") ==
+//   DateTime.parse("2026-01-01T13:00:00+01:00")       // true
+// ```
 //
-// `@hatch:time`'s `Time` is UTC-only and wraps a raw unix Num;
+// `@hatch:time`'s `Time` is UTC-only and wraps a raw unix `Num`;
 // this package layers a real value-type on top with offsets,
 // parsing, calendar math, and a `Duration` companion. Builds on
 // `TimeCore.utc(seconds)` from the runtime `time` module for the
@@ -36,17 +39,22 @@ import "time" for TimeCore
 
 // --- Duration ---------------------------------------------------------------
 
-/// A span of time. Internally stored as seconds (can be fractional
-/// and negative). Constructors let you express common units:
+/// A span of time. Internally stored as seconds (can be
+/// fractional and negative). Constructors let you express common
+/// units:
 ///
-///   Duration.seconds(30)
-///   Duration.minutes(1.5)
-///   Duration.hours(24)
-///   Duration.days(7)
+/// ```wren
+/// Duration.seconds(30)
+/// Duration.minutes(1.5)
+/// Duration.hours(24)
+/// Duration.days(7)
+/// ```
 ///
 /// Read back as either the stored unit or any coarser/finer one:
 ///
-///   d.seconds / d.minutes / d.hours / d.days
+/// ```wren
+/// d.seconds / d.minutes / d.hours / d.days
+/// ```
 class Duration {
   construct new_(secs) {
     _s = secs
@@ -180,9 +188,12 @@ class DateTime {
   }
 
   /// Custom format. Tokens extend `Time.format`:
-  ///   YYYY MM DD HH mm ss SSS   — same as @hatch:time
-  ///   Z                         — "Z" for UTC, ±HHMM otherwise
-  ///   ZZ                        — ±HH:MM (or "Z" for UTC)
+  ///
+  /// | Token                       | Meaning                          |
+  /// |-----------------------------|----------------------------------|
+  /// | `YYYY MM DD HH mm ss SSS`   | Same as `@hatch:time`.           |
+  /// | `Z`                         | `Z` for UTC, `±HHMM` otherwise.  |
+  /// | `ZZ`                        | `±HH:MM` (or `Z` for UTC).       |
   format(pattern) {
     if (!(pattern is String)) Fiber.abort("DateTime.format: pattern must be a string")
     var out = pattern

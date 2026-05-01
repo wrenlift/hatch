@@ -1,30 +1,35 @@
-// @hatch:uuid — UUID generation and parsing.
+// `@hatch:uuid` — UUID generation and parsing.
 //
-//   import "@hatch:uuid" for Uuid
+// ```wren
+// import "@hatch:uuid" for Uuid
 //
-//   Uuid.v4        // "8f14e45f-ceea-467a-9575-f86bb6a20b12" — random
-//   Uuid.v7        // "0190f9a8-12ab-7b4e-9d3e-..." — time-ordered
-//   Uuid.nil       // "00000000-0000-0000-0000-000000000000"
+// Uuid.v4        // "8f14e45f-ceea-467a-9575-f86bb6a20b12" — random
+// Uuid.v7        // "0190f9a8-12ab-7b4e-9d3e-..." — time-ordered
+// Uuid.nil       // "00000000-0000-0000-0000-000000000000"
 //
-//   // Namespaced, deterministic (RFC 4122 v5, SHA-1).
-//   Uuid.v5("dns", "example.com")
-//   Uuid.v5(Uuid.NS_URL, "https://example.com/path")
+// // Namespaced, deterministic (RFC 4122 v5, SHA-1).
+// Uuid.v5("dns", "example.com")
+// Uuid.v5(Uuid.NS_URL, "https://example.com/path")
 //
-//   // Parse + validate. Returns the canonical hyphenated lower-case
-//   // form, or null on malformed input.
-//   Uuid.parse("550E8400-E29B-41D4-A716-446655440000")
-//     // → "550e8400-e29b-41d4-a716-446655440000"
-//   Uuid.isValid("not-a-uuid")                 // false
-//   Uuid.version("0190f9a8-12ab-7b4e-9d3e-...")  // 7
+// // Parse + validate. Returns the canonical hyphenated lower-case
+// // form, or null on malformed input.
+// Uuid.parse("550E8400-E29B-41D4-A716-446655440000")
+//   // → "550e8400-e29b-41d4-a716-446655440000"
+// Uuid.isValid("not-a-uuid")                 // false
+// Uuid.version("0190f9a8-12ab-7b4e-9d3e-...")  // 7
 //
-//   // Binary form (16 bytes).
-//   Uuid.toBytes("550e8400-e29b-41d4-a716-446655440000")  // [85, 14, ...]
-//   Uuid.fromBytes(bytes)                                   // → string
+// // Binary form (16 bytes).
+// Uuid.toBytes("550e8400-e29b-41d4-a716-446655440000")  // [85, 14, ...]
+// Uuid.fromBytes(bytes)                                  // → string
+// ```
 //
-// Version guidance:
-//   v4 — arbitrary random identifiers
-//   v5 — stable ids derived from strings (think "slug → UUID")
-//   v7 — DB primary keys; time-ordered preserves B-tree locality
+// ## Version guidance
+//
+// | Version | Use                                                            |
+// |---------|----------------------------------------------------------------|
+// | `v4`    | Arbitrary random identifiers.                                  |
+// | `v5`    | Stable ids derived from strings (think "slug → UUID").         |
+// | `v7`    | DB primary keys; time-ordered preserves B-tree locality.       |
 //
 // Backed by the `uuid` crate.
 

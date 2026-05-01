@@ -1,36 +1,38 @@
-// @hatch:socket — TCP + UDP sockets.
+// `@hatch:socket` — TCP + UDP sockets.
 //
-//   import "@hatch:socket" for TcpListener, TcpStream, UdpSocket
+// ```wren
+// import "@hatch:socket" for TcpListener, TcpStream, UdpSocket
 //
-//   // TCP server
-//   var server = TcpListener.bind("127.0.0.1:0")
-//   System.print(server.address)            // 127.0.0.1:<port>
-//   var conn = server.accept                // blocking
-//   conn.write("hello\n")
-//   conn.close
-//   server.close
+// // TCP server
+// var server = TcpListener.bind("127.0.0.1:0")
+// System.print(server.address)            // 127.0.0.1:<port>
+// var conn = server.accept                // blocking
+// conn.write("hello\n")
+// conn.close
+// server.close
 //
-//   // TCP client
-//   var client = TcpStream.connect("127.0.0.1:8080")
-//   client.write("GET /\r\n\r\n")
-//   var chunk = client.read(4096)            // List<Num>, or []-EOF
-//   client.close
+// // TCP client
+// var client = TcpStream.connect("127.0.0.1:8080")
+// client.write("GET /\r\n\r\n")
+// var chunk = client.read(4096)            // List<Num>, or []-EOF
+// client.close
 //
-//   // UDP
-//   var a = UdpSocket.bind("127.0.0.1:0")
-//   var b = UdpSocket.bind("127.0.0.1:0")
-//   a.sendTo("ping", b.address)
-//   var msg = b.recvFrom(1024)               // [bytes, fromAddr]
+// // UDP
+// var a = UdpSocket.bind("127.0.0.1:0")
+// var b = UdpSocket.bind("127.0.0.1:0")
+// a.sendTo("ping", b.address)
+// var msg = b.recvFrom(1024)               // [bytes, fromAddr]
+// ```
 //
-// Non-blocking variants — `tryAccept`, `tryRead`, `tryRecvFrom` —
-// return `null` when nothing is ready, so callers can yield back
-// to a fiber scheduler (e.g. @hatch:events) without needing OS
-// threads. Pair `conn.tryRead(n)` with `Fiber.yield()` to write
-// cooperative servers in pure Wren.
+// Non-blocking variants — `tryAccept`, `tryRead`, `tryRecvFrom`
+// — return `null` when nothing is ready, so callers can yield
+// back to a fiber scheduler (e.g. `@hatch:events`) without
+// needing OS threads. Pair `conn.tryRead(n)` with `Fiber.yield()`
+// to write cooperative servers in pure Wren.
 //
 // Byte conventions match the rest of the stdlib: writes accept a
-// String (UTF-8 bytes) or a List<Num in 0..=255>; reads always
-// hand back List<Num>. An empty list means EOF on TCP.
+// `String` (UTF-8 bytes) or a `List<Num>` in `0..=255`; reads
+// always hand back `List<Num>`. An empty list means EOF on TCP.
 //
 // Backed by `std::net` (blocking sockets with per-call non-block
 // toggle) — no external runtime, no async runtime leaking into
@@ -107,14 +109,19 @@ class TcpStream {
   read(max) { SocketCore.tcpRead(_id, max) }
 
   /// Non-blocking read. Returns:
-  ///   * non-empty List<Num>  — bytes ready
-  ///   * empty List           — EOF
-  ///   * null                 — no data available right now
+  ///
+  /// - non-empty `List<Num>` — bytes ready.
+  /// - empty `List` — EOF.
+  /// - `null` — no data available right now.
+  ///
   /// Cooperative fiber loop:
-  ///   while (true) {
-  ///     var chunk = conn.tryRead(4096)
-  ///     if (chunk == null) { Fiber.yield() } else { ... break }
-  ///   }
+  ///
+  /// ```wren
+  /// while (true) {
+  ///   var chunk = conn.tryRead(4096)
+  ///   if (chunk == null) { Fiber.yield() } else { ... break }
+  /// }
+  /// ```
   tryRead(max) { SocketCore.tcpTryRead(_id, max) }
 
   /// Write every byte of `data` (String or List<Num>). Blocks

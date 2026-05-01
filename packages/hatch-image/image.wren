@@ -1,20 +1,22 @@
-// @hatch:image — encode + decode RGBA8 image buffers.
+// `@hatch:image` — encode + decode RGBA8 image buffers.
 //
-//   import "@hatch:image"  for Image
-//   import "@hatch:assets" for Assets
-//   import "@hatch:gpu"    for Gpu
+// ```wren
+// import "@hatch:image"  for Image
+// import "@hatch:assets" for Assets
+// import "@hatch:gpu"    for Gpu
 //
-//   var assets = Assets.open("assets")
-//   var img    = Image.decode(assets.bytes("hero.png"))
-//   System.print("loaded %(img.width)x%(img.height)")
+// var assets = Assets.open("assets")
+// var img    = Image.decode(assets.bytes("hero.png"))
+// System.print("loaded %(img.width)x%(img.height)")
 //
-//   // Hand straight to @hatch:gpu — no glue code needed; it
-//   // duck-types on .width / .height / .pixels.
-//   var device = Gpu.requestDevice()
-//   var tex    = device.uploadImage(img)
+// // Hand straight to @hatch:gpu — no glue code needed; it
+// // duck-types on .width / .height / .pixels.
+// var device = Gpu.requestDevice()
+// var tex    = device.uploadImage(img)
 //
-//   // Round-trip: encode a procedurally-built buffer.
-//   var bytes  = Image.encode("png", img.width, img.height, img.pixels)
+// // Round-trip: encode a procedurally-built buffer.
+// var bytes  = Image.encode("png", img.width, img.height, img.pixels)
+// ```
 //
 // PNG, JPEG, BMP, and WebP decode are supported; encode covers
 // PNG / JPEG / BMP. Pixels are always row-major RGBA8 — alpha is

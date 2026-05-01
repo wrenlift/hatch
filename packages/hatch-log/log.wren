@@ -1,25 +1,29 @@
-// @hatch:log — level-filtered logger.
+// `@hatch:log` — level-filtered logger.
 //
-//   import "@hatch:log" for Log
+// ```wren
+// import "@hatch:log" for Log
 //
-//   Log.info("server starting on port %(port)")
-//   Log.warn("config missing, using defaults")
-//   Log.error("connection lost")
-//   Log.debug("cache hit key=%(k)")
+// Log.info("server starting on port %(port)")
+// Log.warn("config missing, using defaults")
+// Log.error("connection lost")
+// Log.debug("cache hit key=%(k)")
+// ```
 //
-// Levels (lowest → highest): debug, info, warn, error. Set
-// `Log.level = Log.DEBUG` to see everything, `Log.WARN` to hide
-// info/debug, etc. Default is INFO.
+// Levels (lowest → highest): `debug`, `info`, `warn`, `error`.
+// Set `Log.level = Log.DEBUG` to see everything, `Log.WARN` to
+// hide info / debug, etc. Default is `INFO`.
 //
 // Customise output:
 //
-//   Log.writer = Fn.new { |line| ... }   // pipe somewhere else
-//   Log.color = false                    // strip ANSI codes
-//   Log.prefix = "[api] "                // tag every line
+// ```wren
+// Log.writer = Fn.new { |line| ... }   // pipe somewhere else
+// Log.color = false                    // strip ANSI codes
+// Log.prefix = "[api] "                // tag every line
+// ```
 //
 // Format is `LEVEL <prefix>message` with the level tag colored
-// via @hatch:fmt (cyan / green / yellow / red). One line per call
-// — callers with multi-line payloads split or interpolate.
+// via `@hatch:fmt` (cyan / green / yellow / red). One line per
+// call — callers with multi-line payloads split or interpolate.
 
 import "@hatch:fmt" for Fmt
 

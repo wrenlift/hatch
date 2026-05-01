@@ -1,36 +1,37 @@
-// @hatch:cli — clap-style argument parser.
+// `@hatch:cli` — clap-style argument parser.
 //
-// Usage:
+// ```wren
+// import "@hatch:cli" for Cli, Arg
 //
-//   import "@hatch:cli" for Cli, Arg
+// var app = Cli.new("greet")
+//   .version("0.1.0")
+//   .about("Prints a greeting")
+//   .arg(Arg.new("name").positional().required()
+//         .help("who to greet"))
+//   .arg(Arg.new("loud").short("l").long("loud").flag()
+//         .help("shout the greeting"))
+//   .arg(Arg.new("count").short("n").long("count").value().default("1")
+//         .help("how many times"))
 //
-//   var app = Cli.new("greet")
-//     .version("0.1.0")
-//     .about("Prints a greeting")
-//     .arg(Arg.new("name").positional().required()
-//           .help("who to greet"))
-//     .arg(Arg.new("loud").short("l").long("loud").flag()
-//           .help("shout the greeting"))
-//     .arg(Arg.new("count").short("n").long("count").value().default("1")
-//           .help("how many times"))
-//
-//   var m = app.parse(argv)
-//   if (m.error != null) {
-//     System.print(m.error)
-//     return
-//   }
-//   var name = m.value("name")
-//   var loud = m.flag("loud")
+// var m = app.parse(argv)
+// if (m.error != null) {
+//   System.print(m.error)
+//   return
+// }
+// var name = m.value("name")
+// var loud = m.flag("loud")
+// ```
 //
 // Shape follows clap (the Rust crate): a fluent builder where
-// Arg configures a single switch / option / positional and Cli
-// collects them, generates help + version text, and does parsing.
+// `Arg` configures a single switch / option / positional and
+// `Cli` collects them, generates help + version text, and does
+// parsing.
 //
-// Errors are returned via Matches.error rather than thrown, so a
-// main function can decide whether to print-and-exit or retry.
-// Help / version also populate error with the rendered text;
-// helpRequested / versionRequested distinguish those from real
-// mistakes.
+// Errors are returned via `Matches.error` rather than thrown, so
+// a `main` function can decide whether to print-and-exit or
+// retry. Help / version also populate `error` with the rendered
+// text; `helpRequested` / `versionRequested` distinguish those
+// from real mistakes.
 
 // --- Arg --------------------------------------------------------------------
 

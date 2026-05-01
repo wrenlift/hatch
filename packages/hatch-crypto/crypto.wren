@@ -1,34 +1,38 @@
-// @hatch:crypto — AES-256-GCM + Ed25519 + CSPRNG.
+// `@hatch:crypto` — AES-256-GCM + Ed25519 + CSPRNG.
 //
-//   import "@hatch:crypto" for Aes, Ed25519, Crypto
+// ```wren
+// import "@hatch:crypto" for Aes, Ed25519, Crypto
 //
-//   // Symmetric authenticated encryption (AES-256-GCM)
-//   var key   = Aes.key                     // 32 fresh random bytes
-//   var nonce = Aes.nonce                   // 12 fresh random bytes
-//   var ct    = Aes.encrypt(key, nonce, "hello world")
-//   var pt    = Aes.decrypt(key, nonce, ct) // List<Num> of "hello world"
+// // Symmetric authenticated encryption (AES-256-GCM)
+// var key   = Aes.key                     // 32 fresh random bytes
+// var nonce = Aes.nonce                   // 12 fresh random bytes
+// var ct    = Aes.encrypt(key, nonce, "hello world")
+// var pt    = Aes.decrypt(key, nonce, ct) // List<Num> of "hello world"
 //
-//   // Ed25519 signatures
-//   var pair = Ed25519.keypair               // [secret, public] — 32 bytes each
-//   var sig  = Ed25519.sign(pair[0], "message")
-//   Ed25519.verify(pair[1], "message", sig)  // true
+// // Ed25519 signatures
+// var pair = Ed25519.keypair               // [secret, public] — 32 bytes each
+// var sig  = Ed25519.sign(pair[0], "message")
+// Ed25519.verify(pair[1], "message", sig)  // true
 //
-//   // Cryptoness
-//   Crypto.bytes(16)    // List<Num>, 16 cryptographically-random bytes
+// // Cryptoness
+// Crypto.bytes(16)    // List<Num>, 16 cryptographically-random bytes
+// ```
 //
-// Byte conventions match @hatch:hash: inputs are either Strings
-// (UTF-8 bytes) or List<Num>; outputs are always List<Num>.
+// Byte conventions match `@hatch:hash`: inputs are either
+// `String`s (UTF-8 bytes) or `List<Num>`; outputs are always
+// `List<Num>`.
 //
-// AES-GCM is the default modern authenticated mode: one roundtrip
-// protects confidentiality + integrity + AAD. Key must be 32
-// bytes, nonce must be 12, **and the same nonce must NEVER be
-// reused under the same key**. Generate fresh nonces via
+// AES-GCM is the default modern authenticated mode: one
+// roundtrip protects confidentiality + integrity + AAD. Key must
+// be 32 bytes, nonce must be 12, **and the same nonce must NEVER
+// be reused under the same key**. Generate fresh nonces via
 // `Aes.nonce` per message.
 //
 // Ed25519 signing keys are 32 bytes, public keys are 32 bytes,
-// signatures are 64 bytes. Verify returns false on any mismatch —
-// wrong key, tampered message, wrong signature length, whatever.
-// Never aborts mid-verify so signature check is branch-free.
+// signatures are 64 bytes. `verify` returns `false` on any
+// mismatch — wrong key, tampered message, wrong signature length,
+// whatever. Never aborts mid-verify so signature check is
+// branch-free.
 //
 // Backed by RustCrypto (`aes-gcm`) + `ed25519-dalek` + OS-seeded
 // CSPRNG via `rand_core`.
@@ -152,20 +156,22 @@ class Crypto {
 /// ever type — account passwords, passphrase-derived keys, API
 /// token recovery codes.
 ///
-///   var hash = Password.hash("correct horse battery staple")
-///   // -> "$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>"
+/// ```wren
+/// var hash = Password.hash("correct horse battery staple")
+/// // -> "$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>"
 ///
-///   Password.verify("correct horse battery staple", hash)  // true
-///   Password.verify("wrong", hash)                         // false
+/// Password.verify("correct horse battery staple", hash)  // true
+/// Password.verify("wrong", hash)                         // false
+/// ```
 ///
 /// The hash string is self-describing (PHC format) — it embeds the
 /// algorithm, parameters, salt, and digest. You store it as-is and
 /// pass it back to `verify`. No "what params did I use" bookkeeping.
 ///
 /// Default params target ~50-80ms per hash on commodity hardware
-/// (m=19456 KiB, t=2, p=1). Tune upward with `hashWith` as you
-/// scale — the point is to keep hashing slow for an attacker while
-/// fast enough for a real login.
+/// (`m=19456` KiB, `t=2`, `p=1`). Tune upward with `hashWith` as
+/// you scale — the point is to keep hashing slow for an attacker
+/// while fast enough for a real login.
 ///
 /// Never store a plaintext password, never hash with SHA-anything,
 /// never use MD5 / SHA-1 / bcrypt for *new* code. `@hatch:hash`

@@ -1,30 +1,34 @@
-/// @hatch:fp — fluent + functional collection operations.
+/// `@hatch:fp` — fluent + functional collection operations.
 ///
-///   import "@hatch:fp" for FP, Pipe
+/// ```wren
+/// import "@hatch:fp" for FP, Pipe
 ///
-///   // Static toolbox — each takes a sequence + a lambda:
-///   FP.flatMap([[1, 2], [3]], Fn.new {|xs| xs })      //= [1, 2, 3]
-///   FP.groupBy([1, 2, 3, 4], Fn.new {|n| n % 2 })     //= { 1: [1, 3], 0: [2, 4] }
-///   FP.partition([1, 2, 3, 4], Fn.new {|n| n > 2 })   //= [[3, 4], [1, 2]]
-///   FP.zipWith([1, 2, 3], [10, 20, 30], Fn.new {|a, b| a + b })  //= [11, 22, 33]
-///   FP.sortedBy(["bb", "a", "ccc"], Fn.new {|s| s.count })       //= ["a", "bb", "ccc"]
-///   FP.chunked([1, 2, 3, 4, 5], 2)                    //= [[1, 2], [3, 4], [5]]
+/// // Static toolbox — each takes a sequence + a lambda:
+/// FP.flatMap([[1, 2], [3]], Fn.new {|xs| xs })      //= [1, 2, 3]
+/// FP.groupBy([1, 2, 3, 4], Fn.new {|n| n % 2 })     //= { 1: [1, 3], 0: [2, 4] }
+/// FP.partition([1, 2, 3, 4], Fn.new {|n| n > 2 })   //= [[3, 4], [1, 2]]
+/// FP.zipWith([1, 2, 3], [10, 20, 30], Fn.new {|a, b| a + b })  //= [11, 22, 33]
+/// FP.sortedBy(["bb", "a", "ccc"], Fn.new {|s| s.count })       //= ["a", "bb", "ccc"]
+/// FP.chunked([1, 2, 3, 4, 5], 2)                    //= [[1, 2], [3, 4], [5]]
 ///
-///   // Fluent pipeline — chains compose left-to-right. Each op
-///   // eagerly materialises into a List, so long chains are still
-///   // O(n) per step. Terminates with `.toList`, `.reduce`, etc.
-///   Pipe.of(1..10)
-///     .where(Fn.new {|n| n % 2 == 0 })
-///     .map  (Fn.new {|n| n * n })
-///     .take (3)
-///     .toList                                          //= [4, 16, 36]
+/// // Fluent pipeline — chains compose left-to-right. Each op
+/// // eagerly materialises into a List, so long chains are still
+/// // O(n) per step. Terminates with `.toList`, `.reduce`, etc.
+/// Pipe.of(1..10)
+///   .where(Fn.new {|n| n % 2 == 0 })
+///   .map  (Fn.new {|n| n * n })
+///   .take (3)
+///   .toList                                          //= [4, 16, 36]
+/// ```
 ///
-/// Wren's stock `Sequence` already does `map / where / take / skip /
-/// reduce / each / count / any / all / contains / join / toList`.
-/// `@hatch:fp` layers the rest on top: flatMap, groupBy, partition,
-/// zip/zipWith, sortedBy, chunked, windowed, scan, tap, takeWhile /
-/// dropWhile, distinct, first / last / min / max, sum, concat,
-/// reversed, withIndex, toMap.
+/// Wren's stock `Sequence` already does `map` / `where` / `take`
+/// / `skip` / `reduce` / `each` / `count` / `any` / `all` /
+/// `contains` / `join` / `toList`. `@hatch:fp` layers the rest
+/// on top: `flatMap`, `groupBy`, `partition`, `zip` / `zipWith`,
+/// `sortedBy`, `chunked`, `windowed`, `scan`, `tap`,
+/// `takeWhile` / `dropWhile`, `distinct`, `first` / `last` /
+/// `min` / `max`, `sum`, `concat`, `reversed`, `withIndex`,
+/// `toMap`.
 ///
 /// Everything here is pure Wren — no runtime module — so the JIT
 /// tier-ups it like any hot user code.
@@ -35,7 +39,9 @@ class FP {
   /// A no-op function that returns its argument unchanged. Useful
   /// as a default where a key-extractor is expected.
   ///
-  ///   FP.distinctBy([1, 2, 2, 3], FP.identity)  //= [1, 2, 3]
+  /// ```wren
+  /// FP.distinctBy([1, 2, 2, 3], FP.identity)  //= [1, 2, 3]
+  /// ```
   static identity { Fn.new {|x| x } }
 
   /// Returns a function that ignores its argument and always yields
@@ -55,7 +61,9 @@ class FP {
 
   /// Build a list by applying `fn(i)` for `i` in `0...n`.
   ///
-  ///   FP.generate(5, Fn.new {|i| i * i })    //= [0, 1, 4, 9, 16]
+  /// ```wren
+  /// FP.generate(5, Fn.new {|i| i * i })    //= [0, 1, 4, 9, 16]
+  /// ```
   static generate(n, fn) {
     var out = []
     var i = 0
@@ -73,11 +81,13 @@ class FP {
 
   /// Each element produces a sub-sequence; flatten one level.
   ///
-  ///   FP.flatMap([[1, 2], [3], [4, 5]], Fn.new {|xs| xs })
-  ///   //= [1, 2, 3, 4, 5]
+  /// ```wren
+  /// FP.flatMap([[1, 2], [3], [4, 5]], Fn.new {|xs| xs })
+  /// //= [1, 2, 3, 4, 5]
+  /// ```
   ///
-  /// `fn` may return any Sequence (List, Range, String, another
-  /// wrapper). We iterate each result and concatenate.
+  /// `fn` may return any `Sequence` (`List`, `Range`, `String`,
+  /// another wrapper). We iterate each result and concatenate.
   static flatMap(seq, fn) {
     var out = []
     for (x in seq) {
@@ -97,10 +107,12 @@ class FP {
   /// Run `fn` on each element for its side effect; return the list
   /// of the same elements unchanged. Chain-friendly.
   ///
-  ///   Pipe.of([1, 2, 3])
-  ///     .tap (Fn.new {|x| System.print(x) })
-  ///     .map (Fn.new {|x| x * 2 })
-  ///     .toList
+  /// ```wren
+  /// Pipe.of([1, 2, 3])
+  ///   .tap (Fn.new {|x| System.print(x) })
+  ///   .map (Fn.new {|x| x * 2 })
+  ///   .toList
+  /// ```
   static tap(seq, fn) {
     var out = []
     for (x in seq) {
@@ -112,12 +124,14 @@ class FP {
 
   // -- Grouping / splitting ----------------------------------------------
 
-  /// Bucket elements by `keyFn(element)`. Returns a Map from key
-  /// to a List of elements with that key. Preserves per-bucket
+  /// Bucket elements by `keyFn(element)`. Returns a `Map` from key
+  /// to a `List` of elements with that key. Preserves per-bucket
   /// insertion order.
   ///
-  ///   FP.groupBy(["apple", "ant", "bee"], Fn.new {|s| s[0] })
-  ///   //= { "a": ["apple", "ant"], "b": ["bee"] }
+  /// ```wren
+  /// FP.groupBy(["apple", "ant", "bee"], Fn.new {|s| s[0] })
+  /// //= { "a": ["apple", "ant"], "b": ["bee"] }
+  /// ```
   static groupBy(seq, keyFn) {
     var out = {}
     for (x in seq) {
@@ -131,8 +145,10 @@ class FP {
   /// Split into `[matches, rest]` using a boolean predicate. Single
   /// pass, preserves order within each side.
   ///
-  ///   FP.partition([1, 2, 3, 4], Fn.new {|n| n > 2 })
-  ///   //= [[3, 4], [1, 2]]
+  /// ```wren
+  /// FP.partition([1, 2, 3, 4], Fn.new {|n| n > 2 })
+  /// //= [[3, 4], [1, 2]]
+  /// ```
   static partition(seq, pred) {
     var yes = []
     var no = []
@@ -145,7 +161,9 @@ class FP {
   /// Break into fixed-size chunks. The last chunk may be shorter
   /// if the total isn't divisible by `n`.
   ///
-  ///   FP.chunked([1, 2, 3, 4, 5], 2)  //= [[1, 2], [3, 4], [5]]
+  /// ```wren
+  /// FP.chunked([1, 2, 3, 4, 5], 2)  //= [[1, 2], [3, 4], [5]]
+  /// ```
   static chunked(seq, n) {
     if (!(n is Num) || n < 1) Fiber.abort("FP.chunked: size must be >= 1")
     var out = []
@@ -164,8 +182,10 @@ class FP {
   /// Sliding windows of length `size`, advancing by `step` each
   /// time. Defaults to a step of 1 (standard overlap-1 window).
   ///
-  ///   FP.windowed([1, 2, 3, 4], 2)          //= [[1,2], [2,3], [3,4]]
-  ///   FP.windowed([1, 2, 3, 4, 5], 2, 2)    //= [[1,2], [3,4]]
+  /// ```wren
+  /// FP.windowed([1, 2, 3, 4], 2)          //= [[1,2], [2,3], [3,4]]
+  /// FP.windowed([1, 2, 3, 4, 5], 2, 2)    //= [[1,2], [3,4]]
+  /// ```
   static windowed(seq, size) { windowed(seq, size, 1) }
   static windowed(seq, size, step) {
     if (!(size is Num) || size < 1) Fiber.abort("FP.windowed: size must be >= 1")
@@ -182,10 +202,12 @@ class FP {
 
   // -- Pairing -----------------------------------------------------------
 
-  /// Pairwise zip. Length = min(a, b). Each pair is a 2-element
+  /// Pairwise zip. Length = `min(a, b)`. Each pair is a 2-element
   /// list `[a_i, b_i]`.
   ///
-  ///   FP.zip([1, 2, 3], ["a", "b"])   //= [[1, "a"], [2, "b"]]
+  /// ```wren
+  /// FP.zip([1, 2, 3], ["a", "b"])   //= [[1, "a"], [2, "b"]]
+  /// ```
   static zip(a, b) {
     var la = a is List ? a : a.toList
     var lb = b is List ? b : b.toList
@@ -281,8 +303,10 @@ class FP {
   /// Prefix reductions: returns a list of intermediate
   /// accumulators, including the initial one.
   ///
-  ///   FP.scan([1, 2, 3, 4], 0, Fn.new {|acc, x| acc + x })
-  ///   //= [0, 1, 3, 6, 10]
+  /// ```wren
+  /// FP.scan([1, 2, 3, 4], 0, Fn.new {|acc, x| acc + x })
+  /// //= [0, 1, 3, 6, 10]
+  /// ```
   static scan(seq, init, fn) {
     var out = [init]
     var acc = init
@@ -295,8 +319,10 @@ class FP {
 
   /// Stop taking as soon as `pred(x)` is false.
   ///
-  ///   FP.takeWhile([1, 2, 3, 0, 5], Fn.new {|n| n > 0 })
-  ///   //= [1, 2, 3]
+  /// ```wren
+  /// FP.takeWhile([1, 2, 3, 0, 5], Fn.new {|n| n > 0 })
+  /// //= [1, 2, 3]
+  /// ```
   static takeWhile(seq, pred) {
     var out = []
     for (x in seq) {
@@ -310,8 +336,10 @@ class FP {
   /// predicate first flips to false (even if it later returns to
   /// true).
   ///
-  ///   FP.dropWhile([1, 2, 3, 0, 5], Fn.new {|n| n > 0 })
-  ///   //= [0, 5]
+  /// ```wren
+  /// FP.dropWhile([1, 2, 3, 0, 5], Fn.new {|n| n > 0 })
+  /// //= [0, 5]
+  /// ```
   static dropWhile(seq, fn) {
     var list = seq is List ? seq : seq.toList
     var start = 0
@@ -344,10 +372,13 @@ class FP {
   }
 
   /// Deduplicate by a key extractor. Uses a `Map` so `keyFn` must
-  /// return a hashable (String / Num / Bool / null are safe).
+  /// return a hashable (`String` / `Num` / `Bool` / `null` are
+  /// safe).
   ///
-  ///   FP.distinctBy(["apple", "ant", "bee"], Fn.new {|s| s[0] })
-  ///   //= ["apple", "bee"]
+  /// ```wren
+  /// FP.distinctBy(["apple", "ant", "bee"], Fn.new {|s| s[0] })
+  /// //= ["apple", "bee"]
+  /// ```
   static distinctBy(seq, keyFn) {
     var seen = {}
     var out = []
@@ -498,11 +529,13 @@ class FP {
 
   // -- Map construction --------------------------------------------------
 
-  /// Build a Map by running each element through `fn` and
+  /// Build a `Map` by running each element through `fn` and
   /// expecting `[key, value]` pairs.
   ///
-  ///   FP.toMap([1, 2, 3], Fn.new {|n| [n.toString, n * n] })
-  ///   //= { "1": 1, "2": 4, "3": 9 }
+  /// ```wren
+  /// FP.toMap([1, 2, 3], Fn.new {|n| [n.toString, n * n] })
+  /// //= { "1": 1, "2": 4, "3": 9 }
+  /// ```
   ///
   /// Later pairs with the same key overwrite earlier ones.
   static toMap(seq, fn) {
@@ -518,14 +551,17 @@ class FP {
 /// Fluent wrapper — every non-terminal method rewraps into a new
 /// `Pipe` so chains compose.
 ///
-///   Pipe.of([1, 2, 3, 4])
-///     .where   (Fn.new {|n| n % 2 == 0 })
-///     .map     (Fn.new {|n| n * 10 })
-///     .toList                               //= [20, 40]
+/// ```wren
+/// Pipe.of([1, 2, 3, 4])
+///   .where   (Fn.new {|n| n % 2 == 0 })
+///   .map     (Fn.new {|n| n * 10 })
+///   .toList                               //= [20, 40]
+/// ```
 ///
-/// Terminals: toList, reduce(_), reduce(_,_), sum, count,
-/// first(_), last(_), toMap(_), each(_), any(_), all(_),
-/// contains(_), isEmpty, join(), join(_), min, max, unwrap.
+/// Terminals: `toList`, `reduce(_)`, `reduce(_, _)`, `sum`,
+/// `count`, `first(_)`, `last(_)`, `toMap(_)`, `each(_)`,
+/// `any(_)`, `all(_)`, `contains(_)`, `isEmpty`, `join()`,
+/// `join(_)`, `min`, `max`, `unwrap`.
 ///
 /// Everything else returns a fresh `Pipe`, so `.tap` / `.map` /
 /// `.where` etc. can interleave without materialising a separate

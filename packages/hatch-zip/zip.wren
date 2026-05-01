@@ -1,37 +1,39 @@
-// @hatch:zip — in-memory ZIP read/write.
+// `@hatch:zip` — in-memory ZIP read / write.
 //
-//   import "@hatch:zip" for Zip
+// ```wren
+// import "@hatch:zip" for Zip
 //
-//   // Inspect
-//   Zip.entries(bytes)         // List<String> of entry names
-//   Zip.info(bytes)            // List<Map> — name/size/compressedSize/isDir/method
+// // Inspect
+// Zip.entries(bytes)         // List<String> of entry names
+// Zip.info(bytes)            // List<Map> — name/size/compressedSize/isDir/method
 //
-//   // Read
-//   Zip.read(bytes, "a.txt")   // List<Num> bytes of that entry, or null
-//   Zip.readAll(bytes)         // Map<String name → List<Num> bytes> (skips dirs)
+// // Read
+// Zip.read(bytes, "a.txt")   // List<Num> bytes of that entry, or null
+// Zip.readAll(bytes)         // Map<String name → List<Num> bytes> (skips dirs)
 //
-//   // Write
-//   var archive = Zip.write({
-//     "hello.txt":  "Hello, world!",
-//     "notes.json": "[1, 2, 3]",
-//   })
-//   // archive is List<Num> — pair with `FS.writeBytes(path, archive)`.
+// // Write
+// var archive = Zip.write({
+//   "hello.txt":  "Hello, world!",
+//   "notes.json": "[1, 2, 3]",
+// })
+// // archive is List<Num> — pair with `FS.writeBytes(path, archive)`.
+// ```
 //
-// Archives are always byte lists (List<Num in 0..=255>). This
-// keeps the API orthogonal to how you got them — off disk via
-// @hatch:fs, over the wire via @hatch:http, generated in memory,
-// whatever.
+// Archives are always byte lists (`List<Num>` in `0..=255`).
+// This keeps the API orthogonal to how you got them — off disk
+// via `@hatch:fs`, over the wire via `@hatch:http`, generated in
+// memory, whatever.
 //
-// Write entries take either a Map {name → bytes} or a List of
-// [name, bytes] pairs. The List form preserves caller order, the
-// Map form is convenient. Values can be Strings (UTF-8) or byte
-// lists.
+// Write entries take either a `Map` `{name → bytes}` or a `List`
+// of `[name, bytes]` pairs. The `List` form preserves caller
+// order, the `Map` form is convenient. Values can be `String`s
+// (UTF-8) or byte lists.
 //
-// Compression method defaults to "deflate". Also accepts "store"
-// (no compression) and "zstd" (smaller + slower). Mismatched
-// entries across methods are fine — each call to `Zip.write` uses
-// a single method for the whole archive; mix methods by chaining
-// multiple writes if you really need it.
+// Compression method defaults to `"deflate"`. Also accepts
+// `"store"` (no compression) and `"zstd"` (smaller + slower).
+// Mismatched entries across methods are fine — each call to
+// `Zip.write` uses a single method for the whole archive; mix
+// methods by chaining multiple writes if you really need it.
 //
 // Backed by the Rust `zip` crate (deflate + zstd enabled).
 
@@ -44,12 +46,15 @@ class Zip {
     return ZipCore.entries(bytes)
   }
 
-  /// List of Maps, one per entry, with:
-  ///   name            → String
-  ///   size            → Num   (uncompressed byte length)
-  ///   compressedSize  → Num
-  ///   isDir           → Bool
-  ///   method          → String  ("store" | "deflate" | "zstd" | "other")
+  /// List of `Map`s, one per entry, with:
+  ///
+  /// | Field            | Type     | Notes                                                |
+  /// |------------------|----------|------------------------------------------------------|
+  /// | `name`           | `String` |                                                      |
+  /// | `size`           | `Num`    | Uncompressed byte length.                            |
+  /// | `compressedSize` | `Num`    |                                                      |
+  /// | `isDir`          | `Bool`   |                                                      |
+  /// | `method`         | `String` | `"store"` / `"deflate"` / `"zstd"` / `"other"`.      |
   static info(bytes) {
     validateBytes_(bytes, "Zip.info")
     return ZipCore.info(bytes)

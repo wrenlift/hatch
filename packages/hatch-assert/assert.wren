@@ -1,14 +1,14 @@
-// @hatch:assert — fluent assertions for `*.spec.wren` files.
+// `@hatch:assert` — fluent assertions for `*.spec.wren` files.
 //
-// Usage:
+// ```wren
+// import "@hatch:assert" for Expect
 //
-//   import "@hatch:assert" for Expect
-//
-//   Expect.that(1 + 1).toBe(2)
-//   Expect.that([1, 2, 3]).toEqual([1, 2, 3])
-//   Expect.that(null).toBeNull()
-//   Expect.that(42).not.toBeNull()
-//   Expect.that(Fn.new { boom() }).toAbort()
+// Expect.that(1 + 1).toBe(2)
+// Expect.that([1, 2, 3]).toEqual([1, 2, 3])
+// Expect.that(null).toBeNull()
+// Expect.that(42).not.toBeNull()
+// Expect.that(Fn.new { boom() }).toAbort()
+// ```
 //
 // Each failing assertion aborts the enclosing fiber with a message
 // the test runner (`@hatch:test`, landing next) captures and

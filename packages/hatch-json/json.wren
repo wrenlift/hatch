@@ -1,54 +1,61 @@
-// @hatch:json — JSON parser and serializer.
+// `@hatch:json` — JSON parser and serializer.
 //
-//   import "@hatch:json" for JSON
+// ```wren
+// import "@hatch:json" for JSON
 //
-//   JSON.parse("[1, 2, 3]")            // [1, 2, 3]
-//   JSON.parse("{\"a\": true}")        // {a: true}
-//   JSON.encode({"x": [1, 2]})         // "{\"x\":[1,2]}"
-//   JSON.encode({"x": 1}, 2)           // pretty-printed with indent=2
+// JSON.parse("[1, 2, 3]")            // [1, 2, 3]
+// JSON.parse("{\"a\": true}")        // {a: true}
+// JSON.encode({"x": [1, 2]})         // "{\"x\":[1,2]}"
+// JSON.encode({"x": 1}, 2)           // pretty-printed with indent=2
+// ```
 //
-// Type mapping:
+// ## Type mapping
 //
-//   JSON  ↔  Wren
-//   null       null
-//   true/false Bool
-//   number     Num
-//   string     String
-//   array      List
-//   object     Map (string keys)
+// | JSON           | Wren                |
+// |----------------|---------------------|
+// | `null`         | `null`              |
+// | `true`/`false` | `Bool`              |
+// | number         | `Num`               |
+// | string         | `String`            |
+// | array          | `List`              |
+// | object         | `Map` (string keys) |
 //
 // Custom types: define `toJson()` on your class and it becomes
 // encodable. The method returns any JSON-encodable value —
-// typically a Map of fields. Nested custom objects work too; the
-// encoder recurses on the returned value.
+// typically a `Map` of fields. Nested custom objects work too;
+// the encoder recurses on the returned value.
 //
-//   class Point {
-//     construct new(x, y) {
-//       _x = x
-//       _y = y
-//     }
-//     toJson() { {"x": _x, "y": _y} }
+// ```wren
+// class Point {
+//   construct new(x, y) {
+//     _x = x
+//     _y = y
 //   }
-//   JSON.encode(Point.new(1, 2))      // {"x":1,"y":2}
+//   toJson() { {"x": _x, "y": _y} }
+// }
+// JSON.encode(Point.new(1, 2))      // {"x":1,"y":2}
+// ```
 //
 // Malformed input aborts the fiber with a message pointing at the
 // offending byte offset. Callers that want fallible parsing can
 // wrap the call in `Fiber.new { JSON.parse(text) }.try()`.
 //
 // (An attribute-driven `#json`-on-getters approach was prototyped
-// but runs into a separate dispatch quirk — see QUIRKS.md — and
+// but runs into a separate dispatch quirk — see `QUIRKS.md` — and
 // will land once that's unblocked.)
 
 /// JSON parser and serializer.
 ///
 /// Type mapping (JSON ↔ Wren):
 ///
-/// - `null` ↔ `Null`
-/// - `true` / `false` ↔ `Bool`
-/// - number ↔ `Num`
-/// - string ↔ `String`
-/// - array ↔ `List`
-/// - object ↔ `Map` with string keys
+/// | JSON              | Wren                 |
+/// |-------------------|----------------------|
+/// | `null`            | `Null`               |
+/// | `true` / `false`  | `Bool`               |
+/// | number            | `Num`                |
+/// | string            | `String`             |
+/// | array             | `List`               |
+/// | object            | `Map` (string keys)  |
 ///
 /// ## Example
 ///
@@ -63,7 +70,7 @@
 ///
 /// Custom types: define `toJson()` on your class and it becomes
 /// encodable; the method returns any JSON-encodable value
-/// (typically a Map). The encoder recurses on the returned
+/// (typically a `Map`). The encoder recurses on the returned
 /// value, so nested custom objects work.
 class JSON {
   /// Parse a JSON string into the matching Wren value

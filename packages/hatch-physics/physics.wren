@@ -1,37 +1,38 @@
-// @hatch:physics — rapier-backed physics for the WrenLift game
-// framework. World2D and World3D in the same import; identical
+// `@hatch:physics` — rapier-backed physics for the WrenLift game
+// framework. `World2D` and `World3D` in the same import; identical
 // API shape with the only divergence being dimensional types
 // (`[x, y]` vs `[x, y, z]`).
 //
-//   import "@hatch:physics" for World2D, Collider2D
+// ```wren
+// import "@hatch:physics" for World2D, Collider2D
 //
-//   var world = World2D.new({"gravity": [0, -9.81]})
-//   var ground = world.spawnStatic({
-//     "position": [0, -5],
-//     "shape":    Collider2D.box(50, 0.5)
-//   })
-//   var ball = world.spawnDynamic({
-//     "position": [0, 5],
-//     "shape":    Collider2D.ball(0.5),
-//     "mass":     1.0,
-//     "shape":    Collider2D.ball(0.5, {"restitution": 0.9})
-//   })
+// var world = World2D.new({"gravity": [0, -9.81]})
+// var ground = world.spawnStatic({
+//   "position": [0, -5],
+//   "shape":    Collider2D.box(50, 0.5)
+// })
+// var ball = world.spawnDynamic({
+//   "position": [0, 5],
+//   "shape":    Collider2D.ball(0.5),
+//   "mass":     1.0,
+//   "shape":    Collider2D.ball(0.5, {"restitution": 0.9})
+// })
 //
-//   while (running) {
-//     world.step(g.dt)
-//     var p = world.position(ball)
-//     // hand p[0], p[1] to your sprite / camera
-//   }
+// while (running) {
+//   world.step(g.dt)
+//   var p = world.position(ball)
+//   // hand p[0], p[1] to your sprite / camera
+// }
+// ```
 //
 // v0 covers: rigid bodies (dynamic / static / kinematic),
 // primitive colliders (ball / box / capsule), restitution +
 // friction tuning, gravity, force/impulse, position +
 // linearVelocity reads + writes, despawn.
 //
-// Out of scope for v0: rotation read/write, raycasts, joints,
+// Planned (rapier supports all of them; we wrap them as the
+// framework matures): rotation read / write, raycasts, joints,
 // sensors, contact event streams, kinematic-target motion.
-// Rapier supports all of them; we wrap them as the framework
-// matures.
 
 #!native = "wlift_physics"
 foreign class PhysicsCore {
@@ -101,10 +102,13 @@ class World2D {
   step(dt) { PhysicsCore.world2dStep(_id, dt) }
 
   /// Body spawn — descriptor keys:
-  ///   "position":       [x, y]              (default [0, 0])
-  ///   "linearVelocity": [x, y]              (default [0, 0])
-  ///   "shape":          Collider2D Map      (required)
-  ///   "mass":           Num                 (additional mass for dynamic bodies)
+  ///
+  /// | Key              | Type             | Notes                                  |
+  /// |------------------|------------------|----------------------------------------|
+  /// | `position`       | `[x, y]`         | Default `[0, 0]`.                      |
+  /// | `linearVelocity` | `[x, y]`         | Default `[0, 0]`.                      |
+  /// | `shape`          | `Collider2D` Map | Required.                              |
+  /// | `mass`           | `Num`            | Additional mass for dynamic bodies.    |
   spawnDynamic(descriptor)   { PhysicsCore.world2dSpawnDynamic(_id, descriptor) }
   spawnStatic(descriptor)    { PhysicsCore.world2dSpawnStatic(_id, descriptor) }
   spawnKinematic(descriptor) { PhysicsCore.world2dSpawnKinematic(_id, descriptor) }

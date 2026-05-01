@@ -302,13 +302,19 @@ class Style {
 
   /// Add Tailwind-dialect utilities to the base rule.
   ///
-  ///   var s = Css.tw("flex items-center gap-2 p-4")
+  /// ```wren
+  /// var s = Css.tw("flex items-center gap-2 p-4")
+  /// ```
   ///
   /// Prefixes on individual tokens route into the right bucket:
-  ///   "hover:bg-blue-600"   → :hover pseudo
-  ///   "focus:ring-blue-300" → :focus pseudo
-  ///   "md:px-8"             → @media (min-width: 768px)
-  /// States and media can nest: "md:hover:bg-blue-700".
+  ///
+  /// | Token                   | Becomes                     |
+  /// |-------------------------|-----------------------------|
+  /// | `"hover:bg-blue-600"`   | `:hover` pseudo.            |
+  /// | `"focus:ring-blue-300"` | `:focus` pseudo.            |
+  /// | `"md:px-8"`             | `@media (min-width: 768px)`. |
+  ///
+  /// States and media can nest: `"md:hover:bg-blue-700"`.
   tw(classes) {
     var next = Style.clone_(this)
     if (classes == null || classes.count == 0) return next
@@ -320,10 +326,12 @@ class Style {
 
   /// Register arbitrary CSS declarations on the base rule.
   ///
-  ///   Css.raw({"border-image": "url(...)", "-webkit-appearance": "none"})
+  /// ```wren
+  /// Css.raw({"border-image": "url(...)", "-webkit-appearance": "none"})
+  /// ```
   ///
-  /// Wren has no schema for CSS values — this is the escape hatch for
-  /// anything Tailwind dialect doesn't cover.
+  /// Wren has no schema for CSS values — this is the escape
+  /// hatch for anything Tailwind dialect doesn't cover.
   raw(decls) {
     var next = Style.clone_(this)
     for (k in decls.keys) next.baseMerge_(k, decls[k])
@@ -573,16 +581,19 @@ class Style {
 
 /// ── Stylesheet ─────────────────────────────────────────────────────────
 ///
-/// A collection of Styles, deduped by className. `add` returns the
-/// style unchanged so handlers can thread it:
+/// A collection of `Style`s, deduped by `className`. `add`
+/// returns the style unchanged so handlers can thread it:
 ///
-///   return req.render(tpl, {
-///     "btn": req.fragmentSheet.add(btn).className
-///   })
+/// ```wren
+/// return req.render(tpl, {
+///   "btn": req.fragmentSheet.add(btn).className
+/// })
+/// ```
 ///
 /// `emit` returns the concatenated CSS. `styleTag` wraps it in
-/// `<style>...</style>`. Empty sheets emit "" / an empty style tag;
-/// handlers can always include it without null-checking.
+/// `<style>...</style>`. Empty sheets emit `""` / an empty
+/// `<style>` tag; handlers can always include it without
+/// null-checking.
 
 class Stylesheet {
   construct new() {

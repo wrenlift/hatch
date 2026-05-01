@@ -1,29 +1,31 @@
-// @hatch:hash — cryptographic hashes, HMAC, base64.
+// `@hatch:hash` — cryptographic hashes, HMAC, base64.
 //
-//   import "@hatch:hash" for Hash
+// ```wren
+// import "@hatch:hash" for Hash
 //
-//   // One-shot digests. Input is a string (UTF-8 bytes) or
-//   // a list of numbers in 0..=255.
-//   Hash.md5("hello")        // hex digest, lowercase
-//   Hash.sha1("hello")
-//   Hash.sha256("hello")
-//   Hash.sha512("hello")
+// // One-shot digests. Input is a string (UTF-8 bytes) or
+// // a list of numbers in 0..=255.
+// Hash.md5("hello")        // hex digest, lowercase
+// Hash.sha1("hello")
+// Hash.sha256("hello")
+// Hash.sha512("hello")
 //
-//   // Raw bytes (List<Num>) when you need to feed another primitive.
-//   Hash.sha256Bytes("hello")
+// // Raw bytes (List<Num>) when you need to feed another primitive.
+// Hash.sha256Bytes("hello")
 //
-//   // HMAC. key and message both accept string or bytes.
-//   Hash.hmacSha1("secret", "hello")
-//   Hash.hmacSha256("secret", "hello")
-//   Hash.hmacSha512("secret", "hello")
+// // HMAC. key and message both accept string or bytes.
+// Hash.hmacSha1("secret", "hello")
+// Hash.hmacSha256("secret", "hello")
+// Hash.hmacSha512("secret", "hello")
 //
-//   // Base64. Encode takes string/bytes, decode returns bytes.
-//   Hash.base64Encode("hello")       // "aGVsbG8="
-//   Hash.base64Decode("aGVsbG8=")    // [104, 101, 108, 108, 111]
+// // Base64. Encode takes string/bytes, decode returns bytes.
+// Hash.base64Encode("hello")       // "aGVsbG8="
+// Hash.base64Decode("aGVsbG8=")    // [104, 101, 108, 108, 111]
 //
-//   // URL-safe variant (JWT flavour, no padding).
-//   Hash.base64UrlEncode(bytes)
-//   Hash.base64UrlDecode(text)
+// // URL-safe variant (JWT flavour, no padding).
+// Hash.base64UrlEncode(bytes)
+// Hash.base64UrlDecode(text)
+// ```
 //
 // Backed by RustCrypto + base64 crates via the runtime `hash`
 // module. Constant-time comparisons aren't exposed — we'll add a

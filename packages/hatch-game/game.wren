@@ -1,49 +1,51 @@
-// @hatch:game — minimal game-loop scaffold.
+// `@hatch:game` — minimal game-loop scaffold.
 //
 // PixiJS / Cocos / Godot-style: subclass `Game`, override the
 // hooks you care about, hand the class to `Game.run`. State
 // lives in fields on your subclass — no userdata scratchpad,
 // no closure ceremony.
 //
-//   import "@hatch:game"  for Game
-//   import "@hatch:gpu"   for Renderer2D, Camera2D, Sprite
-//   import "@hatch:image" for Image
+// ```wren
+// import "@hatch:game"  for Game
+// import "@hatch:gpu"   for Renderer2D, Camera2D, Sprite
+// import "@hatch:image" for Image
 //
-//   class MyGame is Game {
-//     // Wren doesn't inherit constructors; declare an empty
-//     // `construct new() {}` so Game.run can instantiate.
-//     construct new() {}
+// class MyGame is Game {
+//   // Wren doesn't inherit constructors; declare an empty
+//   // `construct new() {}` so Game.run can instantiate.
+//   construct new() {}
 //
-//     config { {
-//       "title":      "Sprite Demo",
-//       "width":      800, "height": 600,
-//       "clearColor": [0.08, 0.08, 0.12, 1.0]
-//     } }
+//   config { {
+//     "title":      "Sprite Demo",
+//     "width":      800, "height": 600,
+//     "clearColor": [0.08, 0.08, 0.12, 1.0]
+//   } }
 //
-//     setup(g) {
-//       var img    = Image.decode(...)
-//       _sprite    = Sprite.new(g.device.uploadImage(img))
-//       _sprite.anchor(0.5, 0.5)
-//       _renderer  = Renderer2D.new(g.device, g.surfaceFormat)
-//       _camera    = Camera2D.new(g.width, g.height)
-//     }
-//
-//     update(g) {
-//       if (g.input.isDown("KeyD")) _sprite.x = _sprite.x + 200 * g.dt
-//       if (g.input.isDown("KeyA")) _sprite.x = _sprite.x - 200 * g.dt
-//       if (g.input.isDown("Escape")) g.requestQuit
-//     }
-//
-//     draw(g) {
-//       _renderer.beginFrame(_camera)
-//       _sprite.draw(_renderer)
-//       _renderer.flush(g.pass)
-//     }
+//   setup(g) {
+//     var img    = Image.decode(...)
+//     _sprite    = Sprite.new(g.device.uploadImage(img))
+//     _sprite.anchor(0.5, 0.5)
+//     _renderer  = Renderer2D.new(g.device, g.surfaceFormat)
+//     _camera    = Camera2D.new(g.width, g.height)
 //   }
 //
-//   Game.run(MyGame)
+//   update(g) {
+//     if (g.input.isDown("KeyD")) _sprite.x = _sprite.x + 200 * g.dt
+//     if (g.input.isDown("KeyA")) _sprite.x = _sprite.x - 200 * g.dt
+//     if (g.input.isDown("Escape")) g.requestQuit
+//   }
 //
-// Window + device + surface lifetimes are managed by Game.run.
+//   draw(g) {
+//     _renderer.beginFrame(_camera)
+//     _sprite.draw(_renderer)
+//     _renderer.flush(g.pass)
+//   }
+// }
+//
+// Game.run(MyGame)
+// ```
+//
+// Window + device + surface lifetimes are managed by `Game.run`.
 // Resize events trigger a surface re-configure automatically.
 // Setting `g.requestQuit` from any hook exits on the next frame
 // boundary.
