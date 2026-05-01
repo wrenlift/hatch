@@ -1,0 +1,49 @@
+{# ──────────────────────────────────────────────────────────────────────
+   Hatchfile-derived header for the package detail page.
+
+   Pulls everything from the catalog row (which is in turn populated
+   from each package's `hatchfile` via the GitHub-mirrored
+   `index.toml`). Designed to mirror the docs mock: breadcrumb →
+   big title with version pill → lede → status pills row.
+
+   Field set this template depends on (kept parallel to
+   `Catalog.decorate_`):
+
+     pkg.name         "@hatch:http"
+     pkg.version      "0.3.1"
+     pkg.description  "HTTP/1.1 client with …"
+     pkg.git          "https://github.com/wrenlift/hatch"
+     pkg.cat          "net" | "data" | "sys" | "dev"
+     pkg.catLabel     human-friendly form of `cat`
+     pkg.catColor     hex chip color
+     pkg.relativeAge  "Apr 30, 2026"
+
+   ────────────────────────────────────────────────────────────────── #}
+<div class="pkg-detail-head">
+  <nav class="crumbs" aria-label="Breadcrumb">
+    <a href="/">Home</a>
+    <span class="crumb-sep">/</span>
+    <a href="/docs">Docs</a>
+    <span class="crumb-sep">/</span>
+    <span class="crumb-current">{{ pkg.name }}</span>
+  </nav>
+
+  <h1 class="pkg-title">
+    <span class="pkg-title-name">{{ pkg.name }}</span>
+    <span class="pkg-title-pill">v{{ pkg.version }}</span>
+  </h1>
+
+  <p class="pkg-lede">{{ pkg.description }}</p>
+
+  <div class="pkg-pills">
+    <span class="pill pill-status"><span class="dot"></span> stable</span>
+    <span class="pill" style="--pill-accent: {{ pkg.catColor }};">
+      <span class="dot" style="background: {{ pkg.catColor }};"></span>
+      {{ pkg.catLabel }}
+    </span>
+    <span class="pill">updated {{ pkg.relativeAge }}</span>
+    {% if pkg.git %}
+      <a class="pill pill-link" href="{{ pkg.git }}" target="_blank" rel="noopener">source ↗</a>
+    {% endif %}
+  </div>
+</div>

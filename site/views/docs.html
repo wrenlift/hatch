@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+
+{% block title %}All packages · Hatch docs{% endblock %}
+
+{% block body %}
+  {% include "partials/nav.html" %}
+
+  <main class="docs-browse wrap">
+    <header class="docs-browse-head">
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href="/">Home</a>
+        <span class="crumb-sep">/</span>
+        <span class="crumb-current">Docs</span>
+      </nav>
+      <h1 class="pkg-title"><span class="pkg-title-name">All packages</span></h1>
+      <p class="pkg-lede">
+        Every package currently in the registry — search, filter,
+        click through for the README and API reference.
+      </p>
+    </header>
+
+    {% include "partials/packages.html" %}
+  </main>
+
+  {% include "partials/footer.html" %}
+{% endblock %}

@@ -580,3 +580,146 @@
     .foot-grid { grid-template-columns: 1fr 1fr; }
     .term-float { left: 0; }
   }
+
+  /* ---------- DOCS / PACKAGE DETAIL ---------- */
+  .docs-browse, .pkg-detail { padding: 96px 32px 64px; }
+  .docs-browse-head, .pkg-detail-head { max-width: 880px; margin: 0 auto 32px; }
+
+  .crumbs {
+    font-family: var(--mono); font-size: 13px; color: var(--ink-2);
+    margin: 0 0 22px; display: flex; align-items: center; gap: 10px;
+    flex-wrap: wrap;
+  }
+  .crumbs a { color: var(--ink-2); }
+  .crumbs a:hover { color: var(--toast); text-decoration: underline; }
+  .crumbs .crumb-sep { opacity: 0.45; }
+  .crumbs .crumb-current { color: var(--toast); font-weight: 600; }
+
+  .pkg-title {
+    margin: 0 0 18px;
+    font-family: var(--display); font-weight: 800;
+    font-size: clamp(40px, 6vw, 72px);
+    line-height: 1.0; letter-spacing: -0.02em;
+    color: var(--ink);
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  }
+  .pkg-title-name { font-family: var(--mono); font-weight: 700; }
+  .pkg-title-pill {
+    font-family: var(--mono); font-size: 18px; font-weight: 700;
+    color: var(--ink);
+    background: var(--butter);
+    padding: 6px 14px; border-radius: 14px;
+    border: 2px solid var(--ink);
+    box-shadow: 3px 3px 0 var(--ink);
+    align-self: center;
+  }
+  .pkg-lede {
+    font-size: clamp(17px, 1.5vw, 20px);
+    line-height: 1.55; color: var(--ink-2);
+    margin: 0 0 22px; max-width: 820px;
+  }
+  .pkg-lede code {
+    font-family: var(--mono); font-size: 0.92em;
+    background: rgba(58,42,24,0.08);
+    padding: 2px 8px; border-radius: 8px;
+    border: 1px solid rgba(58,42,24,0.18);
+  }
+
+  .pkg-pills { display: flex; flex-wrap: wrap; gap: 12px; }
+  .pkg-pills .pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 9px 16px;
+    font-family: var(--mono); font-size: 13.5px; font-weight: 600;
+    color: var(--ink);
+    background: var(--cream);
+    border: 1.5px solid var(--ink);
+    border-radius: 12px;
+  }
+  .pkg-pills .pill .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--ink); display: inline-block;
+  }
+  .pkg-pills .pill-status {
+    background: var(--sage); color: var(--ink);
+  }
+  .pkg-pills .pill-status .dot { background: var(--ink); }
+  .pkg-pills .pill-link { text-decoration: none; }
+  .pkg-pills .pill-link:hover {
+    background: var(--butter); text-decoration: none;
+  }
+
+  /* ---------- README ---------- */
+  .pkg-readme {
+    max-width: 880px; margin: 0 auto;
+    padding: 36px 40px;
+    background: rgba(251,243,220,0.45);
+    border: 2px solid var(--ink);
+    border-radius: 18px;
+    box-shadow: 4px 4px 0 var(--ink);
+    color: var(--ink);
+    line-height: 1.65;
+  }
+  .pkg-readme h1, .pkg-readme h2, .pkg-readme h3, .pkg-readme h4 {
+    font-family: var(--display); font-weight: 800;
+    color: var(--ink); margin: 32px 0 14px; line-height: 1.15;
+  }
+  .pkg-readme h1 { font-size: 32px; margin-top: 0; }
+  .pkg-readme h2 { font-size: 26px;
+    border-bottom: 1.5px dashed rgba(58,42,24,0.25);
+    padding-bottom: 8px;
+  }
+  .pkg-readme h3 { font-size: 20px; }
+  .pkg-readme p { margin: 0 0 16px; font-size: 16px; }
+  .pkg-readme code {
+    font-family: var(--mono); font-size: 0.92em;
+    background: rgba(58,42,24,0.08);
+    padding: 2px 7px; border-radius: 6px;
+    border: 1px solid rgba(58,42,24,0.18);
+  }
+  .pkg-readme pre {
+    font-family: var(--mono); font-size: 13.5px; line-height: 1.55;
+    background: var(--ink); color: var(--cream);
+    padding: 18px 20px; border-radius: 12px;
+    border: 2px solid var(--ink);
+    overflow-x: auto; margin: 0 0 18px;
+  }
+  .pkg-readme pre code {
+    background: transparent; border: none; padding: 0;
+    color: inherit; font-size: inherit;
+  }
+  .pkg-readme ul, .pkg-readme ol { margin: 0 0 16px; padding-left: 24px; }
+  .pkg-readme li { margin: 6px 0; }
+  .pkg-readme a { color: var(--toast); }
+  .pkg-readme a:hover { text-decoration: underline; }
+  .pkg-readme blockquote {
+    border-left: 4px solid var(--butter);
+    padding: 6px 16px; margin: 0 0 16px;
+    color: var(--ink-2); font-style: italic;
+    background: rgba(244,194,74,0.08);
+    border-radius: 0 8px 8px 0;
+  }
+  .pkg-readme img { max-width: 100%; border-radius: 10px; }
+  .pkg-readme table {
+    border-collapse: collapse; margin: 0 0 18px;
+    font-size: 14.5px;
+  }
+  .pkg-readme th, .pkg-readme td {
+    border: 1.5px solid rgba(58,42,24,0.25);
+    padding: 8px 12px; text-align: left;
+  }
+  .pkg-readme th { background: rgba(58,42,24,0.06); font-weight: 700; }
+
+  .readme-loading, .readme-empty {
+    color: var(--ink-2);
+    font-family: var(--mono); font-size: 14px;
+    display: flex; align-items: center; gap: 12px;
+    padding: 24px;
+  }
+  .readme-loading .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(58,42,24,0.2);
+    border-top-color: var(--toast);
+    border-radius: 50%;
+    animation: rl-spin 0.8s linear infinite;
+  }
+  @keyframes rl-spin { to { transform: rotate(360deg); } }

@@ -166,6 +166,47 @@ class Catalog {
 
   // -- Public read API --
 
+  /// Latest row for a single package by exact name. Returns `null`
+  /// if no row matches — the docs page surfaces that as a 404.
+  /// Used by the `/docs/:name` route; the row is fed straight into
+  /// the same hatchfile-derived header partial the listing uses,
+  /// so the field set must stay parallel to `decorate_`'s output.
+  static byName(name) {
+    var rows = Catalog.db.query(
+      "SELECT * FROM packages WHERE name = ? " +
+      "ORDER BY created_at DESC LIMIT 1",
+      [name]
+    )
+    var decorated = Catalog.decorate_(rows)
+    if (decorated.count == 0) return null
+    return decorated[0]
+  }
+
+  /// Map a catalog name to a public README URL. For `@hatch:*`
+  /// packages we know the on-disk layout under the wrenlift/hatch
+  /// monorepo — `@hatch:foo` lives at `packages/hatch-foo/README.md`.
+  /// For everything else we fall back to the row's `git` field,
+  /// rewritten through GitHub's `/raw/main/README.md` shape if it's
+  /// a github.com URL. Returns `null` when we can't construct one
+  /// (the route then renders a "no README" placeholder).
+  static readmeUrl(row) {
+    var name = row["name"]
+    if (name.startsWith("@hatch:")) {
+      var short = name[7..(name.count - 1)]
+      return "https://raw.githubusercontent.com/wrenlift/hatch/main/packages/hatch-" + short + "/README.md"
+    }
+    var git = row.containsKey("git") ? row["git"] : ""
+    if (git == null || git == "") return null
+    // Strip a trailing `.git` so `/blob/main/README.md` lands on
+    // the right tree.
+    if (git.endsWith(".git")) git = git[0..(git.count - 5)]
+    if (git.startsWith("https://github.com/")) {
+      return git.replace("https://github.com/", "https://raw.githubusercontent.com/") +
+        "/main/README.md"
+    }
+    return null
+  }
+
   /// Distinct-name count out of the catalog.
   static count {
     var row = Catalog.db.queryRow("SELECT COUNT(DISTINCT name) AS n FROM packages")

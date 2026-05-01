@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ pkg.name }} {{ pkg.version }} · Hatch docs{% endblock %}
+
+{% block head %}
+  {# Marked.js renders the markdown the htmx fragment ships back —
+     the README endpoint returns the raw markdown wrapped in a
+     <script type="text/markdown"> tag plus a tiny inline script
+     that swaps it for parsed HTML. Server-side markdown can
+     replace this when we add a parser; the URL surface won't
+     change. #}
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+{% endblock %}
+
+{% block body %}
+  {% include "partials/nav.html" %}
+
+  <main class="pkg-detail wrap">
+    {% include "partials/_pkg_header.html" %}
+
+    <section class="pkg-readme"
+             hx-get="/docs/{{ pkg.name }}/readme"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+      <div class="readme-loading">
+        <span class="spinner" aria-hidden="true"></span>
+        loading README…
+      </div>
+    </section>
+  </main>
+
+  {% include "partials/footer.html" %}
+{% endblock %}
