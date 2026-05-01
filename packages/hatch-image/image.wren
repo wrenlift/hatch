@@ -52,10 +52,22 @@ class Image {
   // generating textures procedurally (e.g. an SDF, a noise tile,
   // or composing an atlas). Same constructor `Image.decode` /
   // `Image.encode` use internally — keeps the surface small.
+  //
+  // `pixels` accepts a `List<Num>` (each cast to u8) or a
+  // `ByteArray`; either way it's stored internally as a
+  // `ByteArray`. That uniformity matters for downstream consumers
+  // — most importantly `@hatch:gpu`'s `writeTexture` path on
+  // wasm32, where the JS bridge reads slot bytes via
+  // `wrenGetSlotBytes` and only resolves a real pointer when the
+  // slot holds a String / TypedArray. Passing a raw List works
+  // on the native runtime (it has a List→bytes coercion path)
+  // but the wasm bridge sees a null pointer and the texture
+  // upload aborts. Coercing here means callers don't have to
+  // care about the target.
   construct new_(width, height, pixels) {
     _w = width
     _h = height
-    _p = pixels
+    _p = (pixels is List) ? ByteArray.fromList(pixels) : pixels
   }
   static new(width, height, pixels) { Image.new_(width, height, pixels) }
 
