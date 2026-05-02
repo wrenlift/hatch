@@ -8,6 +8,7 @@ import "@hatch:web"      for App, Static, Response
 import "@hatch:template" for TemplateRegistry, FnLoader
 import "@hatch:fs"       for Fs
 import "@hatch:proc"     for Proc
+import "@hatch:os"       for Os
 import "./lib/catalog"   for Catalog
 import "./lib/api"       for Api
 
@@ -322,4 +323,10 @@ app.error {|req, err|
   return r
 }
 
-app.listen("0.0.0.0:3000")
+// Honour `PORT` from the environment so Fly (or any platform
+// that injects its own port) routes through correctly; falls
+// back to 3000 for local dev where the Dockerfile / fly.toml
+// already align on that internal port.
+var port = Os.env("PORT", "3000")
+System.print("listening on 0.0.0.0:%(port)")
+app.listen("0.0.0.0:" + port)

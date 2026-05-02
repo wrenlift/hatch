@@ -35,6 +35,9 @@ primary_region = "iad"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "256mb"
+  # 512mb minimum: the JIT engine + an in-memory SQLite catalog +
+  # template registry caches don't comfortably fit in 256mb. The
+  # OOM-kill → Fly-restart loop on first deploy was the symptom.
+  memory = "512mb"
   cpu_kind = "shared"
   cpus = 1
