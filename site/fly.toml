@@ -56,12 +56,16 @@ primary_region = "iad"
 
 [[vm]]
   size = "shared-cpu-1x"
-  # 512mb. wlift's resident set is ~145mb at idle, but Fly's VMs
-  # eat ~80mb for kernel + init, leaving 256mb with no headroom
-  # for the spike when a request streams a large asset (the 320kb
-  # mascot PNG was enough to OOM-kill at 256mb). 512mb leaves
-  # ~285mb of working budget on top of the steady state, which
-  # is comfortable.
-  memory = "512mb"
+  # 768mb. The deploy-site GitHub workflow reads this value on
+  # every push to `site/**`, so a UI-side scale upgrade gets
+  # silently reverted on the next auto-deploy if `fly.toml`
+  # disagrees. We're at 768mb because Linux x86_64 wlift hits
+  # ~399mb anon-rss under JIT load — `MALLOC_ARENA_MAX=2`
+  # (above) caps glibc's per-thread arenas to keep that bounded,
+  # but the headroom above the working set is still tight on
+  # 512mb (kernel + init eat ~80mb). 768mb leaves a comfortable
+  # buffer for the JIT-compile spikes that happen during the
+  # first burst of traffic after a deploy.
+  memory = "768mb"
   cpu_kind = "shared"
   cpus = 1
