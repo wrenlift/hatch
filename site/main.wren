@@ -69,7 +69,17 @@ var staticMw = Static.serve("/assets", "./public/assets")
 app.use(Fn.new {|req, next|
   var r = staticMw.call(req, next)
   if (r != null && req.path.startsWith("/assets/")) {
-    r.header("Cache-Control", "public, max-age=604800, stale-while-revalidate=2592000, immutable")
+    // 1-day max-age + 7-day SWR. Dropped `immutable` because we
+    // don't yet ship versioned asset URLs (no `/assets/site-
+    // <hash>.css`); a stale cached `site.css` was the smoking
+    // gun behind the "mascot tiny" report — the prior deploy
+    // had set `immutable`, the next deploy edited `site.css`,
+    // and any browser that had cached the file kept rendering
+    // against the old rules. With this policy, browsers will
+    // revalidate after a day and SWR keeps the request fast in
+    // the meantime. Once we add a content-hash to asset URLs
+    // we can flip back to a long max-age + immutable.
+    r.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800")
   }
   return r
 })
@@ -219,6 +229,42 @@ var blogBySlug = Fn.new {|slug|
 // Blog index. Two cards (web + game today) using the same docs
 // shell as /packages so the chrome stays consistent. Lives at
 // /blog so the topbar's Blog link has somewhere real to land.
+// Per-process cache of pre-rendered blog HTML, keyed by slug.
+// Filled by the boot-time warmer below. Each entry is a complete
+// page body, ready to ship as a Response.html — cuts the cold
+// first-hit cost (2.6–6.6s on warm runs measured 2026-05-02 for
+// `/blog/web`) down to a `Map.containsKey` + `Response.new`. The
+// catalog-refresh fiber rewarms after `rebuildAggregateCache_`
+// so the embedded sidebar (`stdlib` + `community` lists) isn't
+// stale across refreshes.
+var __blogHtml = {}
+
+// Same shape as the routes use, broken out so the boot-time
+// warmer and the dynamic-render fallback render an identical
+// page.
+var renderBlogPage = Fn.new {|slug|
+  var meta = blogBySlug.call(slug)
+  if (meta == null) return null
+  var md = Fs.exists(meta["file"]) ? Fs.readText(meta["file"]) : "*(content missing — `" + meta["file"] + "` doesn't exist yet.)*"
+  var ctx = docsContext.call(null, {
+    "guideSlug":     slug,
+    "guideTitle":    meta["title"],
+    "guideMd":       md,
+    "guideKind":     "blog",
+    "activeNav":     "blog",
+    "inGuideShell":  true
+  })
+  return registry.get("guide.html").render(ctx)
+}
+
+var warmBlogs = Fn.new {
+  for (b in BLOGS) {
+    var html = renderBlogPage.call(b["slug"])
+    if (html != null) __blogHtml[b["slug"]] = html
+    Fiber.yield()
+  }
+}
+
 app.get("/blog") {|req|
   var ctx = docsContext.call(null, {
     "blogs":     BLOGS,
@@ -232,19 +278,37 @@ app.get("/blog/:slug") {|req|
   var slug = req.params["slug"]
   var meta = blogBySlug.call(slug)
   if (meta == null) return notFound.call("/blog/" + slug)
-  var md = Fs.exists(meta["file"]) ? Fs.readText(meta["file"]) : "*(content missing — `" + meta["file"] + "` doesn't exist yet.)*"
-  var ctx = docsContext.call(null, {
-    "guideSlug":     slug,
-    "guideTitle":    meta["title"],
-    "guideMd":       md,
-    "guideKind":     "blog",
-    "activeNav":     "blog",
-    "inGuideShell":  true
-  })
   if (req.isHx) {
+    // htmx swap target — render the inner fragment fresh; we
+    // don't cache fragments because the swap shape changes
+    // independently of the full-page chrome.
+    var md = Fs.exists(meta["file"]) ? Fs.readText(meta["file"]) : "*(content missing — `" + meta["file"] + "` doesn't exist yet.)*"
+    var ctx = docsContext.call(null, {
+      "guideSlug":     slug,
+      "guideTitle":    meta["title"],
+      "guideMd":       md,
+      "guideKind":     "blog",
+      "activeNav":     "blog",
+      "inGuideShell":  true
+    })
     return registry.get("guide.html").renderFragment("guide_main", ctx)
+      .header("Cache-Control", CACHE_BLOG)
+      .header("Vary", "HX-Request")
   }
-  return req.render(registry.get("guide.html"), ctx)
+  // Pre-rendered cache hit — common path. Skips the full
+  // template render (sidebar iteration over ~150 catalog rows +
+  // markdown embed) which is what dominates blog cold-load time.
+  if (__blogHtml.containsKey(slug)) {
+    return Response.new(200).html(__blogHtml[slug])
+      .header("Cache-Control", CACHE_BLOG)
+      .header("Vary", "HX-Request")
+  }
+  // Fallback for warm-up race: render dynamically and seed the
+  // cache so subsequent requests skip the work.
+  var html = renderBlogPage.call(slug)
+  if (html == null) return notFound.call("/blog/" + slug)
+  __blogHtml[slug] = html
+  return Response.new(200).html(html)
     .header("Cache-Control", CACHE_BLOG)
     .header("Vary", "HX-Request")
 }
@@ -407,5 +471,12 @@ app.spawn(Fn.new { Catalog.refreshLoop() })
 // the same map the warmer is filling.
 app.spawn(Fn.new { Api.warmAll(Catalog.allRecent) })
 app.spawn(Fn.new { Catalog.warmReadmes() })
+// Blog HTML warmer — see `__blogHtml` and `renderBlogPage`
+// above. Pre-renders each blog post's full page (~14KB markdown
+// embed + ~150-row sidebar iteration) once at boot so the first
+// user visit doesn't pay the 2.6–6.6s template-render cost
+// measured under prod load (`/blog/web` cold = 6.6s, warm =
+// 2.6s before this change).
+app.spawn(Fn.new { warmBlogs.call() })
 
 app.listen("0.0.0.0:" + port)
