@@ -53,10 +53,22 @@ var loader = FnLoader.new(Fn.new {|name|
 var registry = TemplateRegistry.new(loader)
 
 // Boot the catalog: opens an in-memory SQLite db and hydrates it
-// from the GitHub-hosted index.toml. Aborts on first-fetch
-// failure — see Catalog.boot for why.
-Catalog.boot()
-System.print("catalog: %(Catalog.count) distinct packages loaded")
+// from the GitHub-hosted index.toml. Wrapped in `Fiber.try` so a
+// flaky first-fetch (DNS not ready on a cold container, GitHub
+// blip, etc.) doesn't kill the whole process before `app.listen`
+// runs — without a listener, Fly's health check never gets a
+// response and the machine restart-loops. The page renders an
+// empty grid in this state until a manual refresh / restart
+// repopulates the table.
+System.print("boot: starting catalog…")
+var bootFiber = Fiber.new { Catalog.boot() }
+bootFiber.try()
+if (bootFiber.error != null) {
+  System.print("boot: catalog hydration failed: %(bootFiber.error)")
+  System.print("boot: continuing with empty catalog — refresh later")
+} else {
+  System.print("boot: catalog: %(Catalog.count) distinct packages loaded")
+}
 
 // Build the context any landing-page render needs. Used by both
 // the full / route and the htmx fragment swap.

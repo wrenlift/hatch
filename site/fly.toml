@@ -21,9 +21,13 @@ primary_region = "iad"
 [http_service]
   internal_port = 3000
   force_https = true
-  auto_stop_machines = "stop"
+  # Keep the machine running while we shake out the first deploy.
+  # Once startup is reliably sub-second we can flip back to
+  # `auto_stop_machines = "stop"` + `min_machines_running = 0`
+  # to spin down on idle.
+  auto_stop_machines = "off"
   auto_start_machines = true
-  min_machines_running = 0   # spin down to zero when idle; the catalog rehydrates on each cold start
+  min_machines_running = 1
   processes = ["app"]
 
   [[http_service.checks]]
