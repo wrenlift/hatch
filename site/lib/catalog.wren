@@ -90,7 +90,7 @@ class Catalog {
       // refreshes only.
       Catalog.sleepYielding_(intervalSec)
       var f = Fiber.new { Catalog.refresh() }
-      f.try()
+      Catalog.driveFiber_(f)
       if (f.error != null) {
         System.print("[catalog] refresh failed: %(f.error)")
       } else {
@@ -106,6 +106,23 @@ class Catalog {
   static sleepYielding_(seconds) {
     var deadline = Clock.mono + seconds
     while (Clock.mono < deadline) Fiber.yield()
+  }
+
+  /// Drive a child fiber to completion, yielding to the scheduler
+  /// between resumes whenever the child yields. Required because
+  /// `Fiber.yield()` deep inside a `.try()`'d fiber doesn't
+  /// resume across the nested boundary on its own — the call to
+  /// `try()` returns at the first yield with `isDone == false`,
+  /// and the caller would treat a half-finished fiber as the
+  /// final result. We pump it ourselves: `try()` runs until the
+  /// next yield, we yield ourselves to the scheduler so other
+  /// fibers tick, then resume the child on our next turn.
+  static driveFiber_(f) {
+    while (!f.isDone) {
+      f.try()
+      if (!f.isDone) Fiber.yield()
+    }
+    return f
   }
 
   static createSchema_() {
@@ -374,6 +391,13 @@ class Catalog {
     var key = "%(name)@%(version)@%(url)"
     if (__readmeCache.containsKey(key)) return __readmeCache[key]
 
+    // Blocking curl — same nested-fiber-yield constraint as
+    // `Api.fetchJson_`. The cache key (`name@version@url`)
+    // collapses repeat visits, so the `Proc.exec` block only
+    // fires on cold misses; `--max-time 10` bounds the worst
+    // case. Cooperative yielding here would require `@hatch:web`
+    // to stop wrapping `pipe.run` in a `Fiber.try` — invasive
+    // refactor, deferred until we migrate to `@hatch:http`.
     var f = Fiber.new {
       Proc.exec(["curl", "-fsSL", url, "--max-time", "10"])
     }

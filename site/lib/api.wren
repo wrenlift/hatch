@@ -62,6 +62,20 @@ class Api {
     if (!pkg.containsKey("docs_url")) return null
     var url = pkg["docs_url"]
     if (url == null || url == "") return null
+    // Blocking curl. We can't yield cooperatively here because
+    // this runs deep inside `@hatch:web`'s `handle()` → `pipe.run`
+    // → route-handler fiber stack: `handle()` already wraps
+    // `pipe.run` in a `Fiber.new { … }.try()` to catch errors,
+    // and a `Fiber.yield()` from inside that nested fiber returns
+    // *to handle's `.try()`*, not to the scheduler. `handle()`
+    // would treat the partial yield value as the route's
+    // response and the page would 500. Cache hits skip this
+    // entirely (`Api.cache_` keyed by `name@version`); the curl
+    // only fires on the first visit per package version, then
+    // the scheduler-block window is bounded by curl's
+    // `--max-time 5`. A real fix needs `@hatch:http`'s
+    // fiber-cooperative reads — gated on the `@hatch:json`
+    // version conflict between `@hatch:web` and `@hatch:http`.
     var f = Fiber.new {
       Proc.exec(["curl", "-fsSL", url, "--max-time", "5"])
     }
