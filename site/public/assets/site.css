@@ -47,6 +47,19 @@
     corner-shape: round;
   }
   html, body { margin: 0; padding: 0; }
+  /* Last-resort horizontal-overflow guard. Any single misplaced
+     element (a 280px terminal floating card, an h1 with a long
+     unbreakable word, a sidebar mid-swap) would otherwise force
+     the whole document wider than the viewport — the browser
+     scrolls horizontally and the user sees mid-letter clipped
+     text on the left edge. `overflow-x: clip` hides the
+     overflow without enabling a scroll axis (unlike
+     `overflow-x: hidden`, which still creates a scroll context
+     and breaks `position: sticky` ancestors). Section-specific
+     fixes below address the underlying overflow; this is the
+     net beneath them.
+  */
+  html { overflow-x: clip; }
   body {
     font-family: var(--body);
     color: var(--ink);
@@ -57,6 +70,14 @@
       radial-gradient(circle at 70% 90%, rgba(143, 174, 106, 0.16) 0, transparent 30%);
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
+    overflow-x: clip;
+  }
+  /* Long display headings should break across word boundaries
+     rather than poke past the viewport on phones. Headings in
+     content (markdown-rendered docs, etc.) inherit. */
+  h1, h2, h3, .hero h1, .pkg-title, .section-head h2 {
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   a { color: var(--toast-deep); text-decoration: none; }
   a:hover { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
@@ -105,7 +126,12 @@
   .hero h1 {
     font-family: var(--display);
     font-weight: 800;
-    font-size: clamp(50px, 6.6vw, 80px);
+    /* Floor at 38px so a ~400px-wide phone (393px viewport
+       minus 64px hero padding ≈ 329px content) doesn't overflow
+       on the longest line ("a script. Hatch"). 6.6vw scales up
+       through tablet sizes; 80px caps the desktop look.
+    */
+    font-size: clamp(38px, 6.6vw, 80px);
     line-height: 1.05;
     letter-spacing: -0.02em;
     margin: 22px 0 18px;
@@ -595,6 +621,35 @@
     .community { grid-template-columns: 1fr; padding: 40px 28px; }
     .foot-grid { grid-template-columns: 1fr 1fr; }
     .term-float { left: 0; }
+  }
+
+  /* Phone breakpoint. The home-page nav has six section
+     anchors + GitHub CTA which together push past a 393px
+     viewport; collapse the section links and keep brand +
+     CTA visible (the same shape `.docs-topbar` already takes
+     at <760px). The terminal floating card is decorative so
+     hide it under the mascot. Section padding tightens too
+     since 32px sides eat too much real estate.
+  */
+  @media (max-width: 640px) {
+    .nav { padding: 18px 20px; }
+    .nav-links { display: none; }
+    .brand img.wordmark { height: 36px; }
+    .nav-cta span { display: none; }
+    .nav-cta { padding: 9px 11px; }
+    .hero { padding: 28px 20px 56px; }
+    .term-float { display: none; }
+    .hero-meta { gap: 14px; font-size: 11px; }
+    .install-grid, .pkg-grid, .why-grid, .fw-grid { padding: 0; }
+    .foot-grid { grid-template-columns: 1fr; gap: 24px; }
+    .wrap { padding: 0 20px; }
+    section { padding: 64px 20px; }
+    .community { padding: 32px 22px; }
+    .docs-topbar-inner { padding: 0 16px; gap: 10px; }
+    .docs-search { padding: 7px 12px; }
+    .docs-search .kbd { display: none; }
+    .docs-version { font-size: 11px; padding: 4px 10px; }
+    .docs-tag { font-size: 10px; padding: 3px 8px; }
   }
 
   /* ---------- DOCS / PACKAGE DETAIL ---------- */
