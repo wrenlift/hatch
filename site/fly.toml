@@ -45,11 +45,12 @@ primary_region = "iad"
 
 [[vm]]
   size = "shared-cpu-1x"
-  # v0.1.1+ honours `WLIFT_GC_NURSERY_MB` (set in [env] above to
-  # 64mb), so the 512mb default arena no longer claims half the
-  # VM at boot. Local steady-state is ~165mb; 256mb leaves enough
-  # headroom for the GC, the in-memory SQLite catalog, the
-  # template cache, and per-request fiber stacks.
-  memory = "256mb"
+  # 512mb. wlift's resident set is ~145mb at idle, but Fly's VMs
+  # eat ~80mb for kernel + init, leaving 256mb with no headroom
+  # for the spike when a request streams a large asset (the 320kb
+  # mascot PNG was enough to OOM-kill at 256mb). 512mb leaves
+  # ~285mb of working budget on top of the steady state, which
+  # is comfortable.
+  memory = "512mb"
   cpu_kind = "shared"
   cpus = 1
