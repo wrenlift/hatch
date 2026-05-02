@@ -62,28 +62,28 @@ COPY content ./content
 RUN hatch build . --out site.hatch
 
 # Backfill the API docs JSON for every @hatch:* package in the
-# live registry, not just the site's transitive deps. We pull
-# `index.toml` from GitHub raw, walk every entry, fetch the
-# matching `.hatch` bundle from the matching release tag, and
-# run `hatch docs` against it. Runtime then reads
-# `content/api/<short>.json` for any package the user navigates
-# to without per-request CLI spawn or registry probe.
+# live registry, not just the site's transitive deps. The
+# previous bundle stage's `hatch build` already cached the site's
+# deps into `~/.hatch/cache/`; for every other catalog package we
+# spin up a throwaway workspace and run `hatch install
+# <name>@<version>` per package, which uses the same registry
+# fetch path the CLI exposes (no duplicated URL pattern in this
+# Dockerfile). Then we walk the cache once and run `hatch docs`
+# against each bundle to emit `content/api/<short>.json`.
 #
-# Each bundle is 1–3MB; ~40 packages × ~2MB = ~80MB of
-# build-time downloads, fine on Fly's remote builder. The cache
-# layer is reused on subsequent builds when the index hasn't
-# moved (Docker keys this RUN by the file content of the inputs
-# above, so an unchanged index.toml + matching releases skips
-# the work).
+# ~40 packages × ~2MB each ≈ 80MB of build-time downloads, fine
+# on Fly's remote builder. Skip `hatch-cli` + `hatch-hello`
+# since they aren't real ecosystem packages.
 RUN set -eu; \
-    mkdir -p content/api; \
+    mkdir -p content/api /tmp/scratch; \
+    cd /tmp/scratch; \
+    printf 'name = "scratch"\nversion = "0.0.0"\nentry = "main"\n' > hatchfile; \
+    : > main.wren; \
     curl -fsSL https://raw.githubusercontent.com/wrenlift/hatch/main/index.toml \
         -o /tmp/index.toml; \
-    # Index entries look like `[packages."@hatch:foo-1.2.3"]`. We
-    # only want the latest version per package — pull every
-    # `name-version` substring with grep (portable across mawk /
-    # gawk / busybox), then have awk pick the highest semver per
-    # name and emit `<dir>\t<version>` pairs.
+    # Index entries look like `[packages."@hatch:foo-1.2.3"]`.
+    # Pick the latest version per name with grep + awk (portable
+    # across mawk / gawk / busybox).
     grep -oE '@hatch:[a-z0-9_-]+-[0-9]+\.[0-9]+\.[0-9]+' /tmp/index.toml \
         | sed 's/^@hatch://' \
         | awk -F'-' '{
@@ -100,29 +100,36 @@ RUN set -eu; \
                 latest[name] = ver;
             }
         }
-        END { for (n in latest) printf "hatch-%s\t%s\n", n, latest[n]; }' \
+        END { for (n in latest) printf "%s\t%s\n", n, latest[n]; }' \
         > /tmp/pkgs.tsv; \
-    while IFS=$'\t' read -r dir ver; do \
-        # Skip the CLI / scaffold entries that aren't real packages.
-        case "$dir" in hatch-cli|hatch-hello) continue ;; esac; \
-        short="${dir#hatch-}"; \
-        out="content/api/${short}.json"; \
-        if [ -s "$out" ]; then continue; fi; \
-        url="https://github.com/wrenlift/hatch/releases/download/publish/${dir}%40${ver}/${dir}-${ver}.hatch"; \
-        tmp="/tmp/${dir}-${ver}.hatch"; \
-        if curl -fsSL -o "$tmp" "$url" 2>/dev/null; then \
-            hatch docs "$tmp" --out "$out" 2>/dev/null \
-                && echo "  -> $out  ($(wc -c < "$out") bytes)" \
-                || echo "  !! docs failed for $dir@$ver"; \
-            rm -f "$tmp"; \
-        else \
-            echo "  -- no release at $url"; \
-        fi; \
+    while IFS=$'\t' read -r short ver; do \
+        case "$short" in cli|hello) continue ;; esac; \
+        # Idempotent — `hatch install` no-ops when the bundle is
+        # already cached and the hatchfile lists the same pin.
+        hatch install "@hatch:${short}@${ver}" 2>&1 \
+            | tail -1 \
+            || echo "  !! install failed for @hatch:${short}@${ver}"; \
     done < /tmp/pkgs.tsv; \
-    rm -f /tmp/index.toml /tmp/pkgs.tsv; \
+    cd /build; \
+    rm -rf /tmp/scratch /tmp/index.toml /tmp/pkgs.tsv; \
+    # Walk the populated cache once and emit a JSON per cached
+    # bundle. The cache filename pattern is `hatch-<short>-<ver>.hatch`.
+    for h in /root/.hatch/cache/*.hatch; do \
+        [ -e "$h" ] || continue; \
+        base=$(basename "$h" .hatch); \
+        short=$(echo "$base" | sed -E 's/^hatch-([a-z0-9_-]+)-[0-9]+\.[0-9]+\.[0-9]+$/\1/'); \
+        if [ -z "$short" ] || [ "$short" = "$base" ]; then continue; fi; \
+        out="content/api/${short}.json"; \
+        # Prefer the highest cached version when multiple are
+        # present — `ls`-sorted name comparison keeps the latest
+        # last so the final write wins.
+        hatch docs "$h" --out "$out" 2>/dev/null \
+            && echo "  -> $out from $base" \
+            || echo "  !! docs failed for $base"; \
+    done; \
     echo "::: content/api/ summary :::"; \
     ls -1 content/api/ | wc -l; \
-    ls -la content/api/ | head -20
+    ls -la content/api/ | head -45
 
 # ---------------------------------------------------------------
 
