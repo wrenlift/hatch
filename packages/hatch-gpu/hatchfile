@@ -31,7 +31,7 @@ native_search_paths = ["libs"]
 # bundle via `hatch publish`.
 [plugin_source]
 repo      = "https://github.com/wrenlift/WrenLift.git"
-rev       = "fd7448627da0327a2b0765440b2a7e90b49ca441"
+rev       = "c13644d948883432bbb873309e69d3801e66e6d7"
 crate     = "wlift_gpu"
 # Wasm-only companion cdylib used when the bundle runs in a
 # browser. Built from the same `repo`/`rev`; produces
