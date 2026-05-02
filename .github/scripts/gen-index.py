@@ -27,7 +27,17 @@ import json
 import sys
 
 
-ALLOWED_FIELDS = ("git", "description", "owner", "created_at", "updated_at")
+ALLOWED_FIELDS = (
+    "git",
+    "description",
+    "homepage",
+    "readme",
+    "docs_url",
+    "readme_url",
+    "owner",
+    "created_at",
+    "updated_at",
+)
 
 
 def version_sort_key(row):
