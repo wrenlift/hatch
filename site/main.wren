@@ -348,4 +348,19 @@ System.print("listening on 0.0.0.0:%(port)")
 // fibers keep ticking between refreshes.
 app.spawn(Fn.new { Catalog.refreshLoop() })
 
+// Background cache warmers — pre-fill the per-process API +
+// README caches for every package the catalog knows about, so
+// the first user visit to `/packages/:name/api` or
+// `/packages/:name/readme` doesn't pay the curl + JSON parse +
+// decorate (or markdown-wrap) cost on the request fiber.
+// `@hatch:gpu`'s docs alone took 20+ seconds to walk on a cold
+// interpreter and dominated the cold-start experience for every
+// new visitor; warming up-front amortises that into a quiet
+// boot-time pass per machine. The warmers yield between
+// packages so request fibers keep handling live traffic; cache
+// misses during warm-up still work normally and just populate
+// the same map the warmer is filling.
+app.spawn(Fn.new { Api.warmAll(Catalog.allRecent) })
+app.spawn(Fn.new { Catalog.warmReadmes() })
+
 app.listen("0.0.0.0:" + port)

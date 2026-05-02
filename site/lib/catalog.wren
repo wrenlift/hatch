@@ -438,6 +438,24 @@ class Catalog {
     return html
   }
 
+  /// Walk every catalog row and pre-populate `__readmeCache` for
+  /// each. Called from a background fiber spawned at boot so the
+  /// first user visit to `/packages/:name/readme` doesn't pay the
+  /// curl + wrap cost on the request fiber. Yields between
+  /// packages; misses during warm-up still work normally.
+  ///
+  /// Pulls the latest version per package directly from the
+  /// SQLite table — the same shape `recent` / `byName` produce —
+  /// so we warm exactly what the routes will resolve. Skips
+  /// missing-readme rows silently (they cache as a stub html
+  /// the first time anyway).
+  static warmReadmes() {
+    for (pkg in Catalog.allRecent) {
+      Catalog.fetchReadmeHtml(pkg)
+      Fiber.yield()
+    }
+  }
+
   /// Wrap raw README markdown in the inline-script harness that
   /// runs `marked.parse` client-side and then upgrades any
   /// `language-wren` fences via `window.mountWrenCode` (CodeMirror,
@@ -509,6 +527,21 @@ class Catalog {
   /// category, used to populate the filter chip badges. Cached per
   /// refresh.
   static byCategory { __cachedByCategory }
+
+  /// Every package, latest version each — same shape as `recent`
+  /// but unbounded. Used by the boot-time API + readme warmers
+  /// in `main.wren` so they iterate exactly the rows the
+  /// `/packages/:name/api` and `/packages/:name/readme` routes
+  /// will resolve, with `docs_url` / `readme_url` already
+  /// attached.
+  static allRecent {
+    var rows = Catalog.db.query(
+      "SELECT * FROM packages WHERE (name, created_at) IN " +
+      "  (SELECT name, MAX(created_at) FROM packages GROUP BY name) " +
+      "ORDER BY name"
+    )
+    return Catalog.decorate_(rows)
+  }
 
   /// Most recent version of each package, newest first.
   static recent(limit) {

@@ -58,6 +58,26 @@ class Api {
     __cache = {}
   }
 
+  /// Walk a list of catalog rows and pre-populate the cache for
+  /// each. Called from a background fiber spawned at boot (see
+  /// `main.wren`) so the first user visit to a `/packages/:name/api`
+  /// route doesn't pay the curl + JSON parse + decorate cost on the
+  /// request fiber. `@hatch:gpu` in particular has a multi-hundred-
+  /// member docs JSON that takes ~20s to walk on a cold interpreter
+  /// — we'd rather amortise that into one boot-time pass per machine
+  /// than make every cold visitor wait.
+  ///
+  /// Yields between packages so request fibers keep handling traffic
+  /// while the warm-up runs. Cache misses still work normally during
+  /// warm-up (the request fiber populates the same cache the warmer
+  /// is filling).
+  static warmAll(packages) {
+    for (pkg in packages) {
+      Api.fetch(pkg)
+      Fiber.yield()
+    }
+  }
+
   static fetchJson_(pkg) {
     if (!pkg.containsKey("docs_url")) return null
     var url = pkg["docs_url"]
