@@ -1,5 +1,5 @@
 name        = "@hatch:gpu"
-version     = "0.2.9"
+version     = "0.2.10"
 entry       = "gpu"
 description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, CommandEncoder, RenderPass on the bottom; Camera2D/3D, Renderer2D (sprite batcher), Renderer3D (lit), Mesh, Material on top. wgpu on native, WebGPU on web — same Wren API both targets."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:gpu"
@@ -31,7 +31,7 @@ native_search_paths = ["libs"]
 # bundle via `hatch publish`.
 [plugin_source]
 repo      = "https://github.com/wrenlift/WrenLift.git"
-rev       = "02178e9a541b31c7cb97f880e05d19d30e333c7d"
+rev       = "33fc7e4"
 crate     = "wlift_gpu"
 # Wasm-only companion cdylib used when the bundle runs in a
 # browser. Built from the same `repo`/`rev`; produces

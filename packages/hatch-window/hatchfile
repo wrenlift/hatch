@@ -1,5 +1,5 @@
 name        = "@hatch:window"
-version     = "0.2.7"
+version     = "0.2.8"
 entry       = "window"
 description = "Window + input for any WrenLift app. winit on native, page-attached canvas on web — same `Window.create({...})` API, same `pollEvents` / `closeRequested` / `size` surface across targets. Bring-your-own canvas via `Window.attach(elementId)` on web."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:window"
@@ -9,7 +9,7 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo      = "https://github.com/wrenlift/WrenLift.git"
-rev       = "02178e9a541b31c7cb97f880e05d19d30e333c7d"
+rev       = "33fc7e4"
 crate     = "wlift_window"
 # Wasm-only companion cdylib for the browser path; produces
 # `wlift_window_web.wasm` matching the `wasm = …` entry below.
