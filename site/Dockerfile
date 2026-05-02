@@ -20,11 +20,14 @@
 
 FROM debian:trixie-slim AS builder
 
-# Optional pinned tag (e.g. `v0.1.0`). Leave empty (the default)
-# so `install.sh` resolves the latest GitHub release via the
-# `/releases/latest` redirect — passing a literal "latest" makes
-# the script treat it as a tag name, which 404s on the asset URL.
-ARG WLIFT_VERSION=
+# Pin the wlift release tag so the Docker layer cache invalidates
+# whenever we move forward. Leaving this blank lets `install.sh`
+# resolve `/releases/latest` at build time, but Docker can't see
+# through that — once a layer with `WLIFT_VERSION=` runs once, every
+# subsequent build hits the cache and keeps the old binary even
+# after a new release is cut. Bump this string in lockstep with each
+# new tag instead.
+ARG WLIFT_VERSION=v0.1.1
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl bash \
