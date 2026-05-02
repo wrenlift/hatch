@@ -45,12 +45,11 @@ primary_region = "iad"
 
 [[vm]]
   size = "shared-cpu-1x"
-  # 512mb required while the deployed wlift is still v0.1.0 — that
-  # release was cut *before* the GC nursery default dropped from
-  # 512mb to 64mb, so the binary hardcodes the bigger arena and
-  # the `WLIFT_GC_NURSERY_MB` env override is a no-op against it.
-  # Drop to 256mb after the next release ships and install.sh's
-  # latest resolve picks it up.
-  memory = "512mb"
+  # v0.1.1+ honours `WLIFT_GC_NURSERY_MB` (set in [env] above to
+  # 64mb), so the 512mb default arena no longer claims half the
+  # VM at boot. Local steady-state is ~165mb; 256mb leaves enough
+  # headroom for the GC, the in-memory SQLite catalog, the
+  # template cache, and per-request fiber stacks.
+  memory = "256mb"
   cpu_kind = "shared"
   cpus = 1
