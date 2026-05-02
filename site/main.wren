@@ -60,16 +60,17 @@ var app = App.new()
 // 30-day stale-while-revalidate window keeps the browser cache
 // hot across visits without forcing a full revalidation each
 // time. `Static.serve` itself doesn't set Cache-Control today,
-// so we wrap it: the underlying middleware does the file lookup
-// + content-type, and this outer thunk just stamps the header
-// onto the response before handing it back. Falls through to
-// `next` only when the inner returned that (i.e. the asset
-// didn't exist or wasn't a GET/HEAD), in which case there's no
-// response to tag.
+// so we wrap it: gate the header injection on the request path
+// matching `/assets/`, otherwise the inner middleware delegates
+// to `next` and we'd be stamping the asset cache policy onto
+// every dynamic route's response (overriding the tier-specific
+// `Cache-Control` each route sets).
 var staticMw = Static.serve("/assets", "./public/assets")
 app.use(Fn.new {|req, next|
   var r = staticMw.call(req, next)
-  if (r != null) r.header("Cache-Control", "public, max-age=604800, stale-while-revalidate=2592000, immutable")
+  if (r != null && req.path.startsWith("/assets/")) {
+    r.header("Cache-Control", "public, max-age=604800, stale-while-revalidate=2592000, immutable")
+  }
   return r
 })
 
