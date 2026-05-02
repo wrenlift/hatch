@@ -35,7 +35,7 @@
 // | `INTEGER` | `Num` (beware: `>2^53` loses precision) |
 // | `REAL`    | `Num`                                   |
 // | `TEXT`    | `String`                                |
-// | `BLOB`    | `List<Num>` (each byte `0..=255`)       |
+// | `BLOB`    | `ByteArray` (also accepts `List<Num>` on bind) |
 //
 // Backed by the `rusqlite` crate with bundled SQLite. The plugin
 // ships as a platform-specific dylib inside this package's

@@ -107,7 +107,10 @@ Test.describe("parameter binding") {
     Expect.that(rows[1]["v"]).toBe(0)
     db.close
   }
-  Test.it("blob round-trip as List<Num>") {
+  Test.it("blob round-trip as ByteArray") {
+    // BIND a blob as a Wren `List<Num>` — backwards-compat with
+    // pre-ByteArray callers. READ comes back as a `ByteArray`,
+    // which behaves like a Sequence (`count`, `[_]`).
     var db = Database.openMemory()
     db.execute("CREATE TABLE t (b BLOB)")
     db.execute("INSERT INTO t VALUES (?)", [[1, 2, 3, 255]])
