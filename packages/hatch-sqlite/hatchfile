@@ -1,5 +1,5 @@
 name        = "@hatch:sqlite"
-version     = "0.1.3"
+version     = "0.1.4"
 entry       = "sqlite"
 description = "Embedded SQLite. `Database.open(path)` returns a connection; prepared statements with named parameter binding, rows iterated as Maps, transactions, error handling. Backed by rusqlite (bundled libsqlite — no system dependency)."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:sqlite"
@@ -21,7 +21,16 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-rev   = "02178e9a541b31c7cb97f880e05d19d30e333c7d"
+# Pinned to the commit that landed mimalloc as wren_lift's
+# `#[global_allocator]` (see `src/lib.rs`). Plugins link
+# wren_lift as an rlib and inherit that declaration into the
+# cdylib's link unit — without rebuilding here the plugin's
+# Rust allocations route through System (libc malloc) while
+# the host routes through mimalloc, and the dual-allocator
+# state SIGSEGV'd v0.1.11 on Linux. Rebuilding at this rev
+# puts plugin + host on the same allocator API so foreign
+# calls don't trip on cross-allocator pointers.
+rev   = "ac97d2eddb87164688c5a6f48396ccdb8e692662"
 crate = "wlift_sqlite"
 
 # Per-platform dylib paths. CI populates `libs/` via the
