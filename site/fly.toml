@@ -17,6 +17,12 @@ primary_region = "iad"
 
 [env]
   PORT = "3000"
+  # Override the GC's default 512mb nursery arena down to 64mb —
+  # the v0.1.0 wlift binary running here was built before the
+  # smaller default landed on main, and a webapp's actual working
+  # set is ~165mb (locally measured). Drop this env once the next
+  # tagged release ships with the lower default baked in.
+  WLIFT_GC_NURSERY_MB = "64"
 
 [http_service]
   internal_port = 3000
@@ -39,9 +45,10 @@ primary_region = "iad"
 
 [[vm]]
   size = "shared-cpu-1x"
-  # 512mb minimum: the JIT engine + an in-memory SQLite catalog +
-  # template registry caches don't comfortably fit in 256mb. The
-  # OOM-kill → Fly-restart loop on first deploy was the symptom.
-  memory = "512mb"
+  # 256mb is enough — local steady-state is ~165mb. The earlier
+  # OOM at boot was the GC nursery defaulting to 512mb upfront;
+  # `WLIFT_GC_NURSERY_MB` above shrinks that to 64mb so the whole
+  # process fits comfortably here.
+  memory = "256mb"
   cpu_kind = "shared"
   cpus = 1
