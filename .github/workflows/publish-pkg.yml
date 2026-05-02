@@ -151,7 +151,7 @@ jobs:
         # the wasm32 asset at the URL its default fetcher
         # constructs once `release_url` is aligned to this
         # naming convention.
-        if: startsWith(github.ref, 'refs/tags/publish/')
+        if: startsWith(github.ref, 'refs/tags/publish/') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
@@ -176,10 +176,10 @@ jobs:
                         --branch main \
                         --bin hatch --locked \
                         wren_lift
-        if: startsWith(github.ref, 'refs/tags/publish/')
+        if: startsWith(github.ref, 'refs/tags/publish/') || github.event_name == 'workflow_dispatch'
 
       - name: Hatch publish (registry upsert)
-        if: startsWith(github.ref, 'refs/tags/publish/')
+        if: startsWith(github.ref, 'refs/tags/publish/') || github.event_name == 'workflow_dispatch'
         env:
           # Same secret model as publish-plugin.yml — the CLI
           # detects HATCH_BOT_URL and POSTs as bearer. Stored as
