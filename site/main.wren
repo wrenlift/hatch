@@ -7,7 +7,6 @@
 import "@hatch:web"      for App, Static, Response
 import "@hatch:template" for TemplateRegistry, FnLoader
 import "@hatch:fs"       for Fs
-import "@hatch:proc"     for Proc
 import "@hatch:os"       for Os
 import "./lib/catalog"   for Catalog
 import "./lib/api"       for Api

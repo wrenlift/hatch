@@ -15,7 +15,7 @@
 // republish lands).
 
 import "@hatch:json" for JSON
-import "@hatch:proc" for Proc
+import "@hatch:http" for Http
 
 class Api {
   /// Per-process cache keyed by `name@version` → parsed-and-
@@ -82,27 +82,23 @@ class Api {
     if (!pkg.containsKey("docs_url")) return null
     var url = pkg["docs_url"]
     if (url == null || url == "") return null
-    // Blocking curl. We can't yield cooperatively here because
-    // this runs deep inside `@hatch:web`'s `handle()` → `pipe.run`
-    // → route-handler fiber stack: `handle()` already wraps
-    // `pipe.run` in a `Fiber.new { … }.try()` to catch errors,
-    // and a `Fiber.yield()` from inside that nested fiber returns
-    // *to handle's `.try()`*, not to the scheduler. `handle()`
-    // would treat the partial yield value as the route's
-    // response and the page would 500. Cache hits skip this
-    // entirely (`Api.cache_` keyed by `name@version`); the curl
-    // only fires on the first visit per package version, then
-    // the scheduler-block window is bounded by curl's
-    // `--max-time 5`. A real fix needs `@hatch:http`'s
-    // fiber-cooperative reads — gated on the `@hatch:json`
-    // version conflict between `@hatch:web` and `@hatch:http`.
-    var f = Fiber.new {
-      Proc.exec(["curl", "-fsSL", url, "--max-time", "5"])
+    // `@hatch:http` runs against `@hatch:socket` with
+    // fiber-cooperative reads, so a slow Supabase fetch yields
+    // back to the scheduler instead of blocking the request
+    // fiber's whole machine. The earlier `Proc.exec(curl)` shim
+    // was kept while @hatch:web@0.1.5 (json@0.1.2) and
+    // @hatch:http@0.3.0 (json@0.1.0) couldn't co-exist in one
+    // bundle; @hatch:http@0.3.2 moved to json@0.1.2 so the
+    // diamond resolves and we can drop the shell-out.
+    var fib = Fiber.new {
+      Http.get(url, { "timeoutMs": 5000, "followRedirects": true })
     }
-    var r = f.try()
-    if (f.error != null) return null
-    if (r != null && r.ok && r.stdout.count > 0) return r.stdout
-    return null
+    var resp = fib.try()
+    if (fib.error != null || resp == null) return null
+    if (!resp.ok) return null
+    var body = resp.body
+    if (body == null || body.count == 0) return null
+    return body
   }
 
   /// Walk the parsed modules and attach view-helper fields the

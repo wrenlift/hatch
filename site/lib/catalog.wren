@@ -19,7 +19,7 @@
 // using the registry name keeps imports uniform.
 import "@hatch:toml"   for Toml
 import "@hatch:sqlite" for Database
-import "@hatch:proc"   for Proc
+import "@hatch:http"   for Http
 import "@hatch:time"   for Clock
 
 /// Public API:
@@ -231,25 +231,23 @@ class Catalog {
   }
 
   /// Curl out to GitHub raw + parse. We use @hatch:proc rather
-  /// than @hatch:http because @hatch:web ships @hatch:json@0.1.2
-  /// while @hatch:http ships @hatch:json@0.1.0 — having both as
-  /// transitives makes the bundler reject the encode.
-  ///
-  /// Spawns the curl as a child process and yields cooperatively
-  /// while waiting for it. `Proc.exec` would block the entire
-  /// scheduler for the full duration of the network fetch (often
-  /// ~hundreds of ms), starving every serve fiber on the box; the
-  /// `run`+`alive`+`yield` pattern keeps the rest of the scheduler
-  /// ticking through requests during the curl.
+  /// `@hatch:http` reads cooperate with the scheduler so the
+  /// rest of the box keeps serving while the GitHub raw fetch
+  /// completes. The earlier `Proc.run` shim was kept while
+  /// `@hatch:web@0.1.5` (json@0.1.2) and `@hatch:http@0.3.0`
+  /// (json@0.1.0) couldn't co-exist in one bundle;
+  /// `@hatch:http@0.3.2` moved to json@0.1.2 so the diamond
+  /// resolves.
   static fetchAndParse_() {
-    var p = Proc.run(["curl", "-fsSL", Catalog.INDEX_URL_, "--max-time", "10"])
-    while (p.alive) Fiber.yield()
-    var r = p.tryWait
-    if (r == null || !r.ok) {
-      var err = r == null ? "no result" : r.stderr
-      Fiber.abort("Catalog.refresh: curl failed: %(err)")
+    var fib = Fiber.new {
+      Http.get(Catalog.INDEX_URL_, { "timeoutMs": 10000, "followRedirects": true })
     }
-    var doc = Toml.parse(r.stdout)
+    var resp = fib.try()
+    if (fib.error != null || resp == null || !resp.ok || resp.body == null) {
+      var err = fib.error != null ? fib.error : (resp == null ? "no response" : "%(resp.status)")
+      Fiber.abort("Catalog.refresh: index.toml fetch failed: %(err)")
+    }
+    var doc = Toml.parse(resp.body)
     var packages = doc["packages"]
     if (!(packages is Map)) Fiber.abort("Catalog.refresh: unexpected index.toml shape")
     var out = []
@@ -416,24 +414,23 @@ class Catalog {
     var key = "%(name)@%(version)@%(url)"
     if (__readmeCache.containsKey(key)) return __readmeCache[key]
 
-    // Blocking curl — same nested-fiber-yield constraint as
-    // `Api.fetchJson_`. The cache key (`name@version@url`)
-    // collapses repeat visits, so the `Proc.exec` block only
-    // fires on cold misses; `--max-time 10` bounds the worst
-    // case. Cooperative yielding here would require `@hatch:web`
-    // to stop wrapping `pipe.run` in a `Fiber.try` — invasive
-    // refactor, deferred until we migrate to `@hatch:http`.
-    var f = Fiber.new {
-      Proc.exec(["curl", "-fsSL", url, "--max-time", "10"])
+    // `@hatch:http` reads cooperate with the scheduler so a slow
+    // Supabase round-trip yields back to other request fibers
+    // instead of blocking the machine. Previously this shelled
+    // out via `Proc.exec(curl)` because `@hatch:web@0.1.5` and
+    // `@hatch:http@0.3.0` shipped incompatible `@hatch:json`
+    // versions; that diamond resolves now that
+    // `@hatch:http@0.3.2` is on `@hatch:json@0.1.2`.
+    var fib = Fiber.new {
+      Http.get(url, { "timeoutMs": 10000, "followRedirects": true })
     }
-    var r = f.try()
-    if (f.error != null) return null
-    if (r == null || !r.ok || r.stdout.count == 0) {
+    var resp = fib.try()
+    if (fib.error != null || resp == null || !resp.ok || resp.body == null || resp.body.count == 0) {
       var miss = "<p class=\"readme-empty\">No README found for <code>" + name + "</code>.</p>"
       __readmeCache[key] = miss
       return miss
     }
-    var html = Catalog.wrapReadme_(r.stdout, name)
+    var html = Catalog.wrapReadme_(resp.body, name)
     __readmeCache[key] = html
     return html
   }
