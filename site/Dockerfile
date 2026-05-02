@@ -61,24 +61,68 @@ COPY content ./content
 # without reaching back to the registry.
 RUN hatch build . --out site.hatch
 
-# Pre-render `hatch docs` for every cached dep into `content/api/`.
-# Runtime then reads `content/api/<short>.json` instead of shelling
-# out to the `hatch` CLI on each request — keeps the runtime image
-# trim (no need to ship the dep cache or the CLI) and removes the
-# spawn-per-request cost.
+# Backfill the API docs JSON for every @hatch:* package in the
+# live registry, not just the site's transitive deps. We pull
+# `index.toml` from GitHub raw, walk every entry, fetch the
+# matching `.hatch` bundle from the matching release tag, and
+# run `hatch docs` against it. Runtime then reads
+# `content/api/<short>.json` for any package the user navigates
+# to without per-request CLI spawn or registry probe.
+#
+# Each bundle is 1–3MB; ~40 packages × ~2MB = ~80MB of
+# build-time downloads, fine on Fly's remote builder. The cache
+# layer is reused on subsequent builds when the index hasn't
+# moved (Docker keys this RUN by the file content of the inputs
+# above, so an unchanged index.toml + matching releases skips
+# the work).
 RUN set -eu; \
     mkdir -p content/api; \
-    for h in /root/.hatch/cache/*.hatch; do \
-        [ -e "$h" ] || continue; \
-        base=$(basename "$h" .hatch); \
-        short=$(echo "$base" | sed -E 's/^hatch-([a-z0-9_-]+)-[0-9].*/\1/'); \
-        if [ -z "$short" ] || [ "$short" = "$base" ]; then \
-            continue; \
+    curl -fsSL https://raw.githubusercontent.com/wrenlift/hatch/main/index.toml \
+        -o /tmp/index.toml; \
+    # Index entries look like `[packages."@hatch:foo-1.2.3"]`. We
+    # only want the latest version per package — pull every
+    # `name-version` substring with grep (portable across mawk /
+    # gawk / busybox), then have awk pick the highest semver per
+    # name and emit `<dir>\t<version>` pairs.
+    grep -oE '@hatch:[a-z0-9_-]+-[0-9]+\.[0-9]+\.[0-9]+' /tmp/index.toml \
+        | sed 's/^@hatch://' \
+        | awk -F'-' '{
+            n = NF;
+            ver = $n;
+            name = $1;
+            for (i = 2; i < n; i++) name = name "-" $i;
+            split(ver, a, ".");
+            split(latest[name], b, ".");
+            if (latest[name] == "" \
+                || (a[1]+0)  > (b[1]+0) \
+                || ((a[1]+0) == (b[1]+0) && (a[2]+0)  > (b[2]+0)) \
+                || ((a[1]+0) == (b[1]+0) && (a[2]+0) == (b[2]+0) && (a[3]+0) > (b[3]+0))) {
+                latest[name] = ver;
+            }
+        }
+        END { for (n in latest) printf "hatch-%s\t%s\n", n, latest[n]; }' \
+        > /tmp/pkgs.tsv; \
+    while IFS=$'\t' read -r dir ver; do \
+        # Skip the CLI / scaffold entries that aren't real packages.
+        case "$dir" in hatch-cli|hatch-hello) continue ;; esac; \
+        short="${dir#hatch-}"; \
+        out="content/api/${short}.json"; \
+        if [ -s "$out" ]; then continue; fi; \
+        url="https://github.com/wrenlift/hatch/releases/download/publish/${dir}%40${ver}/${dir}-${ver}.hatch"; \
+        tmp="/tmp/${dir}-${ver}.hatch"; \
+        if curl -fsSL -o "$tmp" "$url" 2>/dev/null; then \
+            hatch docs "$tmp" --out "$out" 2>/dev/null \
+                && echo "  -> $out  ($(wc -c < "$out") bytes)" \
+                || echo "  !! docs failed for $dir@$ver"; \
+            rm -f "$tmp"; \
+        else \
+            echo "  -- no release at $url"; \
         fi; \
-        echo "  -> content/api/${short}.json from $base"; \
-        hatch docs "$h" --out "content/api/${short}.json" || true; \
-    done; \
-    ls -la content/api/
+    done < /tmp/pkgs.tsv; \
+    rm -f /tmp/index.toml /tmp/pkgs.tsv; \
+    echo "::: content/api/ summary :::"; \
+    ls -1 content/api/ | wc -l; \
+    ls -la content/api/ | head -20
 
 # ---------------------------------------------------------------
 
