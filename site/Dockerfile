@@ -27,7 +27,7 @@ FROM debian:trixie-slim AS builder
 # subsequent build hits the cache and keeps the old binary even
 # after a new release is cut. Bump this string in lockstep with each
 # new tag instead.
-ARG WLIFT_VERSION=v0.1.1
+ARG WLIFT_VERSION=v0.1.2
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl bash \
@@ -56,80 +56,19 @@ COPY public ./public
 COPY content ./content
 
 # `hatch build` resolves [dependencies] from the registry, fetches
-# each `.hatch` bundle, and emits a single self-contained bundle
-# at `/build/site.hatch`. Runtime then loads that bundle directly
-# without reaching back to the registry.
-RUN hatch build . --out site.hatch
+# each `.hatch` bundle, emits a self-contained `site.hatch`, AND
+# (via `--emit-docs-dir`) writes per-dep `Docs` JSON into
+# `content/api/<short>.json` as it merges. One pass for the site's
+# own bytecode + its transitive deps' docs.
+RUN hatch build . --out site.hatch --emit-docs-dir content/api
 
-# Backfill the API docs JSON for every @hatch:* package in the
-# live registry, not just the site's transitive deps. The
-# previous bundle stage's `hatch build` already cached the site's
-# deps into `~/.hatch/cache/`; for every other catalog package we
-# spin up a throwaway workspace and run `hatch install
-# <name>@<version>` per package, which uses the same registry
-# fetch path the CLI exposes (no duplicated URL pattern in this
-# Dockerfile). Then we walk the cache once and run `hatch docs`
-# against each bundle to emit `content/api/<short>.json`.
-#
-# ~40 packages × ~2MB each ≈ 80MB of build-time downloads, fine
-# on Fly's remote builder. Skip `hatch-cli` + `hatch-hello`
-# since they aren't real ecosystem packages.
-RUN set -eu; \
-    mkdir -p content/api /tmp/scratch; \
-    cd /tmp/scratch; \
-    printf 'name = "scratch"\nversion = "0.0.0"\nentry = "main"\n' > hatchfile; \
-    : > main.wren; \
-    curl -fsSL https://raw.githubusercontent.com/wrenlift/hatch/main/index.toml \
-        -o /tmp/index.toml; \
-    # Index entries look like `[packages."@hatch:foo-1.2.3"]`.
-    # Pick the latest version per name with grep + awk (portable
-    # across mawk / gawk / busybox).
-    grep -oE '@hatch:[a-z0-9_-]+-[0-9]+\.[0-9]+\.[0-9]+' /tmp/index.toml \
-        | sed 's/^@hatch://' \
-        | awk -F'-' '{
-            n = NF;
-            ver = $n;
-            name = $1;
-            for (i = 2; i < n; i++) name = name "-" $i;
-            split(ver, a, ".");
-            split(latest[name], b, ".");
-            if (latest[name] == "" \
-                || (a[1]+0)  > (b[1]+0) \
-                || ((a[1]+0) == (b[1]+0) && (a[2]+0)  > (b[2]+0)) \
-                || ((a[1]+0) == (b[1]+0) && (a[2]+0) == (b[2]+0) && (a[3]+0) > (b[3]+0))) {
-                latest[name] = ver;
-            }
-        }
-        END { for (n in latest) printf "%s\t%s\n", n, latest[n]; }' \
-        > /tmp/pkgs.tsv; \
-    while IFS=$'\t' read -r short ver; do \
-        case "$short" in cli|hello) continue ;; esac; \
-        # Idempotent — `hatch install` no-ops when the bundle is
-        # already cached and the hatchfile lists the same pin.
-        hatch install "@hatch:${short}@${ver}" 2>&1 \
-            | tail -1 \
-            || echo "  !! install failed for @hatch:${short}@${ver}"; \
-    done < /tmp/pkgs.tsv; \
-    cd /build; \
-    rm -rf /tmp/scratch /tmp/index.toml /tmp/pkgs.tsv; \
-    # Walk the populated cache once and emit a JSON per cached
-    # bundle. The cache filename pattern is `hatch-<short>-<ver>.hatch`.
-    for h in /root/.hatch/cache/*.hatch; do \
-        [ -e "$h" ] || continue; \
-        base=$(basename "$h" .hatch); \
-        short=$(echo "$base" | sed -E 's/^hatch-([a-z0-9_-]+)-[0-9]+\.[0-9]+\.[0-9]+$/\1/'); \
-        if [ -z "$short" ] || [ "$short" = "$base" ]; then continue; fi; \
-        out="content/api/${short}.json"; \
-        # Prefer the highest cached version when multiple are
-        # present — `ls`-sorted name comparison keeps the latest
-        # last so the final write wins.
-        hatch docs "$h" --out "$out" 2>/dev/null \
-            && echo "  -> $out from $base" \
-            || echo "  !! docs failed for $base"; \
-    done; \
-    echo "::: content/api/ summary :::"; \
-    ls -1 content/api/ | wc -l; \
-    ls -la content/api/ | head -45
+# Backfill the rest of the catalog. `hatch docs --catalog` reads
+# the live `index.toml`, ensures every published package is
+# cached (same registry fetch path `hatch install` uses — no
+# URL pattern duplication), and emits `<short>.json` for each
+# into the same dir. ~40 packages × ~2MB ≈ 80MB of build-time
+# downloads on Fly's remote builder.
+RUN hatch docs --catalog --out content/api
 
 # ---------------------------------------------------------------
 
