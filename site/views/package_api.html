@@ -13,6 +13,13 @@
   "headline": "{{ pkg.name }} {{ pkg.version }} API reference",
   "description": "{{ pkg.description }}",
   "url": "https://hatch.wrenlift.com{% if requestPath %}{{ requestPath }}{% endif %}",
+  "mainEntityOfPage": "https://hatch.wrenlift.com{% if requestPath %}{{ requestPath }}{% endif %}",
+  "image": "https://hatch.wrenlift.com/assets/og-image.png",
+  "datePublished": "{% if pkg.created_at %}{{ pkg.created_at }}{% else %}2026-04-01{% endif %}",
+  "dateModified": "{% if pkg.created_at %}{{ pkg.created_at }}{% else %}2026-05-03{% endif %}",
+  "author": { "@id": "https://hatch.wrenlift.com/#org" },
+  "publisher": { "@id": "https://hatch.wrenlift.com/#org" },
+  "isPartOf": { "@id": "https://hatch.wrenlift.com/#website" },
   "about": {
     "@type": "SoftwareSourceCode",
     "name": "{{ pkg.name }}",
