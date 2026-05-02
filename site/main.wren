@@ -123,12 +123,16 @@ app.get("/guides/:slug") {|req|
   var meta = GUIDES[slug]
   var md = Fs.exists(meta["file"]) ? Fs.readText(meta["file"]) : "*(content missing — `" + meta["file"] + "` doesn't exist yet.)*"
   var ctx = docsContext.call(null, {
-    "guideSlug":  slug,
-    "guideTitle": meta["title"],
-    "guideMd":    md,
-    "guideKind":  "guide",
-    "activeNav":  "guides"
+    "guideSlug":     slug,
+    "guideTitle":    meta["title"],
+    "guideMd":       md,
+    "guideKind":     "guide",
+    "activeNav":     "guides",
+    "inGuideShell":  true
   })
+  if (req.isHx) {
+    return registry.get("guide.html").renderFragment("guide_main", ctx)
+  }
   return req.render(registry.get("guide.html"), ctx)
 }
 
@@ -181,12 +185,16 @@ app.get("/blog/:slug") {|req|
   if (meta == null) return notFound.call("/blog/" + slug)
   var md = Fs.exists(meta["file"]) ? Fs.readText(meta["file"]) : "*(content missing — `" + meta["file"] + "` doesn't exist yet.)*"
   var ctx = docsContext.call(null, {
-    "guideSlug":  slug,
-    "guideTitle": meta["title"],
-    "guideMd":    md,
-    "guideKind":  "blog",
-    "activeNav":  "blog"
+    "guideSlug":     slug,
+    "guideTitle":    meta["title"],
+    "guideMd":       md,
+    "guideKind":     "blog",
+    "activeNav":     "blog",
+    "inGuideShell":  true
   })
+  if (req.isHx) {
+    return registry.get("guide.html").renderFragment("guide_main", ctx)
+  }
   return req.render(registry.get("guide.html"), ctx)
 }
 
@@ -199,7 +207,8 @@ var docsContext = Fn.new {|currentPkg, extra|
     "community":       Catalog.community,
     "currentPkg":      currentPkg,
     "totalCount":      Catalog.count,
-    "wrenliftVersion": WRENLIFT_VERSION
+    "wrenliftVersion": WRENLIFT_VERSION,
+    "inGuideShell":    false
   }
   if (extra != null) {
     for (k in extra.keys) ctx[k] = extra[k]
