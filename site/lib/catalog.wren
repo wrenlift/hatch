@@ -168,6 +168,31 @@ class Catalog {
       }
     }
     Catalog.rebuildAggregateCache_()
+    // Drop the local `rows` reference so the parsed-toml + raw
+    // network response chain is unreachable before we ask the GC
+    // to sweep. Without this the `var rows = …` binding keeps the
+    // entire toml document tree alive across the next request
+    // window — ~hundreds of Maps with key/value strings stay
+    // pinned, which under Fly's 768mb budget is enough to push
+    // us over after one refresh + one /api hit.
+    rows = null
+    // Explicit major-GC trigger. The catalog refresh allocates
+    // through several large transient buffers (curl stdout
+    // ~tens of KB, toml parse tree, the in-flight `Vec<Value>`
+    // → `ObjList` for the bulk INSERT params, the four
+    // aggregate-cache rebuild query results) and overwrites the
+    // module-level `__cachedStdlib / __cachedCommunity / …`
+    // statics — the previous refresh's cached lists become
+    // garbage all at once. Without a manual sweep here the
+    // wren_lift nursery (default 64mb on Fly via
+    // `WLIFT_GC_NURSERY_MB=64`) trickles those into the mature
+    // generation while the next /api request piles on more
+    // allocations, and Fly's OOM killer reaps the process at
+    // ~620mb anon-rss before the next nursery fill triggers a
+    // major collection on its own. Calling `System.gc()` here
+    // amortises the cost into the once-per-five-minutes refresh
+    // boundary instead of letting it ride.
+    System.gc()
     // The API renderer's per-process cache is keyed by
     // `name@version`, so a republish naturally produces a cache
     // miss for the bumped version — the stale entry just becomes
