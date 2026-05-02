@@ -222,6 +222,7 @@
   .mascot-stage img,
   .mascot-stage svg {
     position: relative; z-index: 2;
+    display: block;
     width: 100%; height: 100%;
     object-fit: contain;
     filter: drop-shadow(0 12px 0 rgba(58,42,24,0.08));
@@ -1608,7 +1609,8 @@
   }
   .four-oh-four-art img,
   .four-oh-four-art svg {
-    width: 100%; height: auto; display: block;
+    display: block;
+    width: 100%; height: auto;
   }
   .four-oh-four-copy {
     max-width: 560px; margin: 0 auto;
