@@ -281,20 +281,14 @@ app.get("/packages/:name/readme") {|req|
     r.text("not found")
     return r
   }
-
-  var url = Catalog.readmeUrl(pkg)
-  if (url == null) {
+  var html = Catalog.fetchReadmeHtml(pkg)
+  if (html == null) {
     var r = Response.new(204)
     r.text("")
     return r
   }
-  var fetch = Proc.exec(["curl", "-fsSL", url, "--max-time", "10"])
-  var r = Response.new(fetch.ok ? 200 : 404)
-  if (fetch.ok) {
-    r.html(Catalog.wrapReadme_(fetch.stdout, name))
-  } else {
-    r.html("<p class=\"readme-empty\">No README found for <code>" + name + "</code>.</p>")
-  }
+  var r = Response.new(200)
+  r.html(html)
   return r
 }
 
