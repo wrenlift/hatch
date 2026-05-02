@@ -1,5 +1,5 @@
 name        = "@hatch:sqlite"
-version     = "0.1.4"
+version     = "0.1.5"
 entry       = "sqlite"
 description = "Embedded SQLite. `Database.open(path)` returns a connection; prepared statements with named parameter binding, rows iterated as Maps, transactions, error handling. Backed by rusqlite (bundled libsqlite — no system dependency)."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:sqlite"
@@ -21,26 +21,18 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-# Bumped to pull in two correctness fixes on top of the
-# mimalloc-allocator commit:
-#
-#   * `4c5597e plugin/sqlite: GC-root the result list during
-#     query result build` — the prior code accumulated maps in
-#     a Rust `Vec<Value>` on the host stack (not a GC root),
-#     and any allocation inside the row/field loop could free
-#     the in-progress maps mid-build. Catalog refresh allocates
-#     ~hundreds of Maps in a tight loop, the GC threshold trips
-#     mid-rebuild, and the next request landed on freed
-#     pointers (`hatch run … [catalog] refreshed (39 packages)
-#     … zsh: segmentation fault` reproducer). The fix appends
-#     each fresh map to the result list FIRST so it's
-#     transitively rooted via slot 0.
-#
-#   * `2708fd6 plugin/sqlite: return BLOB columns as ByteArray,
-#     not List<Num>` — half the memory per byte, zero per-byte
-#     GC overhead, `Response.bytes`-friendly shape. Bind side
-#     stays backwards-compatible.
-rev   = "2708fd6"
+# Pinned to the post-mimalloc-revert revision so the plugin's
+# link unit lands on the same `System` allocator the wlift
+# binary uses. The 0.1.4 publish at rev `2708fd6` produced a
+# plugin with `#[global_allocator] = mimalloc` inherited via
+# wren_lift's `host` feature; pairing it with any wlift
+# binary (mimalloc or not) yielded two static allocator
+# instances and corrupted on cross-FFI buffer free. 0.1.5
+# rebuilds at the revert commit so binary + cdylib both go
+# through libc malloc, with the GC-rooting + ByteArray fixes
+# from the 0.1.4 attempt still in place (4c5597e, 2708fd6
+# remain in HEAD's history).
+rev   = "3f66ebd"
 crate = "wlift_sqlite"
 
 # Per-platform dylib paths. CI populates `libs/` via the
