@@ -23,6 +23,17 @@ primary_region = "iad"
   # set is ~165mb (locally measured). Drop this env once the next
   # tagged release ships with the lower default baked in.
   WLIFT_GC_NURSERY_MB = "64"
+  # Cap glibc malloc's per-thread arenas. Default
+  # `MALLOC_ARENA_MAX` is 8 × ncpus on Linux; each arena can
+  # commit up to ~128mb of vmem under fragmentation. wlift has
+  # ≥ 2 long-lived threads (main + JIT compile broker), so we
+  # observed Linux x86_64 hitting 399mb anon-rss and OOM-killing
+  # at the 512mb Fly limit, while local Apple Silicon plateaued
+  # at 176mb on the same workload (darwin's libmalloc doesn't
+  # use this multi-arena model). Pinning to 2 keeps a small
+  # amount of contention-mitigation while bounding worst-case
+  # to ~256mb instead of letting it climb open-ended.
+  MALLOC_ARENA_MAX = "2"
 
 [http_service]
   internal_port = 3000
