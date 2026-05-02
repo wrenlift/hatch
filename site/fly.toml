@@ -45,6 +45,21 @@ primary_region = "lhr"
   # amount of contention-mitigation while bounding worst-case
   # to ~256mb instead of letting it climb open-ended.
   MALLOC_ARENA_MAX = "2"
+  # Keep `@hatch:template`'s parser hot path in the BC interpreter.
+  # Same JIT mis-compile family as `skipWs_` (documented in
+  # template.wren:217-221) producing corrupt token types —
+  # observed under load as `Error: unexpected stray directive:
+  # cls.slug`, which is the parser correctly bailing because the
+  # lexer fed it a `{% cls.slug %}` statement-style token where
+  # the source actually had `{{ cls.slug }}` interpolation.
+  # Auto-deopt (v0.1.10) only fires on `Object does not
+  # implement` dispatch failures; a `Fiber.abort` for corrupt
+  # tokens doesn't trip that path, so we ban the suspect
+  # functions explicitly until the underlying codegen bug is
+  # root-caused. Substring match against `mir.name`; covers
+  # Lex_ + Parse_ + ExprParse_ methods involved in tokenisation
+  # + statement bookkeeping.
+  WLIFT_SKIP_JIT = "parseBody_,parseStmt_,parsePrimary_,parseFilter_,parsePath_,parseString_,parseNumber_,parseIdent_,parseExtends_,parseBlock_,parseIf_,parseFor_,parseSlot_,parseEmbed_,parseCall_,parseSet_,parseInclude_,parseFragment_,parseFillBody_,skipWs_,peek_,eat_,peekWord_,eatWord_,firstWord_,rest_,flushText_,interp_,stmt_,comment_,skipLeadingWs_,rtrim_,peekStmt_,findInKeyword_"
 
 [http_service]
   internal_port = 3000
