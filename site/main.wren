@@ -231,21 +231,22 @@ var blogBySlug = Fn.new {|slug|
 // /blog so the topbar's Blog link has somewhere real to land.
 // Per-process cache of pre-rendered blog HTML, keyed by slug.
 // Filled by the boot-time warmer below. Each entry is a complete
-// page body, ready to ship as a Response.html — cuts the cold
-// first-hit cost (2.6–6.6s on warm runs measured 2026-05-02 for
+// page body, ready to ship as a Response.html - cuts the cold
+// first-hit cost (2.6-6.6s on warm runs measured 2026-05-02 for
 // `/blog/web`) down to a `Map.containsKey` + `Response.new`. The
 // catalog-refresh fiber rewarms after `rebuildAggregateCache_`
 // so the embedded sidebar (`stdlib` + `community` lists) isn't
 // stale across refreshes.
-var __blogHtml = {}
+var blogHtmlCache = null
 
 // Same shape as the routes use, broken out so the boot-time
 // warmer and the dynamic-render fallback render an identical
 // page.
 var renderBlogPage = Fn.new {|slug|
+  if (blogHtmlCache == null) blogHtmlCache = {}
   var meta = blogBySlug.call(slug)
   if (meta == null) return null
-  var md = Fs.exists(meta["file"]) ? Fs.readText(meta["file"]) : "*(content missing — `" + meta["file"] + "` doesn't exist yet.)*"
+  var md = Fs.exists(meta["file"]) ? Fs.readText(meta["file"]) : "*(content missing - `" + meta["file"] + "` doesn't exist yet.)*"
   var ctx = docsContext.call(null, {
     "guideSlug":     slug,
     "guideTitle":    meta["title"],
@@ -260,7 +261,7 @@ var renderBlogPage = Fn.new {|slug|
 var warmBlogs = Fn.new {
   for (b in BLOGS) {
     var html = renderBlogPage.call(b["slug"])
-    if (html != null) __blogHtml[b["slug"]] = html
+    if (html != null) blogHtmlCache[b["slug"]] = html
     Fiber.yield()
   }
 }
@@ -295,11 +296,11 @@ app.get("/blog/:slug") {|req|
       .header("Cache-Control", CACHE_BLOG)
       .header("Vary", "HX-Request")
   }
-  // Pre-rendered cache hit — common path. Skips the full
+  // Pre-rendered cache hit - common path. Skips the full
   // template render (sidebar iteration over ~150 catalog rows +
   // markdown embed) which is what dominates blog cold-load time.
-  if (__blogHtml.containsKey(slug)) {
-    return Response.new(200).html(__blogHtml[slug])
+  if (blogHtmlCache != null && blogHtmlCache.containsKey(slug)) {
+    return Response.new(200).html(blogHtmlCache[slug])
       .header("Cache-Control", CACHE_BLOG)
       .header("Vary", "HX-Request")
   }
@@ -307,7 +308,8 @@ app.get("/blog/:slug") {|req|
   // cache so subsequent requests skip the work.
   var html = renderBlogPage.call(slug)
   if (html == null) return notFound.call("/blog/" + slug)
-  __blogHtml[slug] = html
+  if (blogHtmlCache == null) blogHtmlCache = {}
+  blogHtmlCache[slug] = html
   return Response.new(200).html(html)
     .header("Cache-Control", CACHE_BLOG)
     .header("Vary", "HX-Request")
@@ -471,7 +473,7 @@ app.spawn(Fn.new { Catalog.refreshLoop() })
 // the same map the warmer is filling.
 app.spawn(Fn.new { Api.warmAll(Catalog.allRecent) })
 app.spawn(Fn.new { Catalog.warmReadmes() })
-// Blog HTML warmer — see `__blogHtml` and `renderBlogPage`
+// Blog HTML warmer — see `blogHtmlCache` and `renderBlogPage`
 // above. Pre-renders each blog post's full page (~14KB markdown
 // embed + ~150-row sidebar iteration) once at boot so the first
 // user visit doesn't pay the 2.6–6.6s template-render cost
