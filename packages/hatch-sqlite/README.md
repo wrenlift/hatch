@@ -47,7 +47,7 @@ If the second insert aborts (constraint violation, etc.), the first one rolls ba
 | `INTEGER` | `Num`       | Values above 2^53 lose precision — they round to the nearest representable double. |
 | `REAL`    | `Num`       |       |
 | `TEXT`    | `String`    |       |
-| `BLOB`    | `List<Num>` | Each byte in `0..=255`. |
+| `BLOB`    | `ByteArray` | Returned as `ByteArray` on read (`row["b"][0]`, `row["b"].count`). On bind, accepts `ByteArray` or a backwards-compatible `List<Num>` with bytes in `0..=255`. |
 
 > **Warning — large integers lose precision**
 > Wren's `Num` is an IEEE 754 double, so SQLite `INTEGER` values above 2^53 round on the way through. If you store unsigned 64-bit ids, encode them as `TEXT` (or as `BLOB` for binary fixed-width keys) to keep the bits intact.
