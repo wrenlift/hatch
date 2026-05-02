@@ -3,8 +3,46 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#FBF3DC" />
   <title>{% block title %}Hatch — packages for Wren, powered by Wrenlift{% endblock %}</title>
-  <meta name="description" content="A package and framework ecosystem for the Wren scripting language, powered by the Wrenlift runtime." />
+
+  {# Per-page description override. Routes can replace the
+     default with route-specific copy via `{% block description %}…{% endblock %}`
+     in the child template; see views/index.html for an
+     example. The string lands in three places — the
+     `<meta name="description">` here, the `og:description`
+     below, and the `twitter:description` — keeping them in
+     sync is one declaration. #}
+  <meta name="description" content="{% block description %}A package and framework ecosystem for the Wren scripting language, powered by the Wrenlift runtime — 39+ libraries, two first-party frameworks, and one binary.{% endblock %}" />
+
+  {# `requestPath` is threaded through every render context (see
+     `seoCtx` in main.wren) so the canonical URL reflects the
+     route the user actually hit. Falls back to `/` when missing
+     (defensive — an unhitched template render would otherwise
+     emit `https://hatch.wrenlift.com` with no path). #}
+  <link rel="canonical" href="https://hatch.wrenlift.com{% if requestPath %}{{ requestPath }}{% else %}/{% endif %}" />
+
+  {# Open Graph — link previews for Slack / Discord / Mastodon
+     / Bluesky / iMessage / etc. The default og:image is the
+     site-wide card; routes that have richer per-page imagery
+     (planned per-package OG cards generated at publish time)
+     override `og_image` block. #}
+  <meta property="og:type" content="{% block og_type %}website{% endblock %}" />
+  <meta property="og:site_name" content="Hatch" />
+  <meta property="og:title" content="{% block og_title %}Hatch — packages for Wren, powered by Wrenlift{% endblock %}" />
+  <meta property="og:description" content="{% block og_description %}A package and framework ecosystem for the Wren scripting language, powered by the Wrenlift runtime — 39+ libraries, two first-party frameworks, and one binary.{% endblock %}" />
+  <meta property="og:url" content="https://hatch.wrenlift.com{% if requestPath %}{{ requestPath }}{% else %}/{% endif %}" />
+  <meta property="og:image" content="https://hatch.wrenlift.com{% block og_image %}/assets/og-image.png{% endblock %}" />
+  <meta property="og:image:width" content="2302" />
+  <meta property="og:image:height" content="1110" />
+  <meta property="og:image:alt" content="Hatch — a cozy package ecosystem for the Wren scripting language" />
+
+  {# Twitter Card — uses summary_large_image so the OG image
+     renders as a wide hero rather than a small thumbnail. #}
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{% block twitter_title %}Hatch — packages for Wren, powered by Wrenlift{% endblock %}" />
+  <meta name="twitter:description" content="{% block twitter_description %}A package and framework ecosystem for the Wren scripting language, powered by the Wrenlift runtime — 39+ libraries, two first-party frameworks, and one binary.{% endblock %}" />
+  <meta name="twitter:image" content="https://hatch.wrenlift.com{% block twitter_image %}/assets/og-image.png{% endblock %}" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -27,6 +65,41 @@
      marked.parse() to upgrade `<pre><code class="language-wren">`
      blocks in place. #}
   <script type="module" src="/assets/codemirror-wren.js"></script>
+
+  {# Site-wide structured data: a `WebSite` + `Organization` so
+     search engines build the knowledge-graph card with the
+     right name + logo + GitHub. Per-route templates emit
+     additional `@type` blocks (BreadcrumbList, SoftwareSourceCode,
+     TechArticle) inside `{% block jsonld %}`. #}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://hatch.wrenlift.com/#website",
+        "url": "https://hatch.wrenlift.com/",
+        "name": "Hatch",
+        "description": "Package and framework ecosystem for the Wren scripting language, powered by the Wrenlift runtime.",
+        "publisher": { "@id": "https://hatch.wrenlift.com/#org" },
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://hatch.wrenlift.com/packages?q={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://hatch.wrenlift.com/#org",
+        "name": "Hatch",
+        "url": "https://hatch.wrenlift.com/",
+        "logo": "https://hatch.wrenlift.com/assets/hatch-icon.svg",
+        "sameAs": [ "https://github.com/wrenlift/hatch" ]
+      }
+    ]
+  }
+  </script>
+  {% block jsonld %}{% endblock %}
 
   {% block head %}{% endblock %}
 </head>

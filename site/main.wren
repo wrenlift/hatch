@@ -136,9 +136,20 @@ var pageContext = Fn.new {|packages, currentCat|
   }
 }
 
+// Inject `requestPath` into a render context. The layout-level
+// `<link rel="canonical">`, `og:url`, and JSON-LD `url` fields
+// all read `requestPath` so social-card / search-engine link
+// previews point at the actual route the user hit. Each route
+// builds its ctx then passes it through here just before
+// `req.render`.
+var withPath = Fn.new {|req, ctx|
+  ctx["requestPath"] = req.path
+  return ctx
+}
+
 app.get("/") {|req|
   var packages = Catalog.recent(12)
-  return req.render(registry.get("index.html"), pageContext.call(packages, "all"))
+  return req.render(registry.get("index.html"), withPath.call(req, pageContext.call(packages, "all")))
     .header("Cache-Control", CACHE_LANDING)
 }
 
@@ -155,7 +166,7 @@ app.get("/packages/search") {|req|
   if (req.isHx) {
     return registry.get("partials/packages.html").renderFragment("grid", ctx)
   }
-  return req.render(registry.get("index.html"), ctx)
+  return req.render(registry.get("index.html"), withPath.call(req, ctx))
     .header("Cache-Control", CACHE_FRAGMENT)
 }
 
@@ -189,7 +200,7 @@ app.get("/guides/:slug") {|req|
   if (req.isHx) {
     return registry.get("guide.html").renderFragment("guide_main", ctx)
   }
-  return req.render(registry.get("guide.html"), ctx)
+  return req.render(registry.get("guide.html"), withPath.call(req, ctx))
     .header("Cache-Control", CACHE_GUIDE)
     .header("Vary", "HX-Request")
 }
@@ -253,7 +264,12 @@ var renderBlogPage = Fn.new {|slug|
     "guideMd":       md,
     "guideKind":     "blog",
     "activeNav":     "blog",
-    "inGuideShell":  true
+    "inGuideShell":  true,
+    // Canonical path baked in at warm-time. The boot-time warmer
+    // doesn't have a `req`, so we synthesize the path here from
+    // the slug — matches what the route handler would have set
+    // via `withPath`.
+    "requestPath":   "/blog/" + slug
   })
   return registry.get("guide.html").render(ctx)
 }
@@ -271,7 +287,7 @@ app.get("/blog") {|req|
     "blogs":     BLOGS,
     "activeNav": "blog"
   })
-  return req.render(registry.get("blog.html"), ctx)
+  return req.render(registry.get("blog.html"), withPath.call(req, ctx))
     .header("Cache-Control", CACHE_BLOG)
 }
 
@@ -348,7 +364,7 @@ app.get("/packages") {|req|
     "counts":     Catalog.byCategory,
     "activeNav":  "packages"
   })
-  return req.render(registry.get("docs.html"), ctx)
+  return req.render(registry.get("docs.html"), withPath.call(req, ctx))
     .header("Cache-Control", CACHE_LANDING)
 }
 
@@ -367,7 +383,7 @@ app.get("/packages/:name") {|req|
     "view":      "readme",
     "activeNav": "packages"
   })
-  return req.render(registry.get("package.html"), ctx)
+  return req.render(registry.get("package.html"), withPath.call(req, ctx))
     .header("Cache-Control", CACHE_PACKAGE)
 }
 
@@ -392,7 +408,7 @@ app.get("/packages/:name/api") {|req|
     "apiModules": Api.fetch(pkg),
     "activeNav":  "packages"
   })
-  return req.render(registry.get("package_api.html"), ctx)
+  return req.render(registry.get("package_api.html"), withPath.call(req, ctx))
     .header("Cache-Control", CACHE_PACKAGE)
 }
 
@@ -425,6 +441,60 @@ app.get("/packages/:name/readme") {|req|
   // browser shows the prior body instantly on revisit and
   // refreshes in the background.
   r.header("Cache-Control", CACHE_PACKAGE)
+  return r
+}
+
+// `/robots.txt` — explicit allow + sitemap pointer. Bots that
+// hit the apex without a robots.txt fall back to default
+// behavior; serving an explicit file gets us into Search
+// Console + Bing Webmaster Tools' "robots OK" check, and
+// pointing to the sitemap saves them a discovery hop.
+app.get("/robots.txt") {|req|
+  var body = "User-agent: *\nAllow: /\nSitemap: https://hatch.wrenlift.com/sitemap.xml\n"
+  var r = Response.new(200)
+  r.text(body)
+  r.header("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800")
+  return r
+}
+
+// `/sitemap.xml` — every URL search engines should index.
+// Pulled from `Catalog.allRecent` (one entry per package
+// version at its latest `created_at`), `GUIDES`, `BLOGS`, plus
+// the small set of static routes. Cached for 5 min via the
+// route-level `Cache-Control` to match the catalog's refresh
+// cadence — search engines re-fetch sitemaps on their own
+// schedule (typically daily) and a 5-minute window keeps
+// per-machine sitemap renders cheap without staleness.
+app.get("/sitemap.xml") {|req|
+  var lines = []
+  lines.add("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+  lines.add("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">")
+  // Top-level routes — change frequency matters more than
+  // priority for a small site.
+  for (path in ["/", "/packages", "/blog"]) {
+    lines.add("  <url><loc>https://hatch.wrenlift.com" + path + "</loc><changefreq>daily</changefreq></url>")
+  }
+  // Guides + blog posts are weekly-stable.
+  for (slug in ["intro", "install", "hatchfile", "cli", "authoring"]) {
+    lines.add("  <url><loc>https://hatch.wrenlift.com/guides/" + slug + "</loc><changefreq>weekly</changefreq></url>")
+  }
+  for (b in BLOGS) {
+    lines.add("  <url><loc>https://hatch.wrenlift.com/blog/" + b["slug"] + "</loc><changefreq>weekly</changefreq></url>")
+  }
+  // Per-package pages — both /packages/:name (README view) and
+  // /packages/:name/api. We include both because they have
+  // independent canonical URLs and render different content.
+  for (pkg in Catalog.allRecent) {
+    var name = pkg["name"]
+    lines.add("  <url><loc>https://hatch.wrenlift.com/packages/" + name + "</loc><changefreq>weekly</changefreq></url>")
+    lines.add("  <url><loc>https://hatch.wrenlift.com/packages/" + name + "/api</loc><changefreq>weekly</changefreq></url>")
+  }
+  lines.add("</urlset>")
+  var body = lines.join("\n")
+  var r = Response.new(200)
+  r.text(body)
+  r.header("Content-Type", "application/xml; charset=utf-8")
+  r.header("Cache-Control", "public, max-age=300, stale-while-revalidate=3600")
   return r
 }
 

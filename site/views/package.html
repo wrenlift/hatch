@@ -1,6 +1,25 @@
 {% extends "docs_layout.html" %}
 
 {% block title %}{{ pkg.name }} {{ pkg.version }} · Hatch docs{% endblock %}
+{% block description %}{{ pkg.description }}{% endblock %}
+{% block og_description %}{{ pkg.description }}{% endblock %}
+{% block og_type %}article{% endblock %}
+{% block twitter_description %}{{ pkg.description }}{% endblock %}
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  "name": "{{ pkg.name }}",
+  "description": "{{ pkg.description }}",
+  "codeRepository": "{{ pkg.git }}",
+  "programmingLanguage": "Wren",
+  "runtimePlatform": "Wrenlift",
+  "softwareVersion": "{{ pkg.version }}",
+  "url": "https://hatch.wrenlift.com{% if requestPath %}{{ requestPath }}{% endif %}"
+}
+</script>
+{% endblock %}
 
 {% block head %}
   {# Marked.js renders the markdown the htmx fragment ships back —
