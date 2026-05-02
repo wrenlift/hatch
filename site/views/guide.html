@@ -18,8 +18,13 @@
   "@type": "TechArticle",
   "headline": "{{ guideTitle }}",
   "url": "https://hatch.wrenlift.com{% if requestPath %}{{ requestPath }}{% endif %}",
-  "isPartOf": { "@id": "https://hatch.wrenlift.com/#website" },
-  "publisher": { "@id": "https://hatch.wrenlift.com/#org" }
+  "mainEntityOfPage": "https://hatch.wrenlift.com{% if requestPath %}{{ requestPath }}{% endif %}",
+  "image": "https://hatch.wrenlift.com/assets/og-image.png",
+  "datePublished": "{% if guidePublished %}{{ guidePublished }}{% else %}2026-04-01{% endif %}",
+  "dateModified": "{% if guideUpdated %}{{ guideUpdated }}{% else %}2026-05-03{% endif %}",
+  "author": { "@id": "https://hatch.wrenlift.com/#org" },
+  "publisher": { "@id": "https://hatch.wrenlift.com/#org" },
+  "isPartOf": { "@id": "https://hatch.wrenlift.com/#website" }
 }
 </script>
 {% endblock %}

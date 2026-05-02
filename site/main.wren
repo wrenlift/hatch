@@ -176,12 +176,18 @@ app.get("/packages/search") {|req|
 // the raw source to `views/guide.html`, marked.js + the
 // CodeMirror upgrade pipeline render it inside the same
 // `.pkg-readme` typography the README + API pages use.
+// `published` and `updated` populate the `datePublished` /
+// `dateModified` fields on the per-guide TechArticle JSON-LD.
+// Google's Article rich-result eligibility requires both, so
+// without these the structured-data block was indexed but
+// didn't trigger a rich-result card. ISO-8601 dates, no
+// timezone (Google defaults to UTC).
 var GUIDES = {
-  "intro":     { "title": "Introduction",    "file": "content/intro.md" },
-  "install":   { "title": "Install & setup", "file": "content/install.md" },
-  "hatchfile": { "title": "The hatchfile",   "file": "content/hatchfile.md" },
-  "cli":       { "title": "CLI cheatsheet",  "file": "content/cli.md" },
-  "authoring": { "title": "Authoring docs",  "file": "content/authoring.md" }
+  "intro":     { "title": "Introduction",    "file": "content/intro.md",     "published": "2026-04-01", "updated": "2026-05-03" },
+  "install":   { "title": "Install & setup", "file": "content/install.md",   "published": "2026-04-01", "updated": "2026-05-03" },
+  "hatchfile": { "title": "The hatchfile",   "file": "content/hatchfile.md", "published": "2026-04-01", "updated": "2026-05-03" },
+  "cli":       { "title": "CLI cheatsheet",  "file": "content/cli.md",       "published": "2026-04-01", "updated": "2026-05-03" },
+  "authoring": { "title": "Authoring docs",  "file": "content/authoring.md", "published": "2026-04-01", "updated": "2026-05-03" }
 }
 
 app.get("/guides/:slug") {|req|
@@ -195,7 +201,9 @@ app.get("/guides/:slug") {|req|
     "guideMd":       md,
     "guideKind":     "guide",
     "activeNav":     "guides",
-    "inGuideShell":  true
+    "inGuideShell":  true,
+    "guidePublished": meta["published"],
+    "guideUpdated":   meta["updated"]
   })
   if (req.isHx) {
     return registry.get("guide.html").renderFragment("guide_main", ctx)
@@ -212,18 +220,22 @@ app.get("/guides/:slug") {|req|
 // hierarchy reads as a separate section.
 var BLOGS = [
   {
-    "slug":  "web",
-    "title": "Build a web app with @hatch:web",
-    "file":  "content/blog/web.md",
-    "blurb": "A tour through routes, htmx fragment swaps, templating, and the dev loop — by building a small site end to end.",
-    "tag":   "Web"
+    "slug":      "web",
+    "title":     "Build a web app with @hatch:web",
+    "file":      "content/blog/web.md",
+    "blurb":     "A tour through routes, htmx fragment swaps, templating, and the dev loop — by building a small site end to end.",
+    "tag":       "Web",
+    "published": "2026-04-15",
+    "updated":   "2026-05-03"
   },
   {
-    "slug":  "game",
-    "title": "Build a game with @hatch:game",
-    "file":  "content/blog/game.md",
-    "blurb": "Sprite batching, input mapping, audio, and ECS-lite scenes — walk through a tiny 2D game from blank canvas to playable.",
-    "tag":   "Game"
+    "slug":      "game",
+    "title":     "Build a game with @hatch:game",
+    "file":      "content/blog/game.md",
+    "blurb":     "Sprite batching, input mapping, audio, and ECS-lite scenes — walk through a tiny 2D game from blank canvas to playable.",
+    "tag":       "Game",
+    "published": "2026-04-22",
+    "updated":   "2026-05-03"
   }
 ]
 
@@ -265,6 +277,8 @@ var renderBlogPage = Fn.new {|slug|
     "guideKind":     "blog",
     "activeNav":     "blog",
     "inGuideShell":  true,
+    "guidePublished": meta["published"],
+    "guideUpdated":   meta["updated"],
     // Canonical path baked in at warm-time. The boot-time warmer
     // doesn't have a `req`, so we synthesize the path here from
     // the slug — matches what the route handler would have set
