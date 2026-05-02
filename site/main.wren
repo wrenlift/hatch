@@ -282,24 +282,6 @@ app.get("/packages/:name/readme") {|req|
     return r
   }
 
-  // Local-FS fallback for `hatch run` against the monorepo: when a
-  // `../packages/hatch-<short>/README.md` exists next to this site
-  // workspace, serve those bytes verbatim so README authoring
-  // iterates without a push-and-CDN-cache round-trip. Production
-  // (the Fly image) only ever ships the site dir, so this branch
-  // misses there and we fall through to the GitHub raw URL.
-  if (name.startsWith("@hatch:")) {
-    var short = name[7..(name.count - 1)]
-    var localPath = "../packages/hatch-" + short + "/README.md"
-    System.print("readme: local check %(localPath) exists=%(Fs.exists(localPath))")
-    if (Fs.exists(localPath)) {
-      var body = Fs.readText(localPath)
-      var r = Response.new(200)
-      r.html(Catalog.wrapReadme_(body, name))
-      return r
-    }
-  }
-
   var url = Catalog.readmeUrl(pkg)
   if (url == null) {
     var r = Response.new(204)

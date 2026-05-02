@@ -58,6 +58,25 @@ COPY content ./content
 # without reaching back to the registry.
 RUN hatch build . --out site.hatch
 
+# Pre-render `hatch docs` for every cached dep into `content/api/`.
+# Runtime then reads `content/api/<short>.json` instead of shelling
+# out to the `hatch` CLI on each request — keeps the runtime image
+# trim (no need to ship the dep cache or the CLI) and removes the
+# spawn-per-request cost.
+RUN set -eu; \
+    mkdir -p content/api; \
+    for h in /root/.hatch/cache/*.hatch; do \
+        [ -e "$h" ] || continue; \
+        base=$(basename "$h" .hatch); \
+        short=$(echo "$base" | sed -E 's/^hatch-([a-z0-9_-]+)-[0-9].*/\1/'); \
+        if [ -z "$short" ] || [ "$short" = "$base" ]; then \
+            continue; \
+        fi; \
+        echo "  -> content/api/${short}.json from $base"; \
+        hatch docs "$h" --out "content/api/${short}.json" || true; \
+    done; \
+    ls -la content/api/
+
 # ---------------------------------------------------------------
 
 FROM debian:trixie-slim AS runtime

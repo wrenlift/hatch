@@ -1,124 +1,45 @@
-// lib/api.wren — fetch the docs JSON for a package and decorate
-// it for the template renderer.
+// lib/api.wren — read the pre-rendered docs JSON for a package
+// and decorate it for the template renderer.
 //
 // All HTML is produced by templates (see `views/partials/_api_*.html`),
 // not string concat — keeping the renderer in one declarative
 // place + letting `@hatch:template`'s slot / fragment machinery
 // stay the source of truth for layout.
 //
-// Resolution order:
-//   1. Workspace dir at `../packages/hatch-<short>` next to the
-//      site — dev fallback so authoring iterates without a
-//      publish round-trip. We shell out to `hatch docs <dir>`
-//      and parse its stdout.
-//   2. `~/.hatch/cache/<name>-<version>.hatch` (after
-//      `hatch install`). Same `hatch docs` shell-out, just
-//      pointed at the cached bundle file.
-//   3. Otherwise — `null`. The template renders the empty
-//      placeholder.
+// Source of truth: `content/api/<short>.json`, written at image-
+// build time by walking `~/.hatch/cache/*.hatch` through
+// `hatch docs`. Reading from disk avoids a per-request shell-out
+// and keeps the runtime image trim (no need to ship the dep
+// cache or the hatch CLI).
 
-import "@hatch:proc" for Proc
 import "@hatch:json" for JSON
 import "@hatch:fs"   for Fs
 
 class Api {
   /// Public entry point. Returns the parsed `Vec<ModuleDoc>` so
   /// the template can iterate over it directly. Each member is
-  /// decorated with the verb pill data the template needs
-  /// (`tag` = "FN" / "GET" / etc., `tagClass` = the CSS hook).
+  /// decorated with the verb pill data the template needs.
+  ///
+  /// Reads the pre-rendered JSON at `content/api/<short>.json`
+  /// — that file is produced at image-build time by walking
+  /// `~/.hatch/cache/*.hatch` through `hatch docs`. No runtime
+  /// shell-out, no per-request CLI spawn.
   static fetch(pkg) {
     var json = Api.fetchJson_(pkg)
     if (json == null) return null
     var modules = JSON.parse(json)
     if (!(modules is List) || modules.count == 0) return null
-    return Api.decorate_(modules, Api.workspaceDir_(pkg))
+    return Api.decorate_(modules, null)
   }
 
-  /// Resolve a package row to its on-disk workspace directory
-  /// when running locally; `null` otherwise. Used by the module-
-  /// doc fallback to read source files directly.
-  static workspaceDir_(pkg) {
-    var name = pkg["name"]
-    if (!name.startsWith("@hatch:")) return null
-    var short = name[7..(name.count - 1)]
-    var dir = "../packages/hatch-" + short
-    if (Fs.exists(dir)) return dir
-    return null
-  }
-
-  /// Read a `.wren` file and return its leading `//` block as
-  /// plain text, with the `//` markers + one optional space
-  /// stripped. Stops at the first non-`//` line. Empty on any
-  /// I/O error or when the file doesn't open with comments.
-  static fileLeadingComment_(path) {
-    if (!Fs.exists(path)) return ""
-    var text = Fs.readText(path)
-    var lines = text.split("\n")
-    var out = ""
-    for (line in lines) {
-      var trimmed = Api.trim_(line)
-      if (trimmed.startsWith("///") || trimmed.startsWith("//!")) {
-        // Decl / module doc markers belong to the docs collector
-        // already — don't double-attribute them.
-        break
-      }
-      if (trimmed.startsWith("//")) {
-        var body = trimmed.count > 2 ? trimmed[2..(trimmed.count - 1)] : ""
-        if (body.startsWith(" ")) body = body[1..(body.count - 1)]
-        out = out + (out == "" ? "" : "\n") + body
-      } else if (trimmed == "") {
-        if (out != "") out = out + "\n"
-      } else {
-        break
-      }
-    }
-    return Api.trim_(out)
-  }
-
-  /// Try `hatch docs <target>` against the local workspace dir
-  /// or the cached bundle. Returns the JSON string on success,
-  /// `null` when neither path exists or the CLI errors.
-  ///
-  /// PATH lookup is brittle in dev — running the site straight
-  /// out of `target/release/hatch run` doesn't put `hatch` on
-  /// the spawned PATH. Pick the binary explicitly: prefer the
-  /// monorepo's `target/release/hatch` (visible from the site's
-  /// CWD as `../../target/release/hatch`), then `target/debug`,
-  /// and finally fall back to bare `hatch` for cases where the
-  /// site runs from an installed CLI (Fly image, dev VM, …).
   static fetchJson_(pkg) {
     var name = pkg["name"]
     if (!name.startsWith("@hatch:")) return null
     var short = name[7..(name.count - 1)]
-    var workspaceDir = "../packages/hatch-" + short
-    if (!Fs.exists(workspaceDir)) return null
-    var hatchBin = Api.findHatchBinary_()
-    // `Proc.exec` aborts the fiber when the binary is missing
-    // (e.g. PATH lookup fails on a deploy where the site runs
-    // outside the runtime's directory). Box the call so a failed
-    // spawn returns `null` and the route falls back to the empty
-    // placeholder rather than 500ing.
-    var f = Fiber.new { Proc.exec([hatchBin, "docs", workspaceDir]) }
-    var r = f.try()
-    if (f.error != null) return null
-    if (r != null && r.ok && r.stdout.count > 0) return r.stdout
-    return null
-  }
-
-  /// Locate a runnable `hatch` binary. Falls back to the bare
-  /// name (PATH lookup) when nothing checks out — `Proc.exec`
-  /// will surface the OS-level "no such file" if even that
-  /// fails, which is fine because `Api.fetch` swallows the
-  /// abort via the empty-state placeholder.
-  static findHatchBinary_() {
-    var candidates = [
-      "../../target/release/hatch",
-      "../../target/debug/hatch"
-    ]
-    for (p in candidates) {
-      if (Fs.exists(p)) return p
-    }
-    return "hatch"
+    var path = "content/api/" + short + ".json"
+    if (!Fs.exists(path)) return null
+    var text = Fs.readText(path)
+    return text.count > 0 ? text : null
   }
 
   /// Walk the parsed modules and attach view-helper fields the
