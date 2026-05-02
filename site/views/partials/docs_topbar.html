@@ -4,6 +4,23 @@
    tabs, etc. — without crowding the landing page's CTAs. #}
 <header class="docs-topbar">
   <div class="docs-topbar-inner">
+    {# Mobile-only: opens the docs sidebar as a drawer. The
+       button + drawer state lives in CSS (`.docs-sidebar.is-open`)
+       and a tiny inline script below; desktop layouts hide the
+       button via the `@media (min-width: 761px)` rule in
+       `site.css` and the sidebar stays as a sticky column. #}
+    <button class="docs-sidebar-toggle" type="button"
+            id="docs-sidebar-toggle"
+            aria-label="Open navigation"
+            aria-controls="docs-sidebar-drawer"
+            aria-expanded="false">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+        <path d="M4 6h16" />
+        <path d="M4 12h16" />
+        <path d="M4 18h16" />
+      </svg>
+    </button>
     <a class="brand docs-brand" href="/" aria-label="Hatch">
       <img class="wordmark" src="/assets/hatch-wordmark.svg" alt="Hatch" />
       <span class="docs-tag">DOCS</span>
@@ -63,4 +80,44 @@
       <span>github</span>
     </a>
   </div>
+  <script>
+    // Mobile sidebar drawer toggle. The sidebar partial gives its
+    // <aside> id="docs-sidebar-drawer" so we can flip
+    // `is-open` from here. Click outside the drawer (on the
+    // backdrop) closes it; Esc also closes for keyboard users.
+    (function () {
+      var btn = document.getElementById("docs-sidebar-toggle");
+      var aside = document.getElementById("docs-sidebar-drawer");
+      var backdrop = document.getElementById("docs-sidebar-backdrop");
+      if (!btn || !aside) return;
+      function close() {
+        aside.classList.remove("is-open");
+        if (backdrop) backdrop.classList.remove("is-open");
+        btn.setAttribute("aria-expanded", "false");
+        document.body.classList.remove("docs-sidebar-locked");
+      }
+      function open() {
+        aside.classList.add("is-open");
+        if (backdrop) backdrop.classList.add("is-open");
+        btn.setAttribute("aria-expanded", "true");
+        document.body.classList.add("docs-sidebar-locked");
+      }
+      btn.addEventListener("click", function () {
+        if (aside.classList.contains("is-open")) close(); else open();
+      });
+      if (backdrop) backdrop.addEventListener("click", close);
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && aside.classList.contains("is-open")) close();
+      });
+      // Tapping a link inside the drawer should close it so the
+      // user lands on the new page without the drawer in the way.
+      aside.addEventListener("click", function (e) {
+        var t = e.target;
+        while (t && t !== aside) {
+          if (t.tagName === "A") { close(); break; }
+          t = t.parentNode;
+        }
+      });
+    })();
+  </script>
 </header>

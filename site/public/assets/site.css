@@ -1386,15 +1386,83 @@
     .docs-shell {
       grid-template-columns: 1fr;
     }
-    .docs-sidebar {
-      position: static; max-height: none;
-      border-right: 0;
-      border-bottom: 1.5px dashed rgba(58,42,24,0.18);
-      padding: 0 0 24px;
-      margin-bottom: 24px;
-    }
     .docs-topbar-links { display: none; }
+    /* Search field is wide and ⌘K isn't usable on touch — drop it
+       on phones; the sidebar drawer (toggled by the hamburger
+       button on the left) gives access to the package list and
+       guide links instead. */
+    .docs-search { display: none; }
+    .docs-topbar-inner {
+      grid-template-columns: auto auto auto 1fr auto;
+      gap: 8px; padding: 0 14px;
+    }
+    /* Hamburger button — hidden by default (above), shown on
+       phones. Visually matches `.docs-topbar-cta`'s ink-pill
+       styling but without the fill so it reads as a tool. */
+    .docs-sidebar-toggle { display: inline-flex; }
+
+    /* Sidebar becomes a slide-in drawer rather than a stacked
+       static block. Closed by default; flipped open by adding
+       `.is-open` from the hamburger toggle script in
+       `docs_topbar.html`. The 320px width matches the desktop
+       layout's sidebar column so list items keep their natural
+       wrapping. */
+    .docs-sidebar {
+      position: fixed; top: 0; left: 0;
+      width: min(86vw, 320px);
+      height: 100dvh; max-height: none;
+      margin: 0; padding: 24px 18px 32px;
+      background: var(--cream);
+      border-right: 2px solid var(--ink);
+      border-bottom: 0;
+      box-shadow: 6px 0 0 rgba(58,42,24,0.06);
+      transform: translateX(-100%);
+      transition: transform 220ms ease;
+      z-index: 60;
+      overflow-y: auto;
+    }
+    .docs-sidebar.is-open { transform: translateX(0); }
+
+    /* Backdrop overlay — appears with the drawer, dim + tappable
+       to close. Stays out of the layout (display: none) when
+       the drawer is closed so it doesn't intercept taps. */
+    .docs-sidebar-backdrop {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(58,42,24,0.42);
+      z-index: 55;
+    }
+    .docs-sidebar-backdrop.is-open { display: block; }
+
+    /* Body scroll lock when drawer is open so users can't
+       accidentally scroll the page underneath. */
+    body.docs-sidebar-locked { overflow: hidden; }
   }
+
+  /* Hamburger button — desktop default is hidden (only visible
+     in the phone @media block above). Pill-shaped, ink-bordered
+     to match the topbar tag + version pills. */
+  .docs-sidebar-toggle {
+    display: none;
+    align-items: center; justify-content: center;
+    width: 38px; height: 38px;
+    padding: 0;
+    background: var(--cream);
+    color: var(--ink);
+    border: 2px solid var(--ink);
+    border-radius: 12px;
+    box-shadow: 2px 2px 0 var(--ink);
+    cursor: pointer;
+  }
+  .docs-sidebar-toggle:hover {
+    background: var(--shell);
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+  .docs-sidebar-toggle svg { display: block; }
+
+  /* Backdrop default — desktop never shows it. */
+  .docs-sidebar-backdrop { display: none; }
 
   /* API reference placeholder — only rendered until the
      `Docs`-section JSON renderer lands. Mirrors the readme
