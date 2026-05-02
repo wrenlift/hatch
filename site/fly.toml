@@ -59,7 +59,15 @@ primary_region = "lhr"
   # root-caused. Substring match against `mir.name`; covers
   # Lex_ + Parse_ + ExprParse_ methods involved in tokenisation
   # + statement bookkeeping.
-  WLIFT_SKIP_JIT = "parseBody_,parseStmt_,parsePrimary_,parseFilter_,parsePath_,parseString_,parseNumber_,parseIdent_,parseExtends_,parseBlock_,parseIf_,parseFor_,parseSlot_,parseEmbed_,parseCall_,parseSet_,parseInclude_,parseFragment_,parseFillBody_,skipWs_,peek_,eat_,peekWord_,eatWord_,firstWord_,rest_,flushText_,interp_,stmt_,comment_,skipLeadingWs_,rtrim_,peekStmt_,findInKeyword_"
+  # @hatch:json's parser family is added alongside the
+  # @hatch:template family below — same JIT mis-compile shape
+  # surfaces as `JSON: trailing data at offset N` (parser
+  # correctly bailing because `skipWs_` / `atEnd_` was
+  # mis-compiled and didn't actually advance / didn't see
+  # end-of-input). Substring match against `mir.name` so
+  # `parseValue_` covers @hatch:json AND any other
+  # `*parseValue_` method the same way.
+  WLIFT_SKIP_JIT = "parseBody_,parseStmt_,parsePrimary_,parseFilter_,parsePath_,parseString_,parseNumber_,parseIdent_,parseExtends_,parseBlock_,parseIf_,parseFor_,parseSlot_,parseEmbed_,parseCall_,parseSet_,parseInclude_,parseFragment_,parseFillBody_,parseValue_,parseObject_,parseArray_,parseTrue_,parseFalse_,parseNull_,parseLiteral_,atEnd_,offset_,skipWs_,peek_,eat_,peekWord_,eatWord_,firstWord_,rest_,flushText_,interp_,stmt_,comment_,skipLeadingWs_,rtrim_,peekStmt_,findInKeyword_"
 
 [http_service]
   internal_port = 3000
