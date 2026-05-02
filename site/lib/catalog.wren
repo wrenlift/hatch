@@ -73,6 +73,7 @@ class Catalog {
       "  git         TEXT," +
       "  description TEXT," +
       "  docs_url    TEXT," +
+      "  readme_url  TEXT," +
       "  cat         TEXT NOT NULL," +
       "  created_at  TEXT NOT NULL," +
       "  PRIMARY KEY (name, version)" +
@@ -92,10 +93,10 @@ class Catalog {
       Catalog.db.execute("DELETE FROM packages")
       for (row in rows) {
         Catalog.db.execute(
-          "INSERT INTO packages (name, version, git, description, docs_url, cat, created_at) " +
-          "VALUES (?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO packages (name, version, git, description, docs_url, readme_url, cat, created_at) " +
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
           [row["name"], row["version"], row["git"], row["description"],
-           row["docs_url"], row["cat"], row["created_at"]]
+           row["docs_url"], row["readme_url"], row["cat"], row["created_at"]]
         )
       }
     }
@@ -126,7 +127,8 @@ class Catalog {
         "version":     row["version"],
         "git":         row.containsKey("git") ? row["git"] : "",
         "description": description,
-        "docs_url":    row.containsKey("docs_url") ? row["docs_url"] : null,
+        "docs_url":    row.containsKey("docs_url")   ? row["docs_url"]   : null,
+        "readme_url":  row.containsKey("readme_url") ? row["readme_url"] : null,
         "cat":         Catalog.categorize_(name, description),
         "created_at":  row.containsKey("created_at") ? row["created_at"] : ""
       })
@@ -217,20 +219,26 @@ class Catalog {
 
   /// Map a catalog row to a public README URL. Resolution order:
   ///
-  ///   1. `pkg.readme` set + absolute URL → use verbatim.
-  ///   2. `pkg.readme` set + relative path → resolve against
-  ///      `pkg.git` via the host's raw-URL convention.
-  ///   3. `pkg.readme` absent → assume `README.md` at the repo
-  ///      root, derived from `pkg.git`.
-  ///   4. `pkg.git` is empty / non-GitHub → `null` (the route
-  ///      renders the empty-state placeholder).
+  ///   1. `pkg.readme_url` set → use verbatim. This is the
+  ///      Supabase Storage URL `hatch publish` writes after
+  ///      uploading the package's README at publish time.
+  ///      Forge-agnostic: works the same for GitHub, GitLab,
+  ///      Bitbucket, self-hosted Forgejo, anything.
+  ///   2. `pkg.readme` is an absolute URL → use verbatim
+  ///      (legacy hatchfiles that point at an external host).
+  ///   3. `pkg.readme` is a relative path → resolve against
+  ///      `pkg.git` via the host's raw-URL convention. Today
+  ///      only GitHub is wired up; non-GitHub legacy rows fall
+  ///      to (4).
+  ///   4. None of the above → `null` (the route renders the
+  ///      empty-state placeholder).
   ///
-  /// Each package's `hatchfile` declares `readme = "..."` (or
-  /// leaves it empty for the default); the publisher writes that
-  /// value into the catalog row. No hardcoded per-package paths
-  /// or per-scope conventions live here — third-party packages
-  /// resolve through the same code path as `@hatch:*` ones.
+  /// Once every active publisher republishes through the v0.1.7+
+  /// flow, paths (2) and (3) are quiet; only (1) fires.
   static readmeUrl(row) {
+    var url = row.containsKey("readme_url") ? row["readme_url"] : null
+    if (url != null && url != "") return url
+
     var readme = row.containsKey("readme") ? row["readme"] : null
     if (readme != null && readme != "") {
       if (readme.startsWith("http://") || readme.startsWith("https://")) {

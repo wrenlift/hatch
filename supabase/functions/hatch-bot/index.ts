@@ -235,6 +235,62 @@ async function handleDocsUpload(req: Request): Promise<Response> {
   return json({ url: pub.publicUrl, key })
 }
 
+// `POST /readme-upload` — body shape:
+//
+//   { "name": "@hatch:foo", "version": "1.2.3", "readme": "<markdown>" }
+//
+// Uploads the markdown text to the public `package-readmes`
+// bucket at `<short>/<version>/README.md`, mirror of
+// `/docs-upload`. Same auth model. Returns the canonical public
+// URL the consumer should write back into `packages.readme_url`.
+//
+// Markdown ships verbatim (utf-8); marked.js still parses it
+// client-side on the docs site.
+async function handleReadmeUpload(req: Request): Promise<Response> {
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch (_) {
+    return text('invalid JSON body', 400)
+  }
+  if (typeof body !== 'object' || body === null) {
+    return text('body must be a JSON object', 400)
+  }
+  const b = body as Record<string, unknown>
+  if (typeof b.name !== 'string' || !b.name) return text("'name' must be a non-empty string", 400)
+  if (typeof b.version !== 'string' || !b.version) return text("'version' must be a non-empty string", 400)
+  if (typeof b.readme !== 'string') return text("'readme' must be a string", 400)
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!supabaseUrl || !serviceKey) {
+    console.error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing')
+    return text('server misconfigured', 500)
+  }
+  const client = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+
+  const short = b.name.replace(/^@hatch:/, '').replace(/[:@/]/g, '_')
+  const key = `${short}/${b.version}/README.md`
+  const payload = new TextEncoder().encode(b.readme)
+
+  const { error: upErr } = await client
+    .storage
+    .from('package-readmes')
+    .upload(key, payload, {
+      contentType: 'text/markdown; charset=utf-8',
+      upsert: true,
+    })
+  if (upErr) {
+    console.error('storage upload failed:', upErr)
+    return json({ error: upErr.message ?? 'storage error' }, 500)
+  }
+
+  const { data: pub } = client.storage.from('package-readmes').getPublicUrl(key)
+  return json({ url: pub.publicUrl, key })
+}
+
 async function handleTag(req: Request): Promise<Response> {
   let body: unknown
   try {
@@ -422,6 +478,12 @@ Deno.serve(async (req: Request) => {
     const authErr = checkAuth(req)
     if (authErr) return authErr
     return handleDocsUpload(req)
+  }
+
+  if (path === '/readme-upload' && req.method === 'POST') {
+    const authErr = checkAuth(req)
+    if (authErr) return authErr
+    return handleReadmeUpload(req)
   }
 
   if (path === '/proxy') {
