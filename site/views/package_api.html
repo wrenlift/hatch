@@ -1,6 +1,27 @@
 {% extends "docs_layout.html" %}
 
 {% block title %}{{ pkg.name }} {{ pkg.version }} · API reference · Hatch docs{% endblock %}
+{% block description %}API reference for {{ pkg.name }} {{ pkg.version }} — classes, methods, and signatures of the Hatch package for Wren.{% endblock %}
+{% block og_description %}API reference for {{ pkg.name }} {{ pkg.version }} — classes, methods, and signatures of the Hatch package for Wren.{% endblock %}
+{% block og_type %}article{% endblock %}
+{% block twitter_description %}API reference for {{ pkg.name }} {{ pkg.version }}.{% endblock %}
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "{{ pkg.name }} {{ pkg.version }} API reference",
+  "description": "{{ pkg.description }}",
+  "url": "https://hatch.wrenlift.com{% if requestPath %}{{ requestPath }}{% endif %}",
+  "about": {
+    "@type": "SoftwareSourceCode",
+    "name": "{{ pkg.name }}",
+    "softwareVersion": "{{ pkg.version }}",
+    "programmingLanguage": "Wren"
+  }
+}
+</script>
+{% endblock %}
 
 {% block head %}
   {# Marked.js + the same CodeMirror upgrade pipeline the README

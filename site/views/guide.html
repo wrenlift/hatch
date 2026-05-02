@@ -6,7 +6,23 @@
    round-trip cleanly. #}
 {% extends "docs_layout.html" %}
 
-{% block title %}{{ guideTitle }} · Hatch docs{% endblock %}
+{% block title %}{{ guideTitle }} · Hatch {% if guideKind == "blog" %}blog{% else %}guides{% endif %}{% endblock %}
+{% block description %}{{ guideTitle }} · {% if guideKind == "blog" %}A walkthrough{% else %}A guide{% endif %} from the Hatch documentation, covering the Wren scripting language on the Wrenlift runtime.{% endblock %}
+{% block og_description %}{{ guideTitle }} · {% if guideKind == "blog" %}A walkthrough{% else %}A guide{% endif %} from the Hatch documentation.{% endblock %}
+{% block og_type %}article{% endblock %}
+{% block twitter_description %}{{ guideTitle }} · Hatch documentation.{% endblock %}
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "{{ guideTitle }}",
+  "url": "https://hatch.wrenlift.com{% if requestPath %}{{ requestPath }}{% endif %}",
+  "isPartOf": { "@id": "https://hatch.wrenlift.com/#website" },
+  "publisher": { "@id": "https://hatch.wrenlift.com/#org" }
+}
+</script>
+{% endblock %}
 
 {% block head %}
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
