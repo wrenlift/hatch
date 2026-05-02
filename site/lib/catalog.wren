@@ -305,6 +305,42 @@ class Catalog {
     return null
   }
 
+  /// Fetch the package's README, wrap it in `wrapReadme_`'s
+  /// marked.js + CodeMirror harness, and return the resulting
+  /// HTML. Returns `null` when there's no README to render
+  /// (catalog row has no readme_url + no derivable raw URL, or
+  /// the network fetch fails).
+  ///
+  /// Per-process cache keyed by `name@version@url` so successive
+  /// requests for the same package skip the curl shell-out + the
+  /// markdown-wrap step. The catalog refresh fiber bumps
+  /// `version` on republish, so the cache key changes naturally;
+  /// stale entries become bounded dead weight, not a leak.
+  static fetchReadmeHtml(pkg) {
+    var url = Catalog.readmeUrl(pkg)
+    if (url == null) return null
+
+    if (__readmeCache == null) __readmeCache = {}
+    var name = pkg["name"]
+    var version = pkg.containsKey("version") ? pkg["version"] : ""
+    var key = "%(name)@%(version)@%(url)"
+    if (__readmeCache.containsKey(key)) return __readmeCache[key]
+
+    var f = Fiber.new {
+      Proc.exec(["curl", "-fsSL", url, "--max-time", "10"])
+    }
+    var r = f.try()
+    if (f.error != null) return null
+    if (r == null || !r.ok || r.stdout.count == 0) {
+      var miss = "<p class=\"readme-empty\">No README found for <code>" + name + "</code>.</p>"
+      __readmeCache[key] = miss
+      return miss
+    }
+    var html = Catalog.wrapReadme_(r.stdout, name)
+    __readmeCache[key] = html
+    return html
+  }
+
   /// Wrap raw README markdown in the inline-script harness that
   /// runs `marked.parse` client-side and then upgrades any
   /// `language-wren` fences via `window.mountWrenCode` (CodeMirror,
