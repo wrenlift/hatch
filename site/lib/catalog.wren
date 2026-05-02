@@ -20,7 +20,6 @@
 import "@hatch:toml"   for Toml
 import "@hatch:sqlite" for Database
 import "@hatch:proc"   for Proc
-import "./api"         for Api
 
 /// Public API:
 ///
@@ -100,11 +99,12 @@ class Catalog {
         )
       }
     }
-    // The API renderer caches parsed-and-decorated module lists
-    // keyed by `name@version`. A republish bumps `version` so the
-    // cache key changes anyway, but we drop the whole map here
-    // to keep memory bounded against a runaway publisher loop.
-    Api.clearCache()
+    // The API renderer's per-process cache is keyed by
+    // `name@version`, so a republish naturally produces a cache
+    // miss for the bumped version — the stale entry just becomes
+    // dead weight bounded by the number of distinct package
+    // versions the site sees in a refresh window. Not worth a
+    // cross-module reach to clear it explicitly.
   }
 
   /// Curl out to GitHub raw + parse. We use @hatch:proc rather
