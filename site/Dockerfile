@@ -21,15 +21,18 @@ FROM debian:bookworm-slim AS builder
 ARG WLIFT_VERSION=latest
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && apt-get install -y --no-install-recommends ca-certificates curl bash \
     && rm -rf /var/lib/apt/lists/*
 
 # Install wlift + hatch into /usr/local/bin so the runtime stage
 # can copy them without dragging the build chain along. Pin the
 # release via WLIFT_VERSION; default `latest` resolves to the
 # install.sh script's "newest GitHub release" branch.
+#
+# Pipe to `bash` not `sh` — install.sh uses `set -o pipefail`
+# which dash (debian's /bin/sh) rejects with "Illegal option".
 RUN curl -fsSL https://wrenlift.com/install.sh \
-    | INSTALL_DIR=/usr/local/bin WLIFT_VERSION=${WLIFT_VERSION} sh
+    | INSTALL_DIR=/usr/local/bin WLIFT_VERSION=${WLIFT_VERSION} bash
 
 # ---------------------------------------------------------------
 
