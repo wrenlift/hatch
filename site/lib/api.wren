@@ -37,17 +37,42 @@ class Api {
 
     var json = Api.fetchJson_(pkg)
     if (json == null) {
-      __cache[key] = null
+      Api.store_(key, null)
       return null
     }
     var modules = JSON.parse(json)
     if (!(modules is List) || modules.count == 0) {
-      __cache[key] = null
+      Api.store_(key, null)
       return null
     }
     var decorated = Api.decorate_(modules, null)
-    __cache[key] = decorated
+    Api.store_(key, decorated)
     return decorated
+  }
+
+  /// Cache cap. Bounded so a runaway publish loop (or just
+  /// many years of accumulated `name@version` entries) can't
+  /// turn the warmer into a leak. The site has ~39 packages
+  /// today and FIFO eviction at 64 leaves comfortable
+  /// headroom for repeat-publish churn before the oldest
+  /// entries roll out.
+  static cacheCap_ { 64 }
+
+  /// FIFO-bounded insert into `__cache`. Tracks insertion
+  /// order in the side list `__cacheKeys` so eviction picks
+  /// the oldest entry without per-access reordering. Not a
+  /// strict LRU (the oldest gets evicted regardless of recent
+  /// access), but for our access patterns the difference is
+  /// noise — pages flow through the catalog roughly uniformly.
+  static store_(key, value) {
+    if (__cache == null) __cache = {}
+    if (__cacheKeys == null) __cacheKeys = []
+    if (!__cache.containsKey(key)) __cacheKeys.add(key)
+    __cache[key] = value
+    while (__cacheKeys.count > Api.cacheCap_) {
+      var evict = __cacheKeys.removeAt(0)
+      if (evict != null) __cache.remove(evict)
+    }
   }
 
   /// Drop everything cached. Called from `Catalog.refresh` when

@@ -457,12 +457,30 @@ class Catalog {
     var resp = Catalog.driveFiberValue_(fib)
     if (fib.error != null || resp == null || !resp.ok || resp.body == null || resp.body.count == 0) {
       var miss = "<p class=\"readme-empty\">No README found for <code>" + name + "</code>.</p>"
-      __readmeCache[key] = miss
+      Catalog.storeReadme_(key, miss)
       return miss
     }
     var html = Catalog.wrapReadme_(resp.body, name)
-    __readmeCache[key] = html
+    Catalog.storeReadme_(key, html)
     return html
+  }
+
+  /// Cache cap matching `Api.cacheCap_`. See `Api.store_` for
+  /// the rationale; same FIFO bound applies here.
+  static readmeCacheCap_ { 64 }
+
+  /// FIFO-bounded insert into `__readmeCache`. Mirror of
+  /// `Api.store_` — see comment there for why FIFO is fine vs
+  /// strict LRU for this access pattern.
+  static storeReadme_(key, value) {
+    if (__readmeCache == null) __readmeCache = {}
+    if (__readmeCacheKeys == null) __readmeCacheKeys = []
+    if (!__readmeCache.containsKey(key)) __readmeCacheKeys.add(key)
+    __readmeCache[key] = value
+    while (__readmeCacheKeys.count > Catalog.readmeCacheCap_) {
+      var evict = __readmeCacheKeys.removeAt(0)
+      if (evict != null) __readmeCache.remove(evict)
+    }
   }
 
   /// Walk every catalog row and pre-populate `__readmeCache` for
