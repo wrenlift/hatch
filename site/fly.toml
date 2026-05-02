@@ -23,6 +23,18 @@ primary_region = "iad"
   # set is ~165mb (locally measured). Drop this env once the next
   # tagged release ships with the lower default baked in.
   WLIFT_GC_NURSERY_MB = "64"
+  # Keep `@hatch:template`'s render-time hot path in the BC
+  # interpreter. The tiered JIT intermittently mis-compiles one
+  # of these methods and the route handler returns an Object
+  # instance instead of the rendered String — `Response.coerce`
+  # then falls back to `.toString` and the page body becomes the
+  # literal text "instance of Object" (~1-in-15 navigations
+  # observed). Skipping JIT for the substrings below matches
+  # `walk_`, `walkAll`, `evalExpr_`, `stringify_`, etc. and the
+  # handful of helpers they call. Drop the env once the
+  # mis-compile is root-caused — the existing `template.wren`
+  # comment about `skipWs_` mis-compiling is the smoke trail.
+  WLIFT_SKIP_JIT = "walk_,walkAll,evalExpr_,evalPath_,stringify_,htmlEscape_,applyFilter_,truthy_,cmp_"
 
 [http_service]
   internal_port = 3000
