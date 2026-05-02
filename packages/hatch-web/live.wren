@@ -76,7 +76,14 @@ class Scheduler_ {
         f.try()
         if (f.isDone) {
           if (f.error != null && !Scheduler_.isExpectedDisconnect_(f.error)) {
+            // Surface the frame trace in addition to the one-line
+            // error so handler bugs are debuggable from server logs.
+            // Requires `VMConfig.fiber_stack_traces = true` upstream
+            // (`hatch run` sets it; standalone `wlift` doesn't by
+            // default — that path falls back to the placeholder
+            // string built into `Fiber.stackTrace`).
             System.print("scheduler: fiber aborted: %(f.error)")
+            System.print(f.stackTrace)
           }
           Scheduler_.removeAt_(_fibers, i)
         } else {
