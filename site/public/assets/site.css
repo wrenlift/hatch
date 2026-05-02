@@ -46,6 +46,40 @@
   .community::before {
     corner-shape: round;
   }
+  /* Top-of-page navigation progress bar. Markup is a single
+     <div id="nav-progress"> in `layout.html`; the inline JS
+     there toggles `loading`/`done` classes for state. Pure-CSS
+     animation so we don't depend on any framework, and no JS
+     timer running on the main thread. Uses the toast/butter
+     gradient so the bar reads as part of the brand rather
+     than a generic loader. */
+  .nav-progress {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--toast), var(--butter), var(--sage));
+    transform-origin: left center;
+    transform: scaleX(0);
+    z-index: 200;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .nav-progress.loading {
+    opacity: 1;
+    animation: nav-progress-creep 6s cubic-bezier(0.1, 0.5, 0.1, 1) forwards;
+  }
+  .nav-progress.done {
+    opacity: 0;
+    transform: scaleX(1);
+    transition: transform 180ms ease, opacity 320ms ease 120ms;
+    animation: none;
+  }
+  @keyframes nav-progress-creep {
+    0%   { transform: scaleX(0);    }
+    35%  { transform: scaleX(0.45); }
+    65%  { transform: scaleX(0.7);  }
+    100% { transform: scaleX(0.85); }
+  }
+
   html, body { margin: 0; padding: 0; }
   /* Last-resort horizontal-overflow guard. Any single misplaced
      element (a 280px terminal floating card, an h1 with a long

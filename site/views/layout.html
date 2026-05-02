@@ -31,6 +31,67 @@
   {% block head %}{% endblock %}
 </head>
 <body>
+{# Top-of-page navigation progress bar. Renders once per page
+   in `loading` state (CSS keyframes ease it from 0% to ~70%
+   over a few seconds), then `done` once `DOMContentLoaded`
+   fires (animates to 100% and fades). The click interceptor
+   re-arms it on internal-link clicks so the bar continues
+   visibly during the network wait, and `htmx:beforeRequest`
+   / `htmx:afterRequest` cover fragment swaps. Pointer-events
+   off so it never intercepts taps. #}
+<div id="nav-progress" class="nav-progress loading" aria-hidden="true"></div>
 {% block body %}{% endblock %}
+<script>
+  (function () {
+    var bar = document.getElementById("nav-progress");
+    if (!bar) return;
+    function start() {
+      bar.classList.remove("done");
+      // Restart the keyframe animation by toggling the class.
+      bar.classList.remove("loading");
+      void bar.offsetWidth;
+      bar.classList.add("loading");
+    }
+    function done() {
+      bar.classList.remove("loading");
+      bar.classList.add("done");
+    }
+    // Catch internal-link clicks so the bar starts before the
+    // browser begins fetching the next page. External links,
+    // anchor-only `#section` jumps, new-tab opens, and
+    // download links pass through untouched.
+    document.addEventListener("click", function (e) {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (e.button !== 0) return;
+      var t = e.target;
+      while (t && t !== document.body) {
+        if (t.tagName === "A") {
+          var href = t.getAttribute("href");
+          if (!href) return;
+          if (href[0] === "#") return;
+          if (t.target && t.target !== "_self") return;
+          if (t.hasAttribute("download")) return;
+          if (t.host && t.host !== window.location.host) return;
+          start();
+          return;
+        }
+        t = t.parentNode;
+      }
+    });
+    document.addEventListener("htmx:beforeRequest", start);
+    document.addEventListener("htmx:afterRequest", done);
+    document.addEventListener("htmx:responseError", done);
+    function ready() { setTimeout(done, 80); }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", ready);
+    } else {
+      ready();
+    }
+    // `pageshow` fires when the page is restored from bfcache —
+    // the CSS keeps the bar visible from a previous nav, so
+    // immediately mark done.
+    window.addEventListener("pageshow", function (e) { if (e.persisted) done(); });
+  })();
+</script>
 </body>
 </html>
