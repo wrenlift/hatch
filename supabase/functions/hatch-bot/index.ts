@@ -58,6 +58,9 @@ interface PackageRecord {
   version: string
   git: string
   description?: string
+  homepage?: string
+  readme?: string
+  docs_url?: string
   owner?: string
 }
 
@@ -74,11 +77,10 @@ function validate(body: unknown): { ok: true; record: PackageRecord } | { ok: fa
     const err = need(f)
     if (err) return { ok: false, reason: err }
   }
-  if (b.description !== undefined && typeof b.description !== 'string') {
-    return { ok: false, reason: "'description' must be a string when present" }
-  }
-  if (b.owner !== undefined && typeof b.owner !== 'string') {
-    return { ok: false, reason: "'owner' must be a string when present" }
+  for (const f of ['description', 'homepage', 'readme', 'docs_url', 'owner'] as const) {
+    if (b[f] !== undefined && typeof b[f] !== 'string') {
+      return { ok: false, reason: `'${f}' must be a string when present` }
+    }
   }
   return { ok: true, record: b as PackageRecord }
 }
@@ -167,6 +169,73 @@ async function handlePublish(req: Request): Promise<Response> {
   }
 
   return json({ published: `${record.name}@${record.version}` })
+}
+
+// `POST /docs-upload` — body shape:
+//
+//   { "name": "@hatch:foo", "version": "1.2.3",
+//     "docs": [ /* ModuleDoc[] from `hatch docs` */ ] }
+//
+// Uploads the JSON to the public `package-docs` bucket at
+// `<short>/<version>/docs.json` (where `short` is `name` with
+// the `@hatch:` prefix stripped and `:` / `/` / `@` replaced with
+// `_` so Supabase Storage object keys stay path-safe). Returns
+// the canonical public URL the consumer should write back into
+// `packages.docs_url`.
+//
+// Bound to the same `HATCH_BOT_SECRET` the publish + tag routes
+// use. The CLI's `hatch publish` sends the JSON body itself —
+// no presigned-URL round-trip. Docs payloads are small (<1MB
+// per package), so the proxied upload is fine and avoids a
+// second request.
+async function handleDocsUpload(req: Request): Promise<Response> {
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch (_) {
+    return text('invalid JSON body', 400)
+  }
+  if (typeof body !== 'object' || body === null) {
+    return text('body must be a JSON object', 400)
+  }
+  const b = body as Record<string, unknown>
+  if (typeof b.name !== 'string' || !b.name) return text("'name' must be a non-empty string", 400)
+  if (typeof b.version !== 'string' || !b.version) return text("'version' must be a non-empty string", 400)
+  if (b.docs === undefined) return text("'docs' (array of ModuleDoc) is required", 400)
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!supabaseUrl || !serviceKey) {
+    console.error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing')
+    return text('server misconfigured', 500)
+  }
+  const client = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+
+  // Replace path-unfriendly characters in the name to derive the
+  // object key. `@hatch:foo` → `hatch_foo`. URL-encoded `@` and
+  // `:` would technically work too but stack badly with proxies.
+  const short = b.name.replace(/^@hatch:/, '').replace(/[:@/]/g, '_')
+  const key = `${short}/${b.version}/docs.json`
+  const payload = new TextEncoder().encode(JSON.stringify(b.docs))
+
+  const { error: upErr } = await client
+    .storage
+    .from('package-docs')
+    .upload(key, payload, {
+      contentType: 'application/json',
+      upsert: true,
+    })
+  if (upErr) {
+    console.error('storage upload failed:', upErr)
+    return json({ error: upErr.message ?? 'storage error' }, 500)
+  }
+
+  // Resolve the canonical public URL. The Supabase JS SDK exposes
+  // `getPublicUrl` synchronously — no extra round-trip.
+  const { data: pub } = client.storage.from('package-docs').getPublicUrl(key)
+  return json({ url: pub.publicUrl, key })
 }
 
 async function handleTag(req: Request): Promise<Response> {
@@ -350,6 +419,12 @@ Deno.serve(async (req: Request) => {
     const authErr = checkAuth(req)
     if (authErr) return authErr
     return handleTag(req)
+  }
+
+  if (path === '/docs-upload' && req.method === 'POST') {
+    const authErr = checkAuth(req)
+    if (authErr) return authErr
+    return handleDocsUpload(req)
   }
 
   if (path === '/proxy') {

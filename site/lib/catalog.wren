@@ -20,6 +20,7 @@
 import "@hatch:toml"   for Toml
 import "@hatch:sqlite" for Database
 import "@hatch:proc"   for Proc
+import "./api"         for Api
 
 /// Public API:
 ///
@@ -71,6 +72,7 @@ class Catalog {
       "  version     TEXT NOT NULL," +
       "  git         TEXT," +
       "  description TEXT," +
+      "  docs_url    TEXT," +
       "  cat         TEXT NOT NULL," +
       "  created_at  TEXT NOT NULL," +
       "  PRIMARY KEY (name, version)" +
@@ -90,13 +92,18 @@ class Catalog {
       Catalog.db.execute("DELETE FROM packages")
       for (row in rows) {
         Catalog.db.execute(
-          "INSERT INTO packages (name, version, git, description, cat, created_at) " +
-          "VALUES (?, ?, ?, ?, ?, ?)",
+          "INSERT INTO packages (name, version, git, description, docs_url, cat, created_at) " +
+          "VALUES (?, ?, ?, ?, ?, ?, ?)",
           [row["name"], row["version"], row["git"], row["description"],
-           row["cat"], row["created_at"]]
+           row["docs_url"], row["cat"], row["created_at"]]
         )
       }
     }
+    // The API renderer caches parsed-and-decorated module lists
+    // keyed by `name@version`. A republish bumps `version` so the
+    // cache key changes anyway, but we drop the whole map here
+    // to keep memory bounded against a runaway publisher loop.
+    Api.clearCache()
   }
 
   /// Curl out to GitHub raw + parse. We use @hatch:proc rather
@@ -119,6 +126,7 @@ class Catalog {
         "version":     row["version"],
         "git":         row.containsKey("git") ? row["git"] : "",
         "description": description,
+        "docs_url":    row.containsKey("docs_url") ? row["docs_url"] : null,
         "cat":         Catalog.categorize_(name, description),
         "created_at":  row.containsKey("created_at") ? row["created_at"] : ""
       })

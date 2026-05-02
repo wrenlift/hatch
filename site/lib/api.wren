@@ -1,45 +1,74 @@
-// lib/api.wren — read the pre-rendered docs JSON for a package
-// and decorate it for the template renderer.
+// lib/api.wren — fetch the docs JSON for a package and decorate
+// it for the template renderer.
 //
 // All HTML is produced by templates (see `views/partials/_api_*.html`),
 // not string concat — keeping the renderer in one declarative
 // place + letting `@hatch:template`'s slot / fragment machinery
 // stay the source of truth for layout.
 //
-// Source of truth: `content/api/<short>.json`, written at image-
-// build time by walking `~/.hatch/cache/*.hatch` through
-// `hatch docs`. Reading from disk avoids a per-request shell-out
-// and keeps the runtime image trim (no need to ship the dep
-// cache or the hatch CLI).
+// Source of truth: the catalog row's `docs_url` column, populated
+// at publish time by `hatch publish` uploading the per-package
+// docs JSON to Supabase Storage. The site curls the URL at
+// request time; an in-process cache keyed by `name@version`
+// avoids re-fetching the same JSON twice between catalog
+// refreshes (the catalog refresh fiber bumps `version` when a
+// republish lands).
 
 import "@hatch:json" for JSON
-import "@hatch:fs"   for Fs
+import "@hatch:proc" for Proc
 
 class Api {
+  /// Per-process cache keyed by `name@version` → parsed-and-
+  /// decorated module list. Cleared every time the catalog
+  /// refreshes (see `Catalog.refresh`). Bounded only by the
+  /// number of distinct package versions the site sees in a
+  /// given refresh window; small enough to leave unbounded.
+  static cache_ { __cache }
+
   /// Public entry point. Returns the parsed `Vec<ModuleDoc>` so
   /// the template can iterate over it directly. Each member is
   /// decorated with the verb pill data the template needs.
-  ///
-  /// Reads the pre-rendered JSON at `content/api/<short>.json`
-  /// — that file is produced at image-build time by walking
-  /// `~/.hatch/cache/*.hatch` through `hatch docs`. No runtime
-  /// shell-out, no per-request CLI spawn.
   static fetch(pkg) {
+    if (__cache == null) __cache = {}
+    var name = pkg["name"]
+    var version = pkg.containsKey("version") ? pkg["version"] : ""
+    var key = "%(name)@%(version)"
+    if (__cache.containsKey(key)) return __cache[key]
+
     var json = Api.fetchJson_(pkg)
-    if (json == null) return null
+    if (json == null) {
+      __cache[key] = null
+      return null
+    }
     var modules = JSON.parse(json)
-    if (!(modules is List) || modules.count == 0) return null
-    return Api.decorate_(modules, null)
+    if (!(modules is List) || modules.count == 0) {
+      __cache[key] = null
+      return null
+    }
+    var decorated = Api.decorate_(modules, null)
+    __cache[key] = decorated
+    return decorated
+  }
+
+  /// Drop everything cached. Called from `Catalog.refresh` when
+  /// the package set rolls forward — a republish bumps `version`
+  /// so the cache key changes anyway, but blowing the cache
+  /// keeps memory bounded against a runaway publisher loop.
+  static clearCache() {
+    __cache = {}
   }
 
   static fetchJson_(pkg) {
-    var name = pkg["name"]
-    if (!name.startsWith("@hatch:")) return null
-    var short = name[7..(name.count - 1)]
-    var path = "content/api/" + short + ".json"
-    if (!Fs.exists(path)) return null
-    var text = Fs.readText(path)
-    return text.count > 0 ? text : null
+    if (!pkg.containsKey("docs_url")) return null
+    var url = pkg["docs_url"]
+    if (url == null || url == "") return null
+    var f = Fiber.new {
+      Proc.exec(["curl", "-fsSL", url, "--max-time", "5"])
+    }
+    var r = f.try()
+    if (f.error != null) return null
+    if (r != null && r.ok && r.stdout.count > 0) return r.stdout
+    return null
   }
 
   /// Walk the parsed modules and attach view-helper fields the

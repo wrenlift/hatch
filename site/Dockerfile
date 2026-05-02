@@ -56,19 +56,12 @@ COPY public ./public
 COPY content ./content
 
 # `hatch build` resolves [dependencies] from the registry, fetches
-# each `.hatch` bundle, emits a self-contained `site.hatch`, AND
-# (via `--emit-docs-dir`) writes per-dep `Docs` JSON into
-# `content/api/<short>.json` as it merges. One pass for the site's
-# own bytecode + its transitive deps' docs.
-RUN hatch build . --out site.hatch --emit-docs-dir content/api
-
-# Backfill the rest of the catalog. `hatch docs --catalog` reads
-# the live `index.toml`, ensures every published package is
-# cached (same registry fetch path `hatch install` uses — no
-# URL pattern duplication), and emits `<short>.json` for each
-# into the same dir. ~40 packages × ~2MB ≈ 80MB of build-time
-# downloads on Fly's remote builder.
-RUN hatch docs --catalog --out content/api
+# each `.hatch` bundle, and emits a self-contained `site.hatch`.
+# Per-package docs JSON lives on Supabase Storage now (uploaded
+# by `hatch publish` at publish time), so the site doesn't need
+# to ship pre-rendered files — `lib/api.wren` curls the catalog
+# row's `docs_url` at request time with an in-process cache.
+RUN hatch build . --out site.hatch
 
 # ---------------------------------------------------------------
 
@@ -92,8 +85,9 @@ WORKDIR /app
 #   * `content/<slug>.md`   — guide / blog markdown
 #   * `public/assets/...`   — `Static.serve` middleware
 #
-# All three are reads-only at runtime, so a single `COPY` from
-# the bundle stage is enough.
+# Per-package API docs JSON is no longer in `content/`; the site
+# curls each row's `docs_url` (Supabase Storage) at request time
+# instead.
 COPY --from=bundle /build/site.hatch ./site.hatch
 COPY --from=bundle /build/views    ./views
 COPY --from=bundle /build/content  ./content
