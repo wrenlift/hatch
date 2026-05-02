@@ -40,14 +40,17 @@ jobs:
       - name: Deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_IO_TOKEN }}
+        working-directory: site
         run: |
           set -eu
           # `--remote-only` builds on Fly's machines instead of the
           # GitHub runner, sidestepping any local-dev tool gaps.
           # `--ha=false` keeps the single-machine footprint we asked
           # for in fly.toml; without it Fly defaults to 2-machine HA.
-          flyctl deploy site \
-            --config site/fly.toml \
-            --app hatch-wrenlift \
+          # Running from `site/` so flyctl picks up fly.toml + the
+          # Dockerfile in cwd — passing both a positional dir and
+          # `--config` confuses the first-deploy machine-introspection
+          # path on a freshly-created app with no machines yet.
+          flyctl deploy \
             --remote-only \
             --ha=false
