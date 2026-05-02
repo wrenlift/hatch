@@ -57,11 +57,19 @@ class Catalog {
   static db=(value) { __db = value }
 
   /// Open the in-memory db, build the schema, fetch + populate.
-  /// Aborts on first-fetch failure — no point booting a packages
-  /// page with no packages.
+  /// Seeds the aggregate cache with empty defaults BEFORE the
+  /// first fetch so a flaky boot (DNS not ready, GitHub blip)
+  /// still leaves the page renderable — `count`, `byCategory`,
+  /// `standardLibrary`, `community` are all read straight from
+  /// the cache and would otherwise return `null` if `refresh`
+  /// aborted before populating them.
   static boot() {
     Catalog.db = Database.openMemory()
     Catalog.createSchema_()
+    __cachedCount = 0
+    __cachedByCategory = { "net": 0, "data": 0, "sys": 0, "dev": 0 }
+    __cachedStdlib = []
+    __cachedCommunity = []
     Catalog.refresh()
   }
 
@@ -122,6 +130,13 @@ class Catalog {
   /// One-shot refresh. Wipes the table and bulk-loads from
   /// index.toml inside a transaction so partial-fetch failures
   /// can't leave the page with a half-empty grid.
+  ///
+  /// Network fetch (the slow part — 100s of ms over the link)
+  /// happens BEFORE the transaction; the table swap itself is a
+  /// tight `DELETE` + N `INSERT`s that runs in well under a
+  /// millisecond. Keeping the slow work outside the transaction
+  /// minimises the window during which serve fibers querying the
+  /// catalog block on the SQLite single-connection serialisation.
   static refresh() {
     var rows = Catalog.fetchAndParse_()
     Catalog.db.transaction {
@@ -135,6 +150,7 @@ class Catalog {
         )
       }
     }
+    Catalog.rebuildAggregateCache_()
     // The API renderer's per-process cache is keyed by
     // `name@version`, so a republish naturally produces a cache
     // miss for the bumped version — the stale entry just becomes
@@ -143,13 +159,54 @@ class Catalog {
     // cross-module reach to clear it explicitly.
   }
 
+  /// Compute the per-render aggregates (`count`, `byCategory`,
+  /// `standardLibrary`, `community`) once, right after the table
+  /// rebuild, and stash them in module-level statics. Every docs
+  /// page render needs all four — without this cache each request
+  /// fires 4 SQL queries against data that only changes on a
+  /// 5-minute refresh boundary.
+  static rebuildAggregateCache_() {
+    var countRow = Catalog.db.queryRow(
+      "SELECT COUNT(DISTINCT name) AS n FROM packages"
+    )
+    __cachedCount = countRow == null ? 0 : countRow["n"]
+
+    var catRows = Catalog.db.query(
+      "SELECT cat, COUNT(DISTINCT name) AS n FROM packages GROUP BY cat"
+    )
+    var byCat = { "net": 0, "data": 0, "sys": 0, "dev": 0 }
+    for (row in catRows) byCat[row["cat"]] = row["n"]
+    __cachedByCategory = byCat
+
+    __cachedStdlib = Catalog.db.query(
+      "SELECT name, MAX(version) AS version FROM packages " +
+      "WHERE name LIKE '@hatch:%' GROUP BY name ORDER BY name"
+    )
+    __cachedCommunity = Catalog.db.query(
+      "SELECT name, MAX(version) AS version FROM packages " +
+      "WHERE name NOT LIKE '@hatch:%' GROUP BY name ORDER BY name"
+    )
+  }
+
   /// Curl out to GitHub raw + parse. We use @hatch:proc rather
   /// than @hatch:http because @hatch:web ships @hatch:json@0.1.2
   /// while @hatch:http ships @hatch:json@0.1.0 — having both as
   /// transitives makes the bundler reject the encode.
+  ///
+  /// Spawns the curl as a child process and yields cooperatively
+  /// while waiting for it. `Proc.exec` would block the entire
+  /// scheduler for the full duration of the network fetch (often
+  /// ~hundreds of ms), starving every serve fiber on the box; the
+  /// `run`+`alive`+`yield` pattern keeps the rest of the scheduler
+  /// ticking through requests during the curl.
   static fetchAndParse_() {
-    var r = Proc.exec(["curl", "-fsSL", Catalog.INDEX_URL_, "--max-time", "10"])
-    if (!r.ok) Fiber.abort("Catalog.refresh: curl failed: %(r.stderr)")
+    var p = Proc.run(["curl", "-fsSL", Catalog.INDEX_URL_, "--max-time", "10"])
+    while (p.alive) Fiber.yield()
+    var r = p.tryWait
+    if (r == null || !r.ok) {
+      var err = r == null ? "no result" : r.stderr
+      Fiber.abort("Catalog.refresh: curl failed: %(err)")
+    }
     var doc = Toml.parse(r.stdout)
     var packages = doc["packages"]
     if (!(packages is Map)) Fiber.abort("Catalog.refresh: unexpected index.toml shape")
@@ -221,21 +278,12 @@ class Catalog {
   /// alphabetical). The sidebar template shows the first
   /// `SIDEBAR_PREVIEW` rows and tucks the rest behind a "Show all"
   /// toggle — we still hand back the full list so the toggle
-  /// expands without a round-trip.
-  static standardLibrary {
-    return Catalog.db.query(
-      "SELECT name, MAX(version) AS version FROM packages " +
-      "WHERE name LIKE '@hatch:%' GROUP BY name ORDER BY name"
-    )
-  }
+  /// expands without a round-trip. Served from the cache rebuilt
+  /// each refresh; see `rebuildAggregateCache_`.
+  static standardLibrary { __cachedStdlib }
 
   /// Same shape, non-`@hatch:*` rows.
-  static community {
-    return Catalog.db.query(
-      "SELECT name, MAX(version) AS version FROM packages " +
-      "WHERE name NOT LIKE '@hatch:%' GROUP BY name ORDER BY name"
-    )
-  }
+  static community { __cachedCommunity }
 
   /// Latest row for a single package by exact name. Returns `null`
   /// if no row matches — the docs page surfaces that as a 404.
@@ -405,22 +453,13 @@ class Catalog {
     return html
   }
 
-  /// Distinct-name count out of the catalog.
-  static count {
-    var row = Catalog.db.queryRow("SELECT COUNT(DISTINCT name) AS n FROM packages")
-    return row["n"]
-  }
+  /// Distinct-name count out of the catalog. Cached per refresh.
+  static count { __cachedCount }
 
   /// `{net: N, data: N, sys: N, dev: N}` — distinct-name counts per
-  /// category, used to populate the filter chip badges.
-  static byCategory {
-    var rows = Catalog.db.query(
-      "SELECT cat, COUNT(DISTINCT name) AS n FROM packages GROUP BY cat"
-    )
-    var out = { "net": 0, "data": 0, "sys": 0, "dev": 0 }
-    for (row in rows) out[row["cat"]] = row["n"]
-    return out
-  }
+  /// category, used to populate the filter chip badges. Cached per
+  /// refresh.
+  static byCategory { __cachedByCategory }
 
   /// Most recent version of each package, newest first.
   static recent(limit) {

@@ -60,9 +60,16 @@ var registry = TemplateRegistry.new(loader)
 // response and the machine restart-loops. The page renders an
 // empty grid in this state until a manual refresh / restart
 // repopulates the table.
+//
+// `Catalog.boot()` now yields cooperatively while the curl
+// subprocess runs, so we drive the boot fiber to completion in a
+// tight loop here rather than relying on a single `.try()` (which
+// returns at the first yield).
 System.print("boot: starting catalog…")
 var bootFiber = Fiber.new { Catalog.boot() }
-bootFiber.try()
+while (!bootFiber.isDone) {
+  bootFiber.try()
+}
 if (bootFiber.error != null) {
   System.print("boot: catalog hydration failed: %(bootFiber.error)")
   System.print("boot: continuing with empty catalog — refresh later")
