@@ -39,12 +39,9 @@ primary_region = "iad"
 
 [[vm]]
   size = "shared-cpu-1x"
-  # 1gb minimum: the wlift runtime allocates ~512mb upfront for
-  # the JIT code arena, plus the in-memory SQLite catalog +
-  # template registry caches + per-request fiber stacks. A 512mb
-  # VM leaves ~480mb after kernel/init, which fails the upfront
-  # alloc immediately ("memory allocation of 536870912 bytes
-  # failed" + SIGABRT → Fly restart-loop).
-  memory = "1gb"
+  # 512mb minimum: the JIT engine + an in-memory SQLite catalog +
+  # template registry caches don't comfortably fit in 256mb. The
+  # OOM-kill → Fly-restart loop on first deploy was the symptom.
+  memory = "512mb"
   cpu_kind = "shared"
   cpus = 1
