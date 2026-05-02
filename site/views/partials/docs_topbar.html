@@ -85,7 +85,14 @@
     // <aside> id="docs-sidebar-drawer" so we can flip
     // `is-open` from here. Click outside the drawer (on the
     // backdrop) closes it; Esc also closes for keyboard users.
-    (function () {
+    //
+    // Wrapped in DOMContentLoaded because this <script> sits in
+    // the topbar partial which renders BEFORE the sidebar
+    // partial — at script-parse time the sidebar's <aside> and
+    // backdrop don't exist yet, so a synchronous
+    // getElementById would return null and event listeners
+    // would never attach.
+    document.addEventListener("DOMContentLoaded", function () {
       var btn = document.getElementById("docs-sidebar-toggle");
       var aside = document.getElementById("docs-sidebar-drawer");
       var backdrop = document.getElementById("docs-sidebar-backdrop");
@@ -118,6 +125,6 @@
           t = t.parentNode;
         }
       });
-    })();
+    });
   </script>
 </header>
