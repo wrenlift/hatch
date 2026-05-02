@@ -178,16 +178,15 @@ async function handlePublish(req: Request): Promise<Response> {
 //
 // Uploads the JSON to the public `package-docs` bucket at
 // `<short>/<version>/docs.json` (where `short` is `name` with
-// the `@hatch:` prefix stripped and `:` / `/` / `@` replaced with
-// `_` so Supabase Storage object keys stay path-safe). Returns
-// the canonical public URL the consumer should write back into
+// the `@hatch:` prefix stripped and `:` / `/` / `@` replaced
+// with `_` so storage object keys stay path-safe). Returns the
+// canonical public URL the consumer should write back into
 // `packages.docs_url`.
 //
-// Bound to the same `HATCH_BOT_SECRET` the publish + tag routes
-// use. The CLI's `hatch publish` sends the JSON body itself —
-// no presigned-URL round-trip. Docs payloads are small (<1MB
-// per package), so the proxied upload is fine and avoids a
-// second request.
+// Bound to the same `HATCH_BOT_SECRET` /publish + /tag use.
+// `hatch publish` POSTs the JSON inline — no presigned-URL
+// round-trip. Docs payloads are small (<1MB per package), so
+// proxied upload is fine and avoids a second request.
 async function handleDocsUpload(req: Request): Promise<Response> {
   let body: unknown
   try {
@@ -232,8 +231,6 @@ async function handleDocsUpload(req: Request): Promise<Response> {
     return json({ error: upErr.message ?? 'storage error' }, 500)
   }
 
-  // Resolve the canonical public URL. The Supabase JS SDK exposes
-  // `getPublicUrl` synchronously — no extra round-trip.
   const { data: pub } = client.storage.from('package-docs').getPublicUrl(key)
   return json({ url: pub.publicUrl, key })
 }
