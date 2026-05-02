@@ -10,7 +10,18 @@
 #   fly certs add hatch.wrenlift.com -a hatch-wrenlift
 
 app = "hatch-wrenlift"
-primary_region = "iad"
+# `primary_region` is the default landing zone for newly-spawned
+# machines (e.g. `fly machine run`). Fly's anycast routing picks
+# the closest healthy machine on a per-request basis regardless,
+# so this just controls where `fly deploy` puts a fresh machine
+# if you haven't pinned one explicitly. Owner is BST-based and
+# the bulk of expected traffic is UK / US East, so LHR is the
+# better default than IAD. The cross-region replica machine
+# (IAD) is created via `fly m clone --region iad <lhr-id>`
+# rather than `fly.toml`, since `[[vm]]` blocks don't take a
+# region directive — region placement is per-machine in Fly's
+# v2 model.
+primary_region = "lhr"
 
 [build]
   dockerfile = "Dockerfile"
