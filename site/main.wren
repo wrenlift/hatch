@@ -54,7 +54,24 @@ var CACHE_FRAGMENT = "no-cache"                                                /
 
 var app = App.new()
 
-app.use(Static.serve("/assets", "./public/assets"))
+// `/assets/*` cache policy. The sprite SVG, the CSS, the
+// CodeMirror module — all immutable per deploy (Fly's image
+// digest changes when any of them does). 7-day max-age with a
+// 30-day stale-while-revalidate window keeps the browser cache
+// hot across visits without forcing a full revalidation each
+// time. `Static.serve` itself doesn't set Cache-Control today,
+// so we wrap it: the underlying middleware does the file lookup
+// + content-type, and this outer thunk just stamps the header
+// onto the response before handing it back. Falls through to
+// `next` only when the inner returned that (i.e. the asset
+// didn't exist or wasn't a GET/HEAD), in which case there's no
+// response to tag.
+var staticMw = Static.serve("/assets", "./public/assets")
+app.use(Fn.new {|req, next|
+  var r = staticMw.call(req, next)
+  if (r != null) r.header("Cache-Control", "public, max-age=604800, stale-while-revalidate=2592000, immutable")
+  return r
+})
 
 // Framework-level catchall — every unmatched route lands on the
 // cozy 404 page rather than the browser's grey default. Wired

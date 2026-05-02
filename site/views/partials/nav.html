@@ -4,7 +4,13 @@
    `Docs` link is a real route. #}
 <nav class="nav">
   <a class="brand" href="/" aria-label="Hatch">
-    <img class="wordmark" src="/assets/hatch-wordmark.svg" alt="Hatch" />
+    {# Wordmark: SVG `<use>` against the cached sprite sheet —
+       one HTTP fetch per session covers every icon on the site,
+       which the browser caches indefinitely (immutable in
+       practice; new releases bump the file's content). #}
+    <svg class="wordmark" aria-hidden="true" focusable="false">
+      <use href="/assets/hatch-sprites.svg#hatch-wordmark"/>
+    </svg>
   </a>
   <div class="nav-links">
     <a href="/#install">Install</a>
