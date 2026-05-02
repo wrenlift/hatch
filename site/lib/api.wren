@@ -90,10 +90,24 @@ class Api {
     // @hatch:http@0.3.0 (json@0.1.0) couldn't co-exist in one
     // bundle; @hatch:http@0.3.2 moved to json@0.1.2 so the
     // diamond resolves and we can drop the shell-out.
+    //
+    // The drive-loop here is load-bearing: a plain `fib.try()`
+    // returns at the FIRST yield with the partial value the
+    // child emitted, not the final `Response`. `Http.get`
+    // yields several times during a slow Supabase fetch, so
+    // a single try() gets the caller a half-baked sentinel —
+    // typically a string fragment of the response body. The
+    // template parser downstream sees a truncated docs JSON
+    // and aborts mid-`{% if %}` block ("unterminated {% if %}"
+    // in fly logs).
     var fib = Fiber.new {
       Http.get(url, { "timeoutMs": 5000, "followRedirects": true })
     }
-    var resp = fib.try()
+    var resp = null
+    while (!fib.isDone) {
+      resp = fib.try()
+      if (!fib.isDone) Fiber.yield()
+    }
     if (fib.error != null || resp == null) return null
     if (!resp.ok) return null
     var body = resp.body

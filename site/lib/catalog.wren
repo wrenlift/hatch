@@ -125,6 +125,28 @@ class Catalog {
     return f
   }
 
+  /// Same shape as `driveFiber_` but captures and returns the
+  /// fiber's final value (the value the body returns when it
+  /// completes). The plain `driveFiber_` discards each `try()`
+  /// return, which is fine for fire-and-forget fibers but loses
+  /// the result for fibers that wrap a value-returning call —
+  /// e.g. `Fiber.new { Http.get(url) }.try()` returns whatever
+  /// the FIRST yield emitted, not the final `Response`. Without
+  /// this pump, a slow Supabase fetch that yields once mid-read
+  /// hands the caller a half-baked yield value (often a
+  /// truncated string buffer or null), the request renderer
+  /// embeds it as the body, and the template parser aborts
+  /// downstream with `unterminated {% if %}` because it ran out
+  /// of input mid-block.
+  static driveFiberValue_(f) {
+    var last = null
+    while (!f.isDone) {
+      last = f.try()
+      if (!f.isDone) Fiber.yield()
+    }
+    return last
+  }
+
   static createSchema_() {
     Catalog.db.execute(
       "CREATE TABLE packages (" +
@@ -242,7 +264,13 @@ class Catalog {
     var fib = Fiber.new {
       Http.get(Catalog.INDEX_URL_, { "timeoutMs": 10000, "followRedirects": true })
     }
-    var resp = fib.try()
+    // Drive the fiber to completion — `Http.get` yields
+    // cooperatively while waiting for the network and
+    // `fib.try()` would otherwise return at the first yield with
+    // a partial/null sentinel rather than the final `Response`.
+    // See `Catalog.driveFiberValue_` for the failure mode this
+    // prevents (truncated body → template parser abort).
+    var resp = Catalog.driveFiberValue_(fib)
     if (fib.error != null || resp == null || !resp.ok || resp.body == null) {
       var err = fib.error != null ? fib.error : (resp == null ? "no response" : "%(resp.status)")
       Fiber.abort("Catalog.refresh: index.toml fetch failed: %(err)")
@@ -424,7 +452,9 @@ class Catalog {
     var fib = Fiber.new {
       Http.get(url, { "timeoutMs": 10000, "followRedirects": true })
     }
-    var resp = fib.try()
+    // Pump the fiber to completion — see `driveFiberValue_`
+    // for why a single `fib.try()` returns a partial value.
+    var resp = Catalog.driveFiberValue_(fib)
     if (fib.error != null || resp == null || !resp.ok || resp.body == null || resp.body.count == 0) {
       var miss = "<p class=\"readme-empty\">No README found for <code>" + name + "</code>.</p>"
       __readmeCache[key] = miss
