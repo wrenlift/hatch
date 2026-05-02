@@ -27,7 +27,7 @@ FROM debian:trixie-slim AS builder
 # subsequent build hits the cache and keeps the old binary even
 # after a new release is cut. Bump this string in lockstep with each
 # new tag instead.
-ARG WLIFT_VERSION=v0.1.7
+ARG WLIFT_VERSION=v0.1.8
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl bash \
