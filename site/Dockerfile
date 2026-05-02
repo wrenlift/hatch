@@ -16,7 +16,7 @@
 # multi-platform native libs, so the deploy can use the canonical
 # CLI entry point.
 
-FROM debian:bookworm-slim AS builder
+FROM debian:trixie-slim AS builder
 
 # Optional pinned tag (e.g. `v0.1.0`). Leave empty (the default)
 # so `install.sh` resolves the latest GitHub release via the
@@ -38,7 +38,7 @@ RUN curl -fsSL https://wrenlift.com/install.sh \
 
 # ---------------------------------------------------------------
 
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 # `hatch run` shells out to `curl` for catalog reads (lib/catalog.wren
 # pulls index.toml from raw.githubusercontent.com). ca-certificates
