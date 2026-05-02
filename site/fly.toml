@@ -23,17 +23,6 @@ primary_region = "iad"
   # set is ~165mb (locally measured). Drop this env once the next
   # tagged release ships with the lower default baked in.
   WLIFT_GC_NURSERY_MB = "64"
-  # Pin to the bytecode interpreter — the JIT in the v0.1.7 wlift
-  # binary on this machine has known memory and correctness gaps
-  # for this workload (transitive-yield mis-detection produces
-  # `Object does not implement 'split(_)'` flakes; per-compile
-  # JIT module memory accumulates and the box OOM-kills around
-  # ~390mb anon-rss under sustained nav). The site is I/O-bound —
-  # SQLite queries, curl shell-outs, template rendering — so the
-  # JIT speedup is in the noise here. Drop this env once we cut a
-  # wlift release that includes the transitive yield-detector +
-  # GC root fixes from `main`.
-  WLIFT_MODE = "interpreter"
 
 [http_service]
   internal_port = 3000
