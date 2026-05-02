@@ -13,53 +13,67 @@
 {% endblock %}
 
 {% block docs_main %}
-  <header class="docs-browse-head">
-    <nav class="crumbs" aria-label="Breadcrumb">
-      <a href="/">Home</a>
-      <span class="crumb-sep">/</span>
-      {% if guideKind == "blog" %}
-        <a href="/blog">Blog</a>
-      {% else %}
-        <a href="/guides/intro">Guides</a>
-      {% endif %}
-      <span class="crumb-sep">/</span>
-      <span class="crumb-current">{{ guideTitle }}</span>
-    </nav>
-    <h1 class="pkg-title"><span class="pkg-title-name">{{ guideTitle }}</span></h1>
-  </header>
+  {# Everything that changes between guides lives inside the
+     `#guide-main` div. Sidebar links htmx-swap this whole div
+     via `hx-target="#guide-main" hx-swap="outerHTML"` — the
+     server returns just this fragment for hx requests, the
+     scripts inside re-run on swap and the TOC `<ul>` (in the
+     docs_toc rail outside) gets rebuilt by the script below. #}
+  {% fragment guide_main %}
+  <div id="guide-main">
+    <header class="docs-browse-head">
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href="/">Home</a>
+        <span class="crumb-sep">/</span>
+        {% if guideKind == "blog" %}
+          <a href="/blog">Blog</a>
+        {% else %}
+          <a href="/guides/intro">Guides</a>
+        {% endif %}
+        <span class="crumb-sep">/</span>
+        <span class="crumb-current">{{ guideTitle }}</span>
+      </nav>
+      <h1 class="pkg-title"><span class="pkg-title-name">{{ guideTitle }}</span></h1>
+    </header>
 
-  {# Same render hook the API page uses — wait for marked to
-     load, parse the `data-md` blob, then run mountWrenCode so
-     fenced wren examples become CodeMirror views. #}
-  <script>
-    (function () {
-      function render() {
-        var slot = document.getElementById("guide-body");
-        if (!slot || !window.marked) return false;
-        if (slot.dataset.rendered === "1") return true;
-        slot.innerHTML = window.marked.parse(slot.dataset.md || "");
-        slot.dataset.rendered = "1";
-        if (window.mountWrenCode) window.mountWrenCode(slot);
-        return true;
-      }
-      if (!render()) {
-        var t = setInterval(function () { if (render()) clearInterval(t); }, 80);
-        setTimeout(function () { clearInterval(t); }, 5000);
-      }
-    })();
-  </script>
+    <div class="pkg-readme guide-doc" id="guide-body" data-md="{{ guideMd }}"></div>
 
-  <div class="pkg-readme guide-doc" id="guide-body" data-md="{{ guideMd }}"></div>
+    {# Render + TOC-build hook. Re-runs every time the fragment
+       is swapped in (htmx executes <script> tags inside swapped
+       content), so back/forward and sidebar nav both refresh
+       the body + the right-rail TOC. #}
+    <script>
+      (function () {
+        function render() {
+          var slot = document.getElementById("guide-body");
+          if (!slot || !window.marked) return false;
+          if (slot.dataset.rendered === "1") return true;
+          slot.innerHTML = window.marked.parse(slot.dataset.md || "");
+          slot.dataset.rendered = "1";
+          if (window.mountWrenCode) window.mountWrenCode(slot);
+          if (window.__buildGuideToc) window.__buildGuideToc();
+          return true;
+        }
+        if (!render()) {
+          var t = setInterval(function () { if (render()) clearInterval(t); }, 80);
+          setTimeout(function () { clearInterval(t); }, 5000);
+        }
+      })();
+    </script>
+  </div>
+  {% endfragment %}
 {% endblock %}
 
 {% block docs_toc %}
   {# Same client-side TOC builder the README uses — once marked
-     parses the body, scrape h2 / h3 elements, build the list. #}
+     parses the body, scrape h2 / h3 elements, build the list.
+     Exposed as `window.__buildGuideToc` so the in-fragment render
+     hook can re-run it after an htmx sidebar swap. #}
   <h5>On this page</h5>
   <ul id="readme-toc"></ul>
   <script>
     (function () {
-      function build() {
+      window.__buildGuideToc = function () {
         var host = document.getElementById("guide-body");
         var toc = document.getElementById("readme-toc");
         if (!host || !toc) return false;
@@ -103,9 +117,9 @@
           if (entries[0]) entries[0].link.classList.add("active");
         }
         return true;
-      }
-      if (!build()) {
-        var t = setInterval(function () { if (build()) clearInterval(t); }, 100);
+      };
+      if (!window.__buildGuideToc()) {
+        var t = setInterval(function () { if (window.__buildGuideToc()) clearInterval(t); }, 100);
         setTimeout(function () { clearInterval(t); }, 6000);
       }
     })();
