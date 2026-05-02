@@ -305,6 +305,15 @@ app.get("/packages/:name/readme") {|req|
   }
   var r = Response.new(200)
   r.html(html)
+  // README content is immutable per `name@version` (a republish
+  // bumps the version → new URL → cache miss naturally), so
+  // browsers can keep the response indefinitely. Server already
+  // memoises in-process via `__readmeCache`; the browser cache
+  // saves the round-trip on revisit. 1h is conservative —
+  // honours the 5-min catalog refresh window during which a
+  // republish might land + a few minutes for downstream cache
+  // invalidation.
+  r.header("Cache-Control", "public, max-age=3600")
   return r
 }
 
