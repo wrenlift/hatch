@@ -984,6 +984,23 @@ class ByteBuf_ {
 /// `application/octet-stream`.
 
 class Static {
+  /// Per-process cache of (bytes, content-type) keyed by absolute
+  /// file path. Public assets in a `Static.serve` mount don't
+  /// change at runtime — restart picks up new files — so caching
+  /// at first read removes the per-request `Fs.readBytes` +
+  /// `mimeOf_` work and lets the response shrink to a Map lookup
+  /// plus a header set. Wren is single-threaded inside the
+  /// scheduler, so the read-then-store sequence is atomic with
+  /// respect to other request fibers; no locking needed.
+  static cacheGet_(full) {
+    if (__cache == null) __cache = {}
+    return __cache.containsKey(full) ? __cache[full] : null
+  }
+  static cacheSet_(full, entry) {
+    if (__cache == null) __cache = {}
+    __cache[full] = entry
+  }
+
   static serve(urlPrefix, root) {
     return Fn.new {|req, next|
       if (req.method != "GET" && req.method != "HEAD") return next.call(req)
@@ -994,18 +1011,23 @@ class Static {
       if (Static.unsafe_(rel)) return Response.new(403).text("Forbidden")
       while (rel.count > 0 && rel[0] == "/") rel = rel[1..(rel.count - 1)]
       var full = Static.join_(root, rel)
-      if (!Fs.exists(full) || !Fs.isFile(full)) return next.call(req)
-      var bytes = Fs.readBytes(full)
+      var entry = Static.cacheGet_(full)
+      if (entry == null) {
+        if (!Fs.exists(full) || !Fs.isFile(full)) return next.call(req)
+        var bytes = Fs.readBytes(full)
+        entry = { "bytes": bytes, "mime": Static.mimeOf_(rel) }
+        Static.cacheSet_(full, entry)
+      }
       var r = Response.new(200)
-      r.header("Content-Type", Static.mimeOf_(rel))
-      r.header("Content-Length", bytes.count.toString)
+      r.header("Content-Type", entry["mime"])
+      r.header("Content-Length", entry["bytes"].count.toString)
       // Hand the raw bytes through. `TcpStream.write` accepts a
       // List<Num> / ByteArray / String via the runtime's
       // `bytes_from_value` coercion, and `writeResponse` reads
       // `bodyLen` via `Http_.bodyLen_`. Round-tripping through
       // `String.fromByte` per element was O(n²) — death on
       // anything bigger than a kilobyte.
-      r.body = bytes
+      r.body = entry["bytes"]
       return r
     }
   }
