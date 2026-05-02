@@ -32,6 +32,26 @@ var notFound = Fn.new {|requestedPath|
 // thread it through the page context.
 var WRENLIFT_VERSION = "0.1.0"
 
+// `Cache-Control` policies, scaled to each route's update cadence.
+// `stale-while-revalidate` lets the browser show the cached page
+// instantly while it revalidates in the background — avoids the
+// "I just navigated and the page froze" pattern even when our
+// server is fast. `Vary: HX-Request` is set on routes whose body
+// shape depends on whether htmx is asking for a fragment swap or a
+// plain full-page navigation; without it, browsers / intermediaries
+// could serve a `<div id="grid">` fragment to a plain reload.
+//
+// All bounded so a republish is visible within minutes, not hours.
+// Per-package routes use `name@version` cache keys server-side, but
+// the URL is `/packages/:name` (no version), so a republish doesn't
+// invalidate the browser cache automatically — `max-age=300` keeps
+// a republished page hidden for at most 5 minutes.
+var CACHE_LANDING  = "public, max-age=120, stale-while-revalidate=600"        // / and /packages — catalog refresh window is 5 min
+var CACHE_PACKAGE  = "public, max-age=300, stale-while-revalidate=3600"       // /packages/:name + /api + /readme
+var CACHE_GUIDE    = "public, max-age=86400, stale-while-revalidate=604800"   // guides only change on image rebuild
+var CACHE_BLOG     = "public, max-age=3600, stale-while-revalidate=86400"     // blog posts publish via image rebuild
+var CACHE_FRAGMENT = "no-cache"                                                // htmx swaps depend on query state
+
 var app = App.new()
 
 app.use(Static.serve("/assets", "./public/assets"))
@@ -91,6 +111,7 @@ var pageContext = Fn.new {|packages, currentCat|
 app.get("/") {|req|
   var packages = Catalog.recent(12)
   return req.render(registry.get("index.html"), pageContext.call(packages, "all"))
+    .header("Cache-Control", CACHE_LANDING)
 }
 
 // htmx swap target. Search input + filter chips both POST/GET
@@ -107,6 +128,7 @@ app.get("/packages/search") {|req|
     return registry.get("partials/packages.html").renderFragment("grid", ctx)
   }
   return req.render(registry.get("index.html"), ctx)
+    .header("Cache-Control", CACHE_FRAGMENT)
 }
 
 // Guide pages — a small fixed set (intro / install / hatchfile
@@ -140,6 +162,8 @@ app.get("/guides/:slug") {|req|
     return registry.get("guide.html").renderFragment("guide_main", ctx)
   }
   return req.render(registry.get("guide.html"), ctx)
+    .header("Cache-Control", CACHE_GUIDE)
+    .header("Vary", "HX-Request")
 }
 
 // Blog / tutorials. Same shell as guides — markdown source under
@@ -183,6 +207,7 @@ app.get("/blog") {|req|
     "activeNav": "blog"
   })
   return req.render(registry.get("blog.html"), ctx)
+    .header("Cache-Control", CACHE_BLOG)
 }
 
 app.get("/blog/:slug") {|req|
@@ -202,6 +227,8 @@ app.get("/blog/:slug") {|req|
     return registry.get("guide.html").renderFragment("guide_main", ctx)
   }
   return req.render(registry.get("guide.html"), ctx)
+    .header("Cache-Control", CACHE_BLOG)
+    .header("Vary", "HX-Request")
 }
 
 // Build the docs-shell context once per request. `stdlib` and
@@ -238,6 +265,7 @@ app.get("/packages") {|req|
     "activeNav":  "packages"
   })
   return req.render(registry.get("docs.html"), ctx)
+    .header("Cache-Control", CACHE_LANDING)
 }
 
 // Package detail. Header is hatchfile-derived (catalog row); body
@@ -256,6 +284,7 @@ app.get("/packages/:name") {|req|
     "activeNav": "packages"
   })
   return req.render(registry.get("package.html"), ctx)
+    .header("Cache-Control", CACHE_PACKAGE)
 }
 
 // API reference view. Same package detail header, but the body
@@ -280,6 +309,7 @@ app.get("/packages/:name/api") {|req|
     "activeNav":  "packages"
   })
   return req.render(registry.get("package_api.html"), ctx)
+    .header("Cache-Control", CACHE_PACKAGE)
 }
 
 // htmx fragment endpoint: return the raw README markdown wrapped
@@ -304,15 +334,13 @@ app.get("/packages/:name/readme") {|req|
   }
   var r = Response.new(200)
   r.html(html)
-  // README content is immutable per `name@version` (a republish
-  // bumps the version → new URL → cache miss naturally), so
-  // browsers can keep the response indefinitely. Server already
-  // memoises in-process via `__readmeCache`; the browser cache
-  // saves the round-trip on revisit. 1h is conservative —
-  // honours the 5-min catalog refresh window during which a
-  // republish might land + a few minutes for downstream cache
-  // invalidation.
-  r.header("Cache-Control", "public, max-age=3600")
+  // The route URL is `/packages/:name/readme` (no version), so
+  // a republish doesn't invalidate a browser cache automatically.
+  // `CACHE_PACKAGE` keeps `max-age=300` (matching the catalog's
+  // 5-min refresh) plus `stale-while-revalidate=3600` so the
+  // browser shows the prior body instantly on revisit and
+  // refreshes in the background.
+  r.header("Cache-Control", CACHE_PACKAGE)
   return r
 }
 
