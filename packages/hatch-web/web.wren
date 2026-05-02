@@ -438,6 +438,7 @@ class App {
     _middleware = []
     _globalSheet = Stylesheet.new()
     _channels = {}
+    _backgroundFns = []
     _notFound = Fn.new {|req|
       var r = Response.new(404)
       r.html("<h1>404 Not Found</h1><p>%(req.method) %(req.path)</p>")
@@ -576,6 +577,13 @@ class App {
     var listener = TcpListener.bind(addr)
     System.print("@hatch:web listening on http://%(addr)")
     var sched = Scheduler_.new()
+    // Long-running background fibers registered via `app.spawn`
+    // (e.g. periodic catalog refresh, cleanup loops). Pushed into
+    // the scheduler before the accept loop kicks in so they tick
+    // alongside per-request fibers.
+    for (fn in _backgroundFns) {
+      sched.spawn(fn)
+    }
     var self = this
     while (true) {
       var conn = listener.tryAccept
@@ -588,6 +596,27 @@ class App {
         Clock.sleepMs(10)
       }
     }
+  }
+
+  /// Register a background fiber that runs alongside per-request
+  /// fibers. The supplied `fn` is wrapped in a long-running fiber
+  /// when `app.listen()` starts; it's expected to loop and yield
+  /// cooperatively (e.g. via `Fiber.yield()` between sleeps) so
+  /// the scheduler can tick request handlers in between.
+  ///
+  /// ```wren
+  /// app.spawn {
+  ///   while (true) {
+  ///     refreshCatalog()
+  ///     // yield-sleep ~5 minutes
+  ///     var deadline = Clock.mono + 300
+  ///     while (Clock.mono < deadline) Fiber.yield()
+  ///   }
+  /// }
+  /// ```
+  spawn(fn) {
+    _backgroundFns.add(fn)
+    return this
   }
 
   /// Channel registry — `app.channel("room-42")` hands back the

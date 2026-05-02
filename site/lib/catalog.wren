@@ -20,6 +20,7 @@
 import "@hatch:toml"   for Toml
 import "@hatch:sqlite" for Database
 import "@hatch:proc"   for Proc
+import "@hatch:time"   for Clock
 
 /// Public API:
 ///
@@ -62,6 +63,41 @@ class Catalog {
     Catalog.db = Database.openMemory()
     Catalog.createSchema_()
     Catalog.refresh()
+  }
+
+  /// Background fiber body — re-fetches `index.toml` on a fixed
+  /// cadence so the in-memory SQLite reflects upstream changes
+  /// without a server restart. Registered via `app.spawn`.
+  ///
+  /// `intervalSec` is the wall-clock interval between refreshes
+  /// (5 minutes by default). The yielding sleep cooperates with
+  /// the scheduler so request fibers keep running between refresh
+  /// ticks. A failed refresh logs and keeps the previous table —
+  /// the last good snapshot stays live until the next attempt.
+  static refreshLoop() { Catalog.refreshLoop(300) }
+  static refreshLoop(intervalSec) {
+    while (true) {
+      // Wait first so the boot-time hydration owns the initial
+      // table population; the loop kicks in for subsequent
+      // refreshes only.
+      Catalog.sleepYielding_(intervalSec)
+      var f = Fiber.new { Catalog.refresh() }
+      f.try()
+      if (f.error != null) {
+        System.print("[catalog] refresh failed: %(f.error)")
+      } else {
+        System.print("[catalog] refreshed (%(Catalog.count) packages)")
+      }
+    }
+  }
+
+  /// Cooperative sleep — yields to the scheduler each tick until
+  /// `seconds` of wall-clock time have elapsed. Doesn't block the
+  /// thread, so other fibers (request handlers, SSE writers) run
+  /// freely while we wait.
+  static sleepYielding_(seconds) {
+    var deadline = Clock.mono + seconds
+    while (Clock.mono < deadline) Fiber.yield()
   }
 
   static createSchema_() {

@@ -1,5 +1,5 @@
 name        = "@hatch:web"
-version     = "0.1.3"
+version     = "0.1.4"
 entry       = "web"
 description = "Server-rendered, htmx-native web framework for Wren. Router, middleware, content-negotiated rendering via @hatch:template, HTTP/1.1 server on top of @hatch:socket."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:web"

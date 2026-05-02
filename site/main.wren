@@ -323,4 +323,10 @@ app.error {|req, err|
 // already align on that internal port.
 var port = Os.env("PORT", "3000")
 System.print("listening on 0.0.0.0:%(port)")
+// Background catalog refresher — re-pulls `index.toml` every
+// 5 minutes so the in-memory SQLite picks up registry changes
+// without a server restart. Yields cooperatively so request
+// fibers keep ticking between refreshes.
+app.spawn(Fn.new { Catalog.refreshLoop() })
+
 app.listen("0.0.0.0:" + port)
