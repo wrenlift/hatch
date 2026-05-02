@@ -21,16 +21,26 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-# Pinned to the commit that landed mimalloc as wren_lift's
-# `#[global_allocator]` (see `src/lib.rs`). Plugins link
-# wren_lift as an rlib and inherit that declaration into the
-# cdylib's link unit — without rebuilding here the plugin's
-# Rust allocations route through System (libc malloc) while
-# the host routes through mimalloc, and the dual-allocator
-# state SIGSEGV'd v0.1.11 on Linux. Rebuilding at this rev
-# puts plugin + host on the same allocator API so foreign
-# calls don't trip on cross-allocator pointers.
-rev   = "ac97d2eddb87164688c5a6f48396ccdb8e692662"
+# Bumped to pull in two correctness fixes on top of the
+# mimalloc-allocator commit:
+#
+#   * `4c5597e plugin/sqlite: GC-root the result list during
+#     query result build` — the prior code accumulated maps in
+#     a Rust `Vec<Value>` on the host stack (not a GC root),
+#     and any allocation inside the row/field loop could free
+#     the in-progress maps mid-build. Catalog refresh allocates
+#     ~hundreds of Maps in a tight loop, the GC threshold trips
+#     mid-rebuild, and the next request landed on freed
+#     pointers (`hatch run … [catalog] refreshed (39 packages)
+#     … zsh: segmentation fault` reproducer). The fix appends
+#     each fresh map to the result list FIRST so it's
+#     transitively rooted via slot 0.
+#
+#   * `2708fd6 plugin/sqlite: return BLOB columns as ByteArray,
+#     not List<Num>` — half the memory per byte, zero per-byte
+#     GC overhead, `Response.bytes`-friendly shape. Bind side
+#     stays backwards-compatible.
+rev   = "2708fd6"
 crate = "wlift_sqlite"
 
 # Per-platform dylib paths. CI populates `libs/` via the
