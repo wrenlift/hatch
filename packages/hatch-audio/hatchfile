@@ -9,7 +9,7 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-rev   = "c13644d948883432bbb873309e69d3801e66e6d7"
+rev   = "02178e9a541b31c7cb97f880e05d19d30e333c7d"
 crate = "wlift_audio"
 
 [native_libs.wlift_audio]
