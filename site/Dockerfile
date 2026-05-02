@@ -18,16 +18,18 @@
 
 FROM debian:bookworm-slim AS builder
 
-ARG WLIFT_VERSION=latest
+# Optional pinned tag (e.g. `v0.1.0`). Leave empty (the default)
+# so `install.sh` resolves the latest GitHub release via the
+# `/releases/latest` redirect — passing a literal "latest" makes
+# the script treat it as a tag name, which 404s on the asset URL.
+ARG WLIFT_VERSION=
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl bash \
     && rm -rf /var/lib/apt/lists/*
 
 # Install wlift + hatch into /usr/local/bin so the runtime stage
-# can copy them without dragging the build chain along. Pin the
-# release via WLIFT_VERSION; default `latest` resolves to the
-# install.sh script's "newest GitHub release" branch.
+# can copy them without dragging the build chain along.
 #
 # Pipe to `bash` not `sh` — install.sh uses `set -o pipefail`
 # which dash (debian's /bin/sh) rejects with "Illegal option".
