@@ -10,6 +10,7 @@ import "@hatch:fs"       for Fs
 import "@hatch:os"       for Os
 import "./lib/catalog"   for Catalog
 import "./lib/api"       for Api
+import "./lib/badge"     for Badge
 
 // Render the cozy 404 page. Used by every 404-producing route
 // (missing guide, missing blog, missing package). The path is
@@ -455,6 +456,29 @@ app.get("/packages/:name/readme") {|req|
   // browser shows the prior body instantly on revisit and
   // refreshes in the background.
   r.header("Cache-Control", CACHE_PACKAGE)
+  return r
+}
+
+// `/badge/gha/:owner/:repo/:workflow` — branded GitHub Actions
+// status badge. Replaces shields.io's render so the H favicon
+// + brand palette stay in our hands; consumers (the hatch
+// README, package READMEs that want a CI badge, dashboards)
+// hit this once and get an SVG with the same look as the rest
+// of hatch.wrenlift.com. `:workflow` accepts the workflow's
+// filename (`regression.yml`) or numeric ID — both pass
+// through to the GitHub API verbatim. `branch` defaults to
+// `main`. We bound the cache at 60s so a re-run shows up
+// quickly without hammering GitHub's rate limit.
+app.get("/badge/gha/:owner/:repo/:workflow") {|req|
+  var owner    = req.params["owner"]
+  var repo     = req.params["repo"]
+  var workflow = req.params["workflow"]
+  var branch   = req.query.containsKey("branch") ? req.query["branch"] : "main"
+  var svg = Badge.gha(owner, repo, workflow, branch)
+  var r = Response.new(200)
+  r.text(svg)
+  r.header("Content-Type", "image/svg+xml; charset=utf-8")
+  r.header("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
   return r
 }
 
