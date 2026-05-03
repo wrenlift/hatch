@@ -1,5 +1,5 @@
 name        = "@hatch:sqlite"
-version     = "0.1.5"
+version     = "0.1.6"
 entry       = "sqlite"
 description = "Embedded SQLite. `Database.open(path)` returns a connection; prepared statements with named parameter binding, rows iterated as Maps, transactions, error handling. Backed by rusqlite (bundled libsqlite — no system dependency)."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:sqlite"
@@ -32,7 +32,7 @@ repo  = "https://github.com/wrenlift/WrenLift.git"
 # through libc malloc, with the GC-rooting + ByteArray fixes
 # from the 0.1.4 attempt still in place (4c5597e, 2708fd6
 # remain in HEAD's history).
-rev   = "3f66ebd"
+rev   = "6c2e530"
 crate = "wlift_sqlite"
 
 # Per-platform dylib paths. CI populates `libs/` via the
