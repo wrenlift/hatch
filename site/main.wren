@@ -459,6 +459,25 @@ app.get("/packages/:name/readme") {|req|
   return r
 }
 
+// `/healthz` — liveness probe for Fly's HTTP service check.
+// Returns plain `ok` without touching the catalog, the DB,
+// the template registry, or anything else that could be
+// contending with request handling. The previous setup
+// pointed Fly's check at `/`, which under load (catalog
+// refresh fiber holding the scheduler, template cache miss
+// after a deploy, the first GC tick after a JIT install)
+// regularly spilled past the 5s timeout and tripped the
+// "now failing / now passing" flap on a 30s cadence. Keep
+// this route comically minimal so flaps mean the process
+// is genuinely wedged, not just busy.
+app.get("/healthz") {|req|
+  var r = Response.new(200)
+  r.text("ok")
+  r.header("Content-Type", "text/plain; charset=utf-8")
+  r.header("Cache-Control", "no-store")
+  return r
+}
+
 // `/badge/version` — static "version: <hatchfile-version>"
 // badge. Reads the deployed site's hatchfile once at boot,
 // so the README's version badge tracks the live deploy

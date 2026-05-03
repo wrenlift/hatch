@@ -82,11 +82,26 @@ primary_region = "lhr"
   processes = ["app"]
 
   [[http_service.checks]]
-    grace_period = "10s"
+    # Hits the dedicated `/healthz` route (returns plain `ok`)
+    # instead of `/`, so the check measures process liveness
+    # rather than racing with whatever the catalog fiber or
+    # template render is doing on a request-handling fiber.
+    # Pointing at `/` produced a "passing / failing / passing"
+    # flap every 30s under steady-state load — a request that
+    # hit the same scheduling slot as the catalog refresh tick
+    # could cross the 5s timeout. `/healthz` is constant-time;
+    # a flap there means the process is genuinely wedged.
+    # Grace period bumped to 30s so the first check after a
+    # cold start (which has to install bundled modules + boot
+    # the catalog) doesn't trip the machine into unhealthy
+    # before it's ready. Timeout at 10s leaves headroom for
+    # the rare case where a firecracker microVM is paused
+    # mid-tick by the hypervisor scheduler.
+    grace_period = "30s"
     interval = "30s"
     method = "GET"
-    timeout = "5s"
-    path = "/"
+    timeout = "10s"
+    path = "/healthz"
 
 [[vm]]
   size = "shared-cpu-1x"
