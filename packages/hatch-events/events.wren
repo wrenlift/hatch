@@ -1,11 +1,11 @@
-// `@hatch:events` — in-process pub/sub: `Signal` for
+// `@hatch:events`: in-process pub/sub. `Signal` for
 // single-channel, `EventEmitter` for Node-style named events.
 //
 // ```wren
 // import "@hatch:events" for Signal, EventEmitter
 // ```
 //
-// ## Signal — one event channel, many listeners
+// ## Signal: one event channel, many listeners
 //
 // ```wren
 // var onExit = Signal.new
@@ -18,7 +18,7 @@
 // it around without keeping a handle to the original `Fn`.
 // Listeners fire in registration order.
 //
-// ## EventEmitter — multiple named events
+// ## EventEmitter: multiple named events
 //
 // ```wren
 // var bus = EventEmitter.new
@@ -36,11 +36,11 @@
 //
 // Both classes guard against listener-mutation-during-emit by
 // iterating over a snapshot. A listener that `off`s itself (or
-// adds a new listener) during emission is safe — the current
+// adds a new listener) during emission is safe. The current
 // emit pass finishes, then later emits see the updated state.
 //
-// Pure Wren; no runtime dependency. Fibers / threads aren't
-// involved — emit runs synchronously on the caller.
+// Pure Wren; no runtime dependency. Fibers and threads aren't
+// involved. `emit` runs synchronously on the caller.
 
 // --- Signal ------------------------------------------------------------------
 
@@ -60,7 +60,7 @@ class Signal {
   /// one-shot removal but haven't fired yet.
   listenerCount { _listeners.count }
 
-  /// Register a listener. Returns a disconnect closure — calling
+  /// Register a listener. Returns a disconnect closure; calling
   /// it removes the listener. `disconnect(fn)` with the same Fn
   /// reference is equivalent.
   connect(fn) {
@@ -105,8 +105,8 @@ class Signal {
   emit(a, b)      { emit_([a, b]) }
   emit(a, b, c)   { emit_([a, b, c]) }
 
-  /// Fire with a list of 0..3 arguments. Anything longer aborts —
-  /// wrap your arguments in a struct-like Map or List instead.
+  /// Fire with a list of 0..3 arguments. Anything longer aborts;
+  /// wrap the arguments in a struct-like Map or List instead.
   emitMany(args) {
     if (!(args is List)) Fiber.abort("Signal.emitMany: args must be a list")
     if (args.count > 3) Fiber.abort("Signal.emitMany: supports up to 3 args; pass a List/Map for more")
@@ -225,7 +225,7 @@ class EventEmitter {
     emit_(event, args)
   }
 
-  // Fires `fn` directly — used internally by `once` / `on` after
+  // Fires `fn` directly. Used internally by `once` and `on` after
   // capturing the arity path.
   emit_(event, args) {
     if (!_listeners.containsKey(event)) return
@@ -283,8 +283,8 @@ class EventEmitter {
 /// var results = Scheduler.runAll(fibers)
 /// ```
 ///
-/// Returns a list of results aligned with the input: each slot
-/// holds the fiber's return value, or — on abort — the error
+/// Returns a list of results aligned with the input. Each slot
+/// holds the fiber's return value, or, on abort, the error
 /// string. Fibers that don't yield (CPU-bound) run to completion
 /// before the scheduler sees the next one.
 class Scheduler {
@@ -323,8 +323,8 @@ class Scheduler {
   /// expected to eventually include in a `runAll` batch. Returns
   /// the Fiber so callers can attach a result handler.
   ///
-  /// Useful when you're composing work dynamically — build up a
-  /// list of Fibers across the app, then call `runAll` once at a
+  /// Useful when composing work dynamically. Build up a list of
+  /// Fibers across the app, then call `runAll` once at a
   /// top-level drain point.
   static spawn(fn) {
     if (!(fn is Fn)) Fiber.abort("Scheduler.spawn: fn must be a Fn")

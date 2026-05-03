@@ -1,39 +1,39 @@
-// `@hatch:zip` — in-memory ZIP read / write.
+// `@hatch:zip`: in-memory ZIP read and write.
 //
 // ```wren
 // import "@hatch:zip" for Zip
 //
 // // Inspect
 // Zip.entries(bytes)         // List<String> of entry names
-// Zip.info(bytes)            // List<Map> — name/size/compressedSize/isDir/method
+// Zip.info(bytes)            // List<Map> with name/size/compressedSize/isDir/method
 //
 // // Read
 // Zip.read(bytes, "a.txt")   // List<Num> bytes of that entry, or null
-// Zip.readAll(bytes)         // Map<String name → List<Num> bytes> (skips dirs)
+// Zip.readAll(bytes)         // Map<String name, List<Num> bytes> (skips dirs)
 //
 // // Write
 // var archive = Zip.write({
 //   "hello.txt":  "Hello, world!",
 //   "notes.json": "[1, 2, 3]",
 // })
-// // archive is List<Num> — pair with `FS.writeBytes(path, archive)`.
+// // archive is List<Num>; pair with `FS.writeBytes(path, archive)`.
 // ```
 //
 // Archives are always byte lists (`List<Num>` in `0..=255`).
-// This keeps the API orthogonal to how you got them — off disk
+// This keeps the API orthogonal to where they came from: off disk
 // via `@hatch:fs`, over the wire via `@hatch:http`, generated in
-// memory, whatever.
+// memory, or anywhere else.
 //
-// Write entries take either a `Map` `{name → bytes}` or a `List`
+// Write entries take either a `Map` `{name: bytes}` or a `List`
 // of `[name, bytes]` pairs. The `List` form preserves caller
-// order, the `Map` form is convenient. Values can be `String`s
+// order; the `Map` form is convenient. Values can be `String`s
 // (UTF-8) or byte lists.
 //
 // Compression method defaults to `"deflate"`. Also accepts
 // `"store"` (no compression) and `"zstd"` (smaller + slower).
-// Mismatched entries across methods are fine — each call to
-// `Zip.write` uses a single method for the whole archive; mix
-// methods by chaining multiple writes if you really need it.
+// Mismatched entries across methods are fine; each call to
+// `Zip.write` uses a single method for the whole archive. Mix
+// methods by chaining multiple writes when needed.
 //
 // Backed by the Rust `zip` crate (deflate + zstd enabled).
 
@@ -69,8 +69,8 @@ class Zip {
     return ZipCore.read(bytes, name)
   }
 
-  /// Read every file entry into a Map<name → bytes>. Directory
-  /// entries are dropped — they carry no payload. Order within
+  /// Read every file entry into a `Map<name, bytes>`. Directory
+  /// entries are dropped (they carry no payload). Order within
   /// the returned Map follows insertion order (archive order).
   static readAll(bytes) {
     validateBytes_(bytes, "Zip.readAll")

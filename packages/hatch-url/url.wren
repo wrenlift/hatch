@@ -1,9 +1,9 @@
-/// `@hatch:url` — URL parser, builder, and percent-encoder.
+/// `@hatch:url`: URL parser, builder, and percent-encoder.
 ///
 /// ```wren
 /// import "@hatch:url" for Url
 ///
-/// // Parse → value type with named parts
+/// // Parse into a value type with named parts.
 /// var u = Url.parse("https://user:pass@example.com:8080/path?q=s&x=1#frag")
 /// u.scheme     // "https"
 /// u.host       // "example.com"
@@ -27,7 +27,7 @@
 /// ```
 ///
 /// Scope: "good-enough" URL handling for HTTP requests and link
-/// generation. Follows RFC 3986 loosely — no IRI (punycode IDN)
+/// generation. Follows RFC 3986 loosely. No IRI (punycode IDN)
 /// support, no relative-URL resolution. Pure Wren, no native
 /// deps.
 
@@ -61,7 +61,7 @@ class Url {
     u.scheme = str[0...colon]
     i = colon + 1
 
-    // Expect "//" for the authority component. We require it —
+    // Expect "//" for the authority component. Required here;
     // schemes like `mailto:` without `//` aren't in scope for v0.1.
     if (i + 1 >= n || str[i] != "/" || str[i + 1] != "/") {
       Fiber.abort("Url.parse: expected '//' after scheme")
@@ -90,8 +90,8 @@ class Url {
     }
 
     // host + port. Port is the bit after the LAST colon, but
-    // `[ipv6]:port` needs bracket-aware splitting. We don't do
-    // IPv6 literals in v0.1 — if the host starts with `[`, we
+    // `[ipv6]:port` needs bracket-aware splitting. IPv6 literals
+    // aren't fully handled in v0.1: if the host starts with `[`,
     // pass it through verbatim and refuse to split a port.
     if (authority.count > 0 && authority[0] == "[") {
       var close = indexOf_(authority, "]", 0)
@@ -168,7 +168,7 @@ class Url {
   fragment=(v)  { _fragment = v }
 
   /// Parsed query string as a Map<String, String>. Repeated keys
-  /// keep the last value — callers who need multi-valued params
+  /// keep the last value; callers who need multi-valued params
   /// should parse `query` themselves.
   queryMap {
     if (_query == null) return {}
@@ -199,8 +199,8 @@ class Url {
 
   // --- Percent-encoding ----------------------------------------------
 
-  /// Unreserved per RFC 3986: ALPHA / DIGIT / "-" / "." / "_" / "~"
-  /// Everything else → %XX uppercase hex.
+  /// Unreserved per RFC 3986: ALPHA / DIGIT / "-" / "." / "_" / "~".
+  /// Everything else becomes %XX uppercase hex.
   static encode(s) {
     if (!(s is String)) Fiber.abort("Url.encode: expected a string")
     if (s == "") return ""
@@ -230,7 +230,7 @@ class Url {
     if (!(s is String)) Fiber.abort("Url.decode: expected a string")
     if (s == "") return ""
     // Decode into a byte buffer first, then interpret as UTF-8 by
-    // round-tripping through a String concat — preserves multi-byte
+    // round-tripping through a String concat. Preserves multi-byte
     // sequences emitted by `encode`.
     var bytes = []
     var i = 0
@@ -340,7 +340,7 @@ class Url {
   // fall back to a best-effort UTF-8 interpretation for higher
   // bytes by letting the codepoint round-trip.
   static bytesToString_(bytes) {
-    // Pure-Wren UTF-8 decoding for the BMP — the common case
+    // Pure-Wren UTF-8 decoding for the BMP, the common case
     // for HTTP paths and query strings. Astral-plane codepoints
     // are passed through one byte at a time.
     var i = 0
@@ -352,8 +352,8 @@ class Url {
         parts.add(String.fromCodePoint(b))
         i = i + 1
       } else if (b < 0xc0) {
-        // Stray continuation byte — pass through as-is so we
-        // don't silently lose data.
+        // Stray continuation byte; pass through as-is to avoid
+        // silently losing data.
         parts.add(String.fromCodePoint(b))
         i = i + 1
       } else if (b < 0xe0 && i + 1 < n) {

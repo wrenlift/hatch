@@ -1,4 +1,4 @@
-An RFC 4180 CSV parser and serializer. Handles quoting, embedded newlines, and header rows; mixed line endings (`\r\n`, `\n`, bare `\r`) all terminate a row on parse. One class — `Csv` — with a `parse` / `encode` pair, configured by an options `Map`.
+An RFC 4180 CSV parser and serializer. Handles quoting, embedded newlines, and header rows; mixed line endings (`\r\n`, `\n`, bare `\r`) all terminate a row on parse. One class, `Csv`, with a `parse` / `encode` pair, configured by an options `Map`.
 
 ## Overview
 
@@ -32,12 +32,12 @@ System.print(Csv.encode(
 | `delimiter`  | parse + enc  | `,`     | Must be a one-character string. |
 | `quote`      | parse + enc  | `"`     | Must be a one-character string. |
 | `header`     | parse + enc  | `false` | Parse → `List<Map>`; encode → emit header row. |
-| `columns`    | encode       | —       | Explicit column order for `Map` rows; recommended when layout matters. |
+| `columns`    | encode       | none    | Explicit column order for `Map` rows; recommended when layout matters. |
 | `lineEnding` | encode       | `\r\n`  | Switch to `\n` for Unix-only output. |
 
-> **Note — column order is your job**
+> **Note: column order is the caller's job**
 > Wren `Map` iteration order isn't guaranteed across runtime versions. When encoding maps and the column layout has to be stable, pass `columns` explicitly rather than relying on the first record's key order.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Pure-Wren — no native dependencies, no host capabilities.
+Wren 0.4 + WrenLift runtime 0.1 or newer. Pure-Wren; no native dependencies, no host capabilities.

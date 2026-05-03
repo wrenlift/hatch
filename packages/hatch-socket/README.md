@@ -1,4 +1,4 @@
-TCP listeners and connections plus UDP datagram sockets. `TcpListener` for servers, `TcpStream` for clients (and accepted server-side connections), `UdpSocket` for datagram sends and receives. Each operation has a blocking variant and a `try*` non-blocking sibling that returns `null` when nothing is ready — pair the latter with `Fiber.yield()` for cooperative servers without OS threads.
+TCP listeners and connections plus UDP datagram sockets. `TcpListener` for servers, `TcpStream` for clients (and accepted server-side connections), and `UdpSocket` for datagram sends and receives. Each operation has a blocking variant and a `try*` non-blocking sibling that returns `null` when nothing is ready. Pair the latter with `Fiber.yield()` for cooperative servers without OS threads.
 
 ## Overview
 
@@ -53,14 +53,14 @@ var serve = Fiber.new {
 Scheduler.runAll([serve])
 ```
 
-Reads against `tryRead(n)` follow the same shape — `null` means "nothing yet, yield and come back."
+Reads against `tryRead(n)` follow the same shape: `null` means "nothing yet, yield and come back."
 
-> **Note — TCP byte conventions match the stdlib**
-> Writes accept a `String` (UTF-8 bytes) or a `List<Num>` / `ByteArray` in `0..=255`. Reads always return `List<Num>`. An empty list signals EOF on TCP; UDP `recvFrom` blocks until a datagram arrives (or returns `null` from `tryRecvFrom` when nothing's pending).
+> **Note: TCP byte conventions match the stdlib**
+> Writes accept a `String` (UTF-8 bytes) or a `List<Num>` / `ByteArray` in `0..=255`. Reads always return `List<Num>`. An empty list signals EOF on TCP. UDP `recvFrom` blocks until a datagram arrives, or returns `null` from `tryRecvFrom` when nothing is pending.
 
-> **Warning — TLS lives elsewhere**
-> This package speaks raw sockets only. For TLS termination, use `@hatch:http`'s client (which handles TLS for outbound HTTP) or wait for the server-side TLS bridge that depends on `@hatch:io`'s ALPN surface stabilising.
+> **Warning: TLS lives elsewhere**
+> This package speaks raw sockets only. For TLS termination, use `@hatch:http`'s client (which handles TLS for outbound HTTP), or wait for the server-side TLS bridge that depends on `@hatch:io`'s ALPN surface stabilising.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Native only — `#!wasm` builds use `@hatch:web`'s WebSocket bridge for browser networking. Backed by `std::net`, so no async runtime leaks into Wren code.
+Wren 0.4 with WrenLift runtime 0.1 or newer. Native only. `#!wasm` builds use `@hatch:web`'s WebSocket bridge for browser networking. Backed by `std::net`, so no async runtime leaks into Wren code.

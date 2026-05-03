@@ -1,7 +1,7 @@
-// `@hatch:physics` — rapier-backed physics for the WrenLift game
-// framework. `World2D` and `World3D` in the same import; identical
-// API shape with the only divergence being dimensional types
-// (`[x, y]` vs `[x, y, z]`).
+// `@hatch:physics`: rapier-backed physics for the WrenLift game
+// framework. `World2D` and `World3D` ship in the same import and
+// share an identical API shape. The only divergence is dimensional
+// types (`[x, y]` vs `[x, y, z]`).
 //
 // ```wren
 // import "@hatch:physics" for World2D, Collider2D
@@ -101,7 +101,7 @@ class World2D {
 
   step(dt) { PhysicsCore.world2dStep(_id, dt) }
 
-  /// Body spawn — descriptor keys:
+  /// Body spawn descriptor keys:
   ///
   /// | Key              | Type             | Notes                                  |
   /// |------------------|------------------|----------------------------------------|
@@ -114,7 +114,7 @@ class World2D {
   spawnKinematic(descriptor) { PhysicsCore.world2dSpawnKinematic(_id, descriptor) }
   despawn(bodyId)            { PhysicsCore.world2dDespawn(_id, bodyId) }
 
-  /// Read-back helpers — Lists for cheap [x, y] returns.
+  /// Read-back helpers. Returns Lists for cheap `[x, y]` results.
   position(bodyId)       { PhysicsCore.world2dPosition(_id, bodyId) }
   linearVelocity(bodyId) { PhysicsCore.world2dLinearVelocity(_id, bodyId) }
 

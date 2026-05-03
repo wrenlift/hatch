@@ -1,10 +1,10 @@
-// @hatch:web/forms — schema-driven form validation.
+// @hatch:web/forms: schema-driven form validation.
 //
-// Declare a Field per input with chained transforms + validators.
+// Declare a Field per input with chained transforms and validators.
 // `Form.validate(params)` runs transforms first, then validators,
 // and yields a FormResult with cleaned `data`, `errors`, and a
-// `valid` flag — everything a template needs to re-render a
-// filled-out form on failure.
+// `valid` flag. Together they cover everything a template needs to
+// re-render a filled-out form on failure.
 //
 //   var signup = Form.new([
 //     Field.new("email").trim.lowercase
@@ -24,12 +24,12 @@
 //
 // All validators take an optional message. Without one, a sane
 // default is emitted. Multiple validators on a field collect
-// errors in declaration order — `errorsFor("email")` returns
+// errors in declaration order. `errorsFor("email")` returns
 // a List so templates can show them all; `firstError("email")`
-// just the first.
+// returns just the first.
 //
 // Transforms run BEFORE validators, so `.trim.required` means
-// "strip whitespace, then require non-empty" — empty-after-trim
+// "strip whitespace, then require non-empty"; empty-after-trim
 // triggers required. Validators DON'T mutate the value.
 
 /// ── Field ──────────────────────────────────────────────────────────────
@@ -170,7 +170,7 @@ class Field {
 
   /// Equality with another field's value. Used for confirm-password
   /// style checks. `other` is the OTHER field's raw post-transform
-  /// value — the Form wires it in.
+  /// value; the Form wires it in.
   matches(otherName, msg) {
     _validators.add(["matches:" + otherName, Fn.new {|v|
       // The form passes a Map of already-transformed values as the
@@ -249,7 +249,7 @@ class Field {
 
   // Minimal email shape check: has exactly one '@', at least one
   // character each side, no whitespace, and a '.' after the '@'.
-  // Not RFC 5322 — nobody's is. Catches typos without rejecting
+  // Not RFC 5322 (nobody's is). Catches typos without rejecting
   // legitimate addresses with unusual TLDs.
   static looksLikeEmail_(s) {
     if (s.count < 3) return false
@@ -304,7 +304,7 @@ class FormResult {
   valid { _errors.count == 0 }
   data { _data }
   errors { _errors }
-  rawInput { _raw }   // original form input — useful for re-rendering
+  rawInput { _raw }   // original form input, useful for re-rendering
 
   errorsFor(name) {
     if (_errors.containsKey(name)) return _errors[name]

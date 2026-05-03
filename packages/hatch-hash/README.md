@@ -1,8 +1,8 @@
-Cryptographic hashes (MD5, SHA-1, SHA-256, SHA-512), HMAC, and base64. One class — `Hash` — exposing one-shot digests in both hex (the default for human-readable output) and raw-bytes flavours when you need to feed another primitive. Backed by RustCrypto + the `base64` crate via the runtime `hash` module.
+Cryptographic hashes (MD5, SHA-1, SHA-256, SHA-512), HMAC, and base64. One class, `Hash`, exposing one-shot digests in both hex (the default for human-readable output) and raw-bytes flavours when feeding another primitive. Backed by RustCrypto and the `base64` crate via the runtime `hash` module.
 
 ## Overview
 
-Inputs are either `String` (interpreted as UTF-8 bytes) or `List<Num>` / `ByteArray` in `0..=255`. Hex helpers return lowercase strings; byte helpers return `List<Num>`. The naming mirrors the underlying primitive — pick the digest, suffix `Bytes` if you want raw output.
+Inputs are either `String` (interpreted as UTF-8 bytes) or `List<Num>` / `ByteArray` in `0..=255`. Hex helpers return lowercase strings; byte helpers return `List<Num>`. The naming mirrors the underlying primitive: pick the digest, suffix `Bytes` for raw output.
 
 ```wren
 import "@hatch:hash" for Hash
@@ -19,7 +19,7 @@ System.print(Hash.base64Decode("aGVsbG8="))        // [104, 101, 108, 108, 111]
 System.print(Hash.base64UrlEncode([1, 2, 3]))      // unpadded URL-safe variant
 ```
 
-`base64UrlEncode` / `base64UrlDecode` use the JWT-flavoured URL-safe alphabet without padding — pair with `@hatch:crypto`'s Ed25519 helpers to roll signed tokens.
+`base64UrlEncode` / `base64UrlDecode` use the JWT-flavoured URL-safe alphabet without padding. Pair with `@hatch:crypto`'s Ed25519 helpers to roll signed tokens.
 
 ## Choosing a primitive
 
@@ -30,9 +30,9 @@ System.print(Hash.base64UrlEncode([1, 2, 3]))      // unpadded URL-safe variant
 | `sha256`  | Default modern choice | Content addressing, integrity checks, signature pre-image. |
 | `sha512`  | Same threat model as 256, larger digest | Slightly faster on 64-bit hosts. |
 
-> **Note — no constant-time compare yet**
-> The package doesn't ship a constant-time string comparison. If you compare HMACs against attacker-supplied input, do so byte-by-byte against the `*Bytes` helpers and fold differences into a single accumulator. A native `Hash.compare` may land if a real auth use case asks for it.
+> **Note: no constant-time compare yet.**
+> The package doesn't ship a constant-time string comparison. To compare HMACs against attacker-supplied input, compare byte-by-byte against the `*Bytes` helpers and fold differences into a single accumulator. A native `Hash.compare` may land if a real auth use case asks for it.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Native only — `#!wasm` builds reach for SubtleCrypto via `@hatch:web`.
+Wren 0.4 + WrenLift runtime 0.1 or newer. Native only. `#!wasm` builds reach for SubtleCrypto via `@hatch:web`.

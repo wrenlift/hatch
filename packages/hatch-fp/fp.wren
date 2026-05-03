@@ -1,9 +1,9 @@
-/// `@hatch:fp` — fluent + functional collection operations.
+/// `@hatch:fp`: fluent and functional collection operations.
 ///
 /// ```wren
 /// import "@hatch:fp" for FP, Pipe
 ///
-/// // Static toolbox — each takes a sequence + a lambda:
+/// // Static toolbox. Each takes a sequence and a lambda:
 /// FP.flatMap([[1, 2], [3]], Fn.new {|xs| xs })      //= [1, 2, 3]
 /// FP.groupBy([1, 2, 3, 4], Fn.new {|n| n % 2 })     //= { 1: [1, 3], 0: [2, 4] }
 /// FP.partition([1, 2, 3, 4], Fn.new {|n| n > 2 })   //= [[3, 4], [1, 2]]
@@ -11,7 +11,7 @@
 /// FP.sortedBy(["bb", "a", "ccc"], Fn.new {|s| s.count })       //= ["a", "bb", "ccc"]
 /// FP.chunked([1, 2, 3, 4, 5], 2)                    //= [[1, 2], [3, 4], [5]]
 ///
-/// // Fluent pipeline — chains compose left-to-right. Each op
+/// // Fluent pipeline. Chains compose left-to-right. Each op
 /// // eagerly materialises into a List, so long chains are still
 /// // O(n) per step. Terminates with `.toList`, `.reduce`, etc.
 /// Pipe.of(1..10)
@@ -30,8 +30,8 @@
 /// `min` / `max`, `sum`, `concat`, `reversed`, `withIndex`,
 /// `toMap`.
 ///
-/// Everything here is pure Wren — no runtime module — so the JIT
-/// tier-ups it like any hot user code.
+/// Everything here is pure Wren, with no runtime module, so the
+/// JIT tier-ups it like any hot user code.
 
 class FP {
   // -- Identity / constant / no-op ---------------------------------------
@@ -48,8 +48,8 @@ class FP {
   /// `value`. Handy for `.map(FP.constant(0))` to zero out a list.
   static constant(value) { Fn.new {|_| value } }
 
-  /// Returns an empty function — takes one arg, returns null. The
-  /// sensible default for `.tap` when you only want a debug print.
+  /// Returns an empty function. Takes one arg, returns null. The
+  /// sensible default for `.tap` when only a debug print is wanted.
   static noop { Fn.new {|_| null } }
 
   // -- Constructors ------------------------------------------------------
@@ -87,7 +87,7 @@ class FP {
   /// ```
   ///
   /// `fn` may return any `Sequence` (`List`, `Range`, `String`,
-  /// another wrapper). We iterate each result and concatenate.
+  /// another wrapper). Each result is iterated and concatenated.
   static flatMap(seq, fn) {
     var out = []
     for (x in seq) {
@@ -95,7 +95,7 @@ class FP {
       if (sub is Sequence) {
         for (y in sub) out.add(y)
       } else {
-        // Non-sequence result → treat as a single element. Lets
+        // Non-sequence result: treated as a single element. Lets
         // callers write simple `fn` bodies that sometimes return
         // the scalar directly without wrapping in a list.
         out.add(sub)
@@ -273,7 +273,7 @@ class FP {
     return out
   }
 
-  /// Copy + sort using `fn(a, b) -> Bool` — `true` means `a <= b`
+  /// Copy + sort using `fn(a, b) -> Bool`. `true` means `a <= b`
   /// (stable with that convention).
   static sortedWith(seq, cmp) {
     var out = seq is List ? seq.toList : seq.toList
@@ -290,7 +290,7 @@ class FP {
     return out
   }
 
-  /// Descending variant — handy shorthand so callers don't have
+  /// Descending variant. Shorthand so callers don't have
   /// to remember which side of the comparator to flip.
   static sortedByDesc(seq, keyFn) {
     var out = seq is List ? seq.toList : seq.toList
@@ -409,8 +409,8 @@ class FP {
     return null
   }
 
-  /// Last element (O(n) for anything but a List — we walk the
-  /// iterator to the end). Null on empty.
+  /// Last element. O(n) for anything but a List, since the
+  /// iterator is walked to the end. Null on empty.
   static last(seq) {
     var result = null
     var seen = false
@@ -515,7 +515,7 @@ class FP {
     return out
   }
 
-  /// Reverse order. O(n) — materialises into a list.
+  /// Reverse order. O(n); materialises into a list.
   static reversed(seq) {
     var list = seq is List ? seq : seq.toList
     var out = []
@@ -548,7 +548,7 @@ class FP {
   }
 }
 
-/// Fluent wrapper — every non-terminal method rewraps into a new
+/// Fluent wrapper. Every non-terminal method rewraps into a new
 /// `Pipe` so chains compose.
 ///
 /// ```wren

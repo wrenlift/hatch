@@ -1,4 +1,4 @@
-// `@hatch:regex` — compiled regular expressions.
+// `@hatch:regex`: compiled regular expressions.
 //
 // ```wren
 // import "@hatch:regex" for Regex
@@ -13,7 +13,7 @@
 // // Flags as a second arg: i, m, s, U, x.
 // Regex.compile("hello", "i").isMatch("HELLO")   // true
 //
-// // Replace — $1, $2, $name, $$ available in the replacement.
+// // Replace. $1, $2, $name, $$ are available in the replacement.
 // Regex.compile("(\\w+)").replaceAll("hi bob", "<$1>")  // "<hi> <bob>"
 //
 // // Split.
@@ -25,13 +25,13 @@
 //
 // `Regex` instances hold a numeric id into a runtime registry.
 // The runtime keeps the compiled automaton alive until
-// `regex.free` is called (or the VM exits). For short scripts
-// you can leak — for long-running servers that build lots of
-// patterns, call `free` when done.
+// `regex.free` is called (or the VM exits). Short scripts can
+// leak. Long-running servers that build many patterns should
+// call `free` when done.
 //
 // Backed by the `regex` crate (linear-time NFA, Unicode-aware).
-// Pattern syntax: docs.rs/regex/latest/regex/#syntax — it's a
-// Perl-ish dialect without backreferences or lookaround.
+// Pattern syntax: docs.rs/regex/latest/regex/#syntax. Perl-ish
+// dialect without backreferences or lookaround.
 
 import "regex" for RegexCore
 
@@ -73,8 +73,8 @@ class Regex {
     return Regex.new_(id, pattern)
   }
 
-  /// `Regex.escape(text)` — returns a pattern that matches `text`
-  /// literally. Useful for embedding user-supplied strings.
+  /// Returns a pattern that matches `text` literally. Useful for
+  /// embedding user-supplied strings into a larger pattern.
   static escape(text) {
     if (!(text is String)) Fiber.abort("Regex.escape: text must be a string")
     return RegexCore.escape(text)

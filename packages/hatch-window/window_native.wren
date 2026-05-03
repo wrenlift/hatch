@@ -1,4 +1,4 @@
-// @hatch:window — default window provider for WrenLift games.
+// @hatch:window: default window provider for WrenLift games.
 //
 //   import "@hatch:window" for Window
 //   import "@hatch:gpu"    for Gpu
@@ -24,11 +24,11 @@
 // Backed by winit via the wlift_window dylib. The platform-tagged
 // handle Map produced by `Window.handle` is the same shape any
 // other embedder (custom shells, IDE viewports, host apps) can
-// produce — bring-your-own-window is a Wren-level contract, not
+// produce. Bring-your-own-window is a Wren-level contract, not
 // a plugin one. Replacing this package with a hand-rolled one is
 // a matter of producing the same handle Map.
 
-/// Low-level foreign surface — the plugin's actual exports.
+/// Low-level foreign surface: the plugin's actual exports.
 /// Game code goes through [Window]; this exists only to back it.
 #!native = "wlift_window"
 foreign class WindowCore {
@@ -67,8 +67,8 @@ foreign class WindowCore {
   #!symbol = "wlift_window_drain_events"
   foreign static drainEvents(id)
 
-  /// Raw `raw_window_handle`-style Map for the window — what
-  /// [Device.createSurface] consumes.
+  /// Raw `raw_window_handle`-style Map for the window. Consumed
+  /// by [Device.createSurface].
   /// @param {Num} id
   /// @returns {Map}
   #!symbol = "wlift_window_handle"
@@ -105,10 +105,10 @@ foreign class WindowCore {
 class Window {
   /// Open a new window. Descriptor keys (all optional):
   ///
-  /// - `"title"` — String (default `"wlift"`).
-  /// - `"width"` — Num (default 1280).
-  /// - `"height"` — Num (default 720).
-  /// - `"resizable"` — Bool (default `true`).
+  /// - `"title"`: String (default `"wlift"`).
+  /// - `"width"`: Num (default 1280).
+  /// - `"height"`: Num (default 720).
+  /// - `"resizable"`: Bool (default `true`).
   ///
   /// @param {Map} descriptor
   /// @returns {Window}
@@ -154,13 +154,13 @@ class Window {
   /// @returns {List}
   pollEvents { WindowCore.drainEvents(_id) }
 
-  /// Drive winit without draining events — useful when keeping
+  /// Drive winit without draining events. Useful when keeping
   /// a window responsive during async work.
   pump() { WindowCore.pump() }
 
   /// Raw window handle as the platform-tagged Map
   /// [Device.createSurface] accepts. Custom embedders that
-  /// produce the same shape are interchangeable — that's the
+  /// produce the same shape are interchangeable; that's the
   /// whole point of the BYO-window contract.
   /// @returns {Map}
   handle { WindowCore.handle(_id) }

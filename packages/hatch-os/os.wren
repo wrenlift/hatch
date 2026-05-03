@@ -1,4 +1,4 @@
-// `@hatch:os` — process-level primitives.
+// `@hatch:os`. Process-level primitives.
 //
 // ```wren
 // import "@hatch:os" for Os
@@ -24,9 +24,9 @@
 // Os.exit(0)                    // never returns
 // ```
 //
-// Backed by the runtime `os` module. Exists so consumers don't
-// need to know whether a given feature is native or pure-Wren —
-// the boundary shifts as the runtime grows.
+// Backed by the runtime `os` module. Consumers do not need to know
+// whether a given feature is native or pure-Wren. The boundary shifts
+// as the runtime grows.
 
 import "os" for OS
 
@@ -43,8 +43,8 @@ class Os {
   /// Single-arg form: the raw value or null.
   static env(name) { OS.env(name) }
 
-  /// Two-arg form: fallback when the var is unset. Saves callers
-  /// from writing `Os.env("X") || "default"` at every callsite.
+  /// Two-arg form. Returns `default_` when the variable is unset,
+  /// avoiding `Os.env("X") || "default"` at every call site.
   static env(name, default_) {
     var v = OS.env(name)
     return v == null ? default_ : v
@@ -58,8 +58,8 @@ class Os {
 
   static args { OS.args }
 
-  /// argv: the args _without_ the program name, matching how
-  /// @hatch:cli and most other CLI code want it.
+  /// Returns the args without the program name, matching the form
+  /// `@hatch:cli` and most other CLI code expect.
   static argv {
     var all = OS.args
     if (all.count == 0) return []

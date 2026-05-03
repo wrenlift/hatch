@@ -1,4 +1,4 @@
-// `@hatch:proc` — subprocess spawn & capture with fiber-friendly
+// `@hatch:proc`: subprocess spawn and capture with a fiber-friendly
 // lifecycle, IPC, and chaining.
 //
 // ```wren
@@ -101,24 +101,24 @@ class Process {
 
   alive { ProcCore.alive(_id) }
 
-  /// Non-blocking: Result if the child exited, null if still
-  /// running. Idempotent after the first non-null return —
-  /// repeat calls re-emit the same Result.
+  /// Non-blocking. Returns a Result if the child has exited, or
+  /// null if it is still running. Idempotent after the first
+  /// non-null return; repeat calls re-emit the same Result.
   tryWait { Result.from_(ProcCore.tryWait(_id)) }
 
-  /// Block until the child exits, return the Result. Waits even
-  /// if called multiple times (the second call hits the cached
-  /// result inside the runtime).
+  /// Blocks until the child exits and returns the Result. Safe to
+  /// call multiple times; the second call hits the cached result
+  /// inside the runtime.
   wait { Result.from_(ProcCore.wait(_id)) }
 
-  /// Send SIGKILL (POSIX) / TerminateProcess (Windows). Doesn't
-  /// wait for the process to actually exit — follow with `wait`
-  /// to reap.
+  /// Sends SIGKILL (POSIX) or TerminateProcess (Windows). Does not
+  /// wait for the process to actually exit; follow with `wait` to
+  /// reap.
   kill { ProcCore.kill(_id) }
 
-  /// Drop the registry entry. Call after consuming the result if
-  /// you're spawning lots of short-lived processes in a long-
-  /// running host — otherwise entries accumulate until VM exit.
+  /// Drops the registry entry. Call after consuming the result
+  /// when spawning many short-lived processes in a long-running
+  /// host. Otherwise entries accumulate until VM exit.
   forget { ProcCore.forget(_id) }
 
   // --- IPC -------------------------------------------------------------
@@ -147,7 +147,7 @@ class Process {
   /// ```
   ///
   /// Calling `wait` on the process while a reader is active is
-  /// safe — the remaining bytes will be drained and the final
+  /// safe. The remaining bytes are drained, and the final
   /// `Result.stdout` reflects everything that passed through.
   stdoutReader {
     var pid = _id
@@ -206,8 +206,8 @@ class Process {
 }
 
 class Proc {
-  /// Spawn a process and return a handle. Doesn't block — the
-  /// child runs in the background until you `wait` on it.
+  /// Spawns a process and returns a handle. Does not block; the
+  /// child runs in the background until `wait` is called.
   static run(argv)          { run(argv, {}) }
   static run(argv, options) {
     if (!(argv is List)) Fiber.abort("Proc.run: argv must be a list")
@@ -261,8 +261,8 @@ class Proc {
     return exec(["sh", "-c", cmd], options)
   }
 
-  /// "Run this and abort if it failed" — ergonomic for mechanical
-  /// shell-outs where non-zero is a real bug.
+  /// Runs the command and aborts if it failed. Ergonomic for
+  /// mechanical shell-outs where a non-zero exit is a real bug.
   static check(argv)          { check(argv, {}) }
   static check(argv, options) {
     var r = exec(argv, options)
@@ -284,8 +284,8 @@ class Pipeline {
   }
 
   /// Build and start a pipeline from a list of argv lists.
-  /// Returns a Pipeline that has already spawned every stage —
-  /// call `wait` to collect the final result.
+  /// Returns a Pipeline that has already spawned every stage.
+  /// Call `wait` to collect the final result.
   static of(stages) {
     if (!(stages is List) || stages.count == 0) {
       Fiber.abort("Pipeline.of: expected a non-empty list of argv lists")
@@ -307,10 +307,10 @@ class Pipeline {
 
   processes { _processes }
 
-  /// Wait on the final stage, returning its Result. Earlier
-  /// stages are expected to finish on their own once the last
-  /// one drains their stdout — we reap them too so their
-  /// registry entries don't leak.
+  /// Waits on the final stage and returns its Result. Earlier
+  /// stages finish on their own once the last one drains their
+  /// stdout. They are reaped here too so their registry entries
+  /// don't leak.
   wait {
     var last = _processes[_processes.count - 1]
     var result = last.wait

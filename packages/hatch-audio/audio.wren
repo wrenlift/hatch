@@ -1,4 +1,4 @@
-// `@hatch:audio` — playback for WrenLift apps.
+// `@hatch:audio`: playback for WrenLift apps.
 //
 // ```wren
 // import "@hatch:audio"  for Audio, Sound
@@ -19,10 +19,10 @@
 // Audio.stopAll()
 // ```
 //
-// Backed by cpal for the output stream + hound for WAV decode.
-// Output is f32 stereo at the device's preferred sample rate.
-// MP3 / OGG / FLAC support is on the v0+ list; until then,
-// convert assets to WAV during the build.
+// Backed by cpal for the output stream and hound for WAV
+// decode. Output is f32 stereo at the device's preferred sample
+// rate. MP3, OGG, and FLAC support is on the v0+ list; until
+// then, convert assets to WAV during the build.
 //
 // Known limitation: source rate ≠ device rate causes pitch
 // shift. A higher-quality resampler will replace the naive
@@ -50,8 +50,8 @@ foreign class AudioCore {
 }
 
 class Audio {
-  /// Open the default output device + start the mixer thread.
-  /// Idempotent — subsequent calls are no-ops. Aborts the fiber
+  /// Open the default output device and start the mixer thread.
+  /// Idempotent; subsequent calls are no-ops. Aborts the fiber
   /// if the host has no usable output device.
   static context() { AudioCore.contextInit() }
 
@@ -71,7 +71,7 @@ class Audio {
   /// voices are cleared.
   static stopAll() { AudioCore.stopAll() }
 
-  /// Number of voices currently playing — useful for diagnostics
+  /// Number of voices currently playing. Useful for diagnostics
   /// and for capping concurrent plays from the game side.
   static activeVoices { AudioCore.activeVoices() }
 }
@@ -86,9 +86,9 @@ class Sound {
 
   id { _id }
 
-  /// Drop the underlying sample buffer. After unload, the Sound's
-  /// id is invalid — passing it to Audio.play surfaces a runtime
-  /// error. Idempotent.
+  /// Drop the underlying sample buffer. After unload, the
+  /// Sound's id is invalid; passing it to Audio.play surfaces a
+  /// runtime error. Idempotent.
   unload {
     AudioCore.soundUnload(_id)
     _id = -1

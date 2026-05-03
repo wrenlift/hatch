@@ -1,4 +1,4 @@
-/// `@hatch:csv` — RFC 4180 CSV parsing + serialization.
+/// `@hatch:csv`: RFC 4180 CSV parsing and serialization.
 ///
 /// ```wren
 /// import "@hatch:csv" for Csv
@@ -35,18 +35,18 @@
 /// | `delimiter`  | Column separator (default `,`). One character.                                                                                                                                 |
 /// | `quote`      | Quoting character (default `"`). One character.                                                                                                                                |
 /// | `header`     | Parse: treat first row as column names, return `List<Map>`. Default `false`. Encode: include a header row derived from the first record's keys or `columns`. Default `false`. |
-/// | `columns`    | Encode: explicit column order (`List<String>`). If omitted for `Map` rows, keys of the first record are used; order isn't guaranteed across `Map` impls — specify this when the layout matters. |
+/// | `columns`    | Encode: explicit column order (`List<String>`). If omitted for `Map` rows, keys of the first record are used; order isn't guaranteed across `Map` impls, so specify this when the layout matters. |
 /// | `lineEnding` | Encode: `"\r\n"` (RFC 4180, default) or `"\n"`.                                                                                                                                |
 ///
 /// ## Values on encode
 ///
 /// - Strings pass through (with quoting when they contain the
 ///   delimiter, quote char, or newline).
-/// - `Num` / `Bool` / `null` convert via `.toString`; `null` →
-///   empty cell.
+/// - `Num` / `Bool` / `null` convert via `.toString`; `null`
+///   becomes an empty cell.
 /// - Anything else aborts.
 ///
-/// Parse is forgiving about line endings — `\r\n`, `\n`, and bare
+/// Parse is forgiving about line endings; `\r\n`, `\n`, and bare
 /// `\r` all terminate a row.
 
 class Csv {
@@ -203,9 +203,9 @@ class Parser_ {
       } else {
         if (c == quote) {
           // Opening quote. Standard CSV requires this to be the
-          // first char of the field; we allow lax placement and
-          // just toggle the flag — saves bailing on slightly
-          // non-standard input.
+          // first char of the field; lax placement is allowed
+          // here and the flag just toggles, which avoids bailing
+          // on slightly non-standard input.
           inQuote = true
           fieldDirty = true
           i = i + 1
@@ -215,9 +215,9 @@ class Parser_ {
           fieldDirty = false
           i = i + 1
           // A trailing delimiter means "one more empty field
-          // follows" — we don't clear `fieldDirty` here (well we
-          // did above, but we want the NEXT field to be
-          // materialised). Easiest: flip it right back.
+          // follows". `fieldDirty` was cleared above, but the
+          // NEXT field still needs to be materialised, so flip it
+          // right back.
           fieldDirty = true
         } else if (c == "\r" || c == "\n") {
           // End of row. Honour CRLF, LF, or bare CR.

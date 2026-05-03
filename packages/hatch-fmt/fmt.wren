@@ -1,4 +1,4 @@
-/// `@hatch:fmt` — terminal-output helpers.
+/// `@hatch:fmt`: terminal-output helpers.
 ///
 /// ```wren
 /// import "@hatch:fmt" for Fmt
@@ -14,19 +14,19 @@
 /// ```
 ///
 /// Wren has string interpolation already (`"%(x)"`) so there's
-/// no printf here — the helpers focus on things Wren's core
+/// no printf here. The helpers focus on things Wren's core
 /// doesn't cover: ANSI styling, width-padding, and a couple of
 /// numeric shorthands.
 ///
-/// Colors can be disabled globally for piped / non-TTY output:
+/// Colors can be disabled globally for piped or non-TTY output:
 ///
 /// ```wren
 /// Fmt.enabled = false
 /// Fmt.green("x")    // → "x"  (no escape codes)
 /// ```
 ///
-/// TTY auto-detection is planned (needs FFI; lands alongside
-/// `@hatch:os`); until then, callers flip the flag themselves.
+/// Pair the flag with `@hatch:os`'s `Os.isatty` for automatic
+/// detection: `Fmt.enabled = Os.isatty(Os.STDOUT)`.
 
 class Fmt {
   /// -- Global toggle ------------------------------------------------------
@@ -55,7 +55,7 @@ class Fmt {
   static gray(s)    { wrap_(s, "\x1b[90m") }
 
   /// Styles. `bold`, `dim`, `italic`, `underline` compose on top of
-  /// colors — wrap inside-out (`Fmt.bold(Fmt.red("x"))`).
+  /// colors. Wrap inside-out (`Fmt.bold(Fmt.red("x"))`).
   static bold(s)      { wrap_(s, "\x1b[1m") }
   static dim(s)       { wrap_(s, "\x1b[2m") }
   static italic(s)    { wrap_(s, "\x1b[3m") }
@@ -100,7 +100,7 @@ class Fmt {
   // -- Numeric helpers ----------------------------------------------------
 
   /// Unsigned hex. Negative numbers are formatted against their
-  /// absolute value with a leading `-` — enough for debug prints,
+  /// absolute value with a leading `-`. Enough for debug prints,
   /// not an arbitrary-precision bignum helper.
   static hex(n) {
     if (n == 0) return "0x0"

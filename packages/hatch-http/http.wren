@@ -1,4 +1,4 @@
-// `@hatch:http` — synchronous HTTP client with TLS, streaming
+// `@hatch:http`. Synchronous HTTP client with TLS, streaming
 // bodies, and fiber-cooperative reads.
 //
 // ```wren
@@ -26,8 +26,8 @@
 // | `body`       | `String`                          | Raw bytes.                                           |
 // | `json`       | `any`                             | `JSON.encode`-d, sets `Content-Type`.                |
 // | `form`       | `Map`                             | URL-encoded body, sets `Content-Type`.               |
-// | `bearer`     | `String`                          | Sets `Authorization: Bearer …`.                      |
-// | `basicAuth`  | `[user, password]`                | Sets `Authorization: Basic …`.                       |
+// | `bearer`     | `String`                          | Sets `Authorization: Bearer ...`.                    |
+// | `basicAuth`  | `[user, password]`                | Sets `Authorization: Basic ...`.                     |
 // | `userAgent`  | `String`                          | Overrides the default UA.                            |
 // | `accept`     | `String`                          | Shortcut for the `Accept` header.                    |
 // | `timeout`    | `Num`                             | Seconds. Default `30`.                               |
@@ -45,9 +45,9 @@
 // ```
 //
 // Transport errors (DNS, connect, TLS, timeout) and malformed
-// headers abort the fiber — wrap in `Fiber.new { … }.try()` to
-// catch. Native-code panics from transitive Rust deps likewise
-// surface as fiber aborts, not process exits.
+// headers abort the fiber. Wrap in `Fiber.new { ... }.try()` to
+// catch them. Native-code panics from transitive Rust deps
+// likewise surface as fiber aborts, not process exits.
 
 import "http"        for HttpCore
 import "hash"        for HashCore
@@ -65,9 +65,9 @@ class Response {
   status  { _status }
   body    { _body }
 
-  /// Raw headers map: lower-cased keys → List<String> of values.
-  /// Multi-value headers like `Set-Cookie` survive intact here
-  /// (a naive Map<String, String> would collapse them).
+  /// Raw headers map. Lower-cased keys map to `List<String>` of
+  /// values. Multi-value headers like `Set-Cookie` survive intact
+  /// here (a naive `Map<String, String>` would collapse them).
   headerMap { _headers }
 
   ok { _status >= 200 && _status < 300 }
@@ -115,13 +115,13 @@ class Response {
   }
 }
 
-/// Streaming response: status + headers are known up front, body is
-/// a `Reader` you drain at your own pace. Use for big downloads,
-/// SSE feeds, chunked endpoints — anything where pulling the whole
-/// body into memory is wrong.
+/// Streaming response. Status and headers are known up front; the
+/// body is a `Reader` to drain at the caller's own pace. Use for
+/// big downloads, SSE feeds, chunked endpoints, and anything where
+/// pulling the whole body into memory is wrong.
 ///
 /// ```wren
-/// var r = Http.stream("GET", "https://…/big-file")
+/// var r = Http.stream("GET", "https://example.com/big-file")
 /// r.status               // 200
 /// r.header("content-type")
 /// var line = r.body.readLine
@@ -147,11 +147,11 @@ class StreamingResponse {
   headerMap { _headers }
   body      { _body }
 
-  /// Fiber-cooperative body reader. Same bytes as `body`, but
-  /// polls via `HttpCore.tryStreamReadBytes` and yields on
-  /// "would block" so sibling fibers can run in parallel.
-  /// Careful: consuming `body` AND `bodyAsync` at the same time
-  /// interleaves reads — pick one.
+  /// Fiber-cooperative body reader. Returns the same bytes as
+  /// `body`, but polls via `HttpCore.tryStreamReadBytes` and
+  /// yields on "would block" so sibling fibers can run in
+  /// parallel. Consuming `body` and `bodyAsync` at the same time
+  /// interleaves reads. Pick one.
   bodyAsync {
     if (_bodyAsync == null) {
       var sid = _id
@@ -210,8 +210,8 @@ class Http {
   // --- Streaming request (lazy body) -----------------------------------
   ///
   /// Same option shape as `request`. Returns a `StreamingResponse`
-  /// whose `.body` is an `@hatch:io` Reader — callers drain it line
-  /// by line, chunk by chunk, or pipe it into a file / process.
+  /// whose `.body` is an `@hatch:io` Reader. Callers drain it line
+  /// by line, chunk by chunk, or pipe it into a file or process.
   ///
   /// Close the response (`sr.close`) if you bail before EOF;
   /// otherwise reaching EOF frees the connection automatically.
@@ -227,7 +227,7 @@ class Http {
   static getStream(url)          { stream("GET", url, {}) }
   static getStream(url, options) { stream("GET", url, options) }
 
-  // Internal — normalise (method, url, options) into the tuple the
+  // Internal. Normalises (method, url, options) into the tuple the
   // runtime layer expects.  Returns [method, finalUrl, headers,
   // body, timeout].  The same logic used to be inlined in
   // `request`; factored out so `stream` can share it without

@@ -1,4 +1,4 @@
-Compiled regular expressions with capture groups, replace, and split. Two classes — `Regex` for the compiled pattern and `Match` for individual hits. Backed by the Rust `regex` crate, so matching runs in linear time and the syntax is Perl-ish without backreferences or lookaround.
+Compiled regular expressions with capture groups, replace, and split. `Regex` represents a compiled pattern and `Match` represents an individual hit. Backed by the Rust `regex` crate, so matching runs in linear time. The syntax is Perl-ish without backreferences or lookaround.
 
 ## Overview
 
@@ -21,13 +21,13 @@ System.print(Regex.compile("(\\w+)").replaceAll("hi bob", "<$1>")) // "<hi> <bob
 System.print(Regex.compile(",\\s*").split("a, b ,c,   d"))         // ["a", "b", "c", "d"]
 ```
 
-`Regex.escape(text)` returns a pattern that matches `text` literally — use it before embedding user input into a pattern.
+`Regex.escape(text)` returns a pattern that matches `text` literally. Use it before embedding user input into a pattern.
 
 ## Match shape and lifetime
 
 A `Match` exposes `text`, `start`, `end`, `groups` (positional, with index `0` being the whole match), and `named` (a `Map` of named-group results). `match.group(i)` / `match.group(name)` shortcut into either.
 
-`Regex` instances hold a numeric id into a runtime registry; the compiled automaton stays alive until you call `regex.free`. For short scripts you can let the program exit clean it up, but for long-running servers that build lots of patterns, free aggressively or pre-compile a fixed set at startup.
+`Regex` instances hold a numeric id into a runtime registry. The compiled automaton stays alive until `regex.free` is called. Short scripts can rely on program exit to clean up. Long-running servers that build many patterns should free aggressively, or pre-compile a fixed set at startup.
 
 | Flag | Effect |
 |------|--------|
@@ -35,11 +35,11 @@ A `Match` exposes `text`, `start`, `end`, `groups` (positional, with index `0` b
 | `m`  | Multi-line mode (`^` / `$` match line boundaries) |
 | `s`  | Dot-all (`.` matches `\n`) |
 | `U`  | Swap greedy / non-greedy defaults |
-| `x`  | Verbose — ignore whitespace and `#` comments in the pattern |
+| `x`  | Verbose. Ignores whitespace and `#` comments in the pattern |
 
-> **Note — no backrefs, no lookaround**
-> The `regex` crate guarantees linear-time matching by excluding constructs that require unbounded backtracking. If you genuinely need `(?=...)` or `\1`, parse with a hand-rolled state machine instead — there isn't a flag to turn them on.
+> **Note: no backrefs, no lookaround**
+> The `regex` crate guarantees linear-time matching by excluding constructs that require unbounded backtracking. Patterns that need `(?=...)` or `\1` must be parsed with a hand-rolled state machine; there is no flag to enable them.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Native only — `#!wasm` builds need a separate compiled-regex bridge that hasn't shipped yet.
+Wren 0.4 with WrenLift runtime 0.1 or newer. Native only. `#!wasm` builds need a separate compiled-regex bridge that has not shipped yet.

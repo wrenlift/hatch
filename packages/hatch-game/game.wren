@@ -1,8 +1,8 @@
-// `@hatch:game` — minimal game-loop scaffold.
+// `@hatch:game`: minimal game-loop scaffold.
 //
 // PixiJS / Cocos / Godot-style: subclass `Game`, override the
-// hooks you care about, hand the class to `Game.run`. State
-// lives in fields on your subclass — no userdata scratchpad,
+// relevant hooks, and hand the class to `Game.run`. State
+// lives in fields on the subclass. No userdata scratchpad,
 // no closure ceremony.
 //
 // ```wren
@@ -59,7 +59,7 @@ import "@hatch:time"   for Clock
 // `Browser.nextFrame.await` (vsync-paced via requestAnimationFrame
 // on the page thread) so the JS event loop drains every frame and
 // the page stays responsive. The prelude's `Browser` class is
-// only auto-injected into the user's `run()` source — bundle
+// only auto-injected into the user's `run()` source; bundle
 // modules have to import it explicitly. Native builds strip
 // this whole import via the cfg pre-pass.
 #!wasm
@@ -68,7 +68,7 @@ import "wlift_prelude" for Browser
 /// Aggregated keyboard / mouse state. Updated each frame by
 /// `Game.run` from the window's event stream. Both event-style
 /// (`g.events`, the raw list) and state-style polling (`g.input`)
-/// are available — pick whichever fits the situation.
+/// are available; pick whichever fits the situation.
 ///
 /// ## Example
 ///
@@ -127,7 +127,7 @@ class Input {
     }
   }
 
-  // winit gives us values like "Code(KeyA)" / "Code(Space)" via
+  // winit returns values like "Code(KeyA)" / "Code(Space)" via
   // Debug formatting. Strip the wrapper so users write friendly
   // strings.
   static normalizeKey_(s) {
@@ -138,9 +138,9 @@ class Input {
     return s
   }
 
-  /// True while `key` is held — between key-down and key-up.
+  /// True while `key` is held: between key-down and key-up.
   ///
-  /// @param {String} key — winit-style key code (`"KeyA"`, `"Space"`, …).
+  /// @param {String} key. winit-style key code (`"KeyA"`, `"Space"`, ...).
   /// @returns {Bool}
   isDown(key) { _down.containsKey(key) }
 
@@ -242,7 +242,7 @@ class GameState {
   }
 
   /// Aggregated keyboard / mouse state for this frame.
-  /// See [Input] — `g.input.isDown("Space")`, `g.input.mouseX`, etc.
+  /// See [Input]: `g.input.isDown("Space")`, `g.input.mouseX`, etc.
   /// @returns {Input}
   input { _input }
 
@@ -271,14 +271,14 @@ class GameState {
   pass          { _pass }
   pass=(p)      { _pass = p }
 
-  /// Raw OS event list for this frame — only useful when state-
+  /// Raw OS event list for this frame. Useful only when state
   /// polling via `g.input` doesn't fit. Each entry is a `Map`.
   /// @returns {List}
   events        { _events }
   events=(e)    { _events = e }
 
   /// Seconds since the previous frame. Zero on the first frame
-  /// (before any time has elapsed) — guard division accordingly.
+  /// (before any time has elapsed); guard division accordingly.
   /// @returns {Num}
   dt            { _dt }
   dt=(v)        { _dt = v }
@@ -293,20 +293,20 @@ class GameState {
   tick          { _tick }
   tick=(v)      { _tick = v }
 
-  /// Surface dimensions in actual pixels — what wgpu draws into.
-  /// The framework keeps these in sync with the configured
-  /// surface (which may be clamped on resize past the GPU's max
-  /// texture dimension), so a `Camera2D` / `Camera3D` built from
-  /// `g.width` / `g.height` always matches the render target.
-  /// Distinct from `g.window.size`, which reports the OS window's
-  /// pre-clamp size.
+  /// Surface dimensions in actual pixels. These are what wgpu
+  /// draws into. The framework keeps these in sync with the
+  /// configured surface (which may be clamped on resize past
+  /// the GPU's max texture dimension), so a `Camera2D` /
+  /// `Camera3D` built from `g.width` / `g.height` always matches
+  /// the render target. Distinct from `g.window.size`, which
+  /// reports the OS window's pre-clamp size.
   /// @returns {Num}
   width    { _viewport.width }
   /// Surface height in pixels. See [GameState.width].
   /// @returns {Num}
   height   { _viewport.height }
-  /// `Viewport` value with `.width` / `.height` / `.aspect` —
-  /// the convenient single-object form for callers that want
+  /// `Viewport` value with `.width` / `.height` / `.aspect`.
+  /// The convenient single-object form for callers that want
   /// to thread one parameter through.
   /// @returns {Viewport}
   viewport { _viewport }
@@ -325,7 +325,7 @@ class GameState {
   startTime_      { _startTime }
   startTime_=(v)  { _startTime = v }
 
-  /// Scratchpad write — `g.set("renderer", r)` in `setup`,
+  /// Scratchpad write. `g.set("renderer", r)` in `setup`,
   /// `g.get("renderer")` in `draw`. Keeps frame-to-frame state
   /// out of closure capture.
   ///
@@ -391,8 +391,8 @@ class Game {
 
   /// Fired after the surface (and optional depth attachment) have
   /// been re-allocated to match the new size. Override to rebuild
-  /// anything tied to viewport dimensions — typically a `Camera2D`
-  /// / `Camera3D` — so projections track the window.
+  /// anything tied to viewport dimensions (typically a `Camera2D`
+  /// or `Camera3D`) so projections track the window.
   ///
   /// ## Example
   ///
@@ -409,8 +409,8 @@ class Game {
 
   // Defaults applied for keys the user's `config` override omits.
   // Pass `"depth": true` (or a format string like `"depth32float"`)
-  // in your config to have the loop allocate + bind a depth
-  // attachment automatically — required for 3D rendering and
+  // in the config to have the loop allocate + bind a depth
+  // attachment automatically. Required for 3D rendering and
   // the recommended path for any game that mixes Renderer2D
   // HUDs over a Renderer3D scene.
   static DEFAULTS_ {
@@ -428,7 +428,7 @@ class Game {
       // surface configures against the element's natural size
       // instead of the `width` / `height` defaults. Ignored on
       // native (winit always opens a fresh window). Lets pages
-      // embed a wlift game inside their own layout / styling
+      // embed a wlift game inside their own layout and styling
       // without having to override `Game.run` to thread the
       // descriptor manually.
       "canvas":       null
@@ -437,10 +437,10 @@ class Game {
 
   // Walk every queued OS event, route input through `g.input`,
   // and honour close requests. Resize events are intentionally
-  // *not* handled here — `Game.run` polls `Window.size` directly
+  // *not* handled here. `Game.run` polls `Window.size` directly
   // every frame.
   //
-  // Indexed `while` loop, NOT `for (e in events)` — the for-in
+  // Indexed `while` loop, NOT `for (e in events)`. The for-in
   // body forms a closure for outer-scope locals, and the
   // closure-upvalue mutation bug means writes to captured
   // counters inside don't propagate back.
@@ -467,7 +467,7 @@ class Game {
   /// Game.run(MyGame)
   /// ```
   ///
-  /// @param {Class} klass — a class extending `Game`.
+  /// @param {Class} klass. A class extending `Game`.
   static run(klass) {
     if (!(klass is Class)) {
       Fiber.abort("Game.run: argument must be a Class extending Game.")
@@ -518,8 +518,8 @@ class Game {
     var sw = initial is Map ? initial["width"]  : configW
     var sh = initial is Map ? initial["height"] : configH
 
-    // Resolve depth attachment config. true → "depth32float";
-    // a string overrides; false / null → no depth attachment.
+    // Resolve depth attachment config. true means "depth32float";
+    // a string overrides; false or null means no depth attachment.
     var depthFormat = null
     if (c["depth"] is String) depthFormat = c["depth"]
     if (c["depth"] == true)   depthFormat = "depth32float"
@@ -559,7 +559,7 @@ class Game {
       // Drain OS events. Use an index-based while loop instead of
       // `for (e in events)` because mutating outer-scope locals
       // from inside a `for-in` body trips a known closure-upvalue
-      // bug — the surrounding `lastTime` / `startTime` get
+      // bug. The surrounding `lastTime` / `startTime` get
       // clobbered, then `now - lastTime` raises "Right operand
       // must be a number" the next frame.
       var events = window.pollEvents
@@ -571,9 +571,9 @@ class Game {
       // queue. Two reasons:
       //
       //  1. winit on macOS only fires `Resized` at
-      //     `windowDidEndLiveResize` — i.e. when the user
+      //     `windowDidEndLiveResize`, i.e. when the user
       //     releases the mouse. During the drag, the run loop
-      //     is in NSEventTrackingRunLoopMode, our pump call
+      //     is in NSEventTrackingRunLoopMode, the pump call
       //     returns nothing, and the swap chain stays at its
       //     stale dimensions. The visible window grows,
       //     uncovered area shows the OS background through.
@@ -658,7 +658,7 @@ class Game {
       // primitive: backed by `requestAnimationFrame`, so vsync-
       // paced, paint-aligned, and naturally throttled when the
       // tab is backgrounded. Worker mode falls back to a ~16 ms
-      // timer because rAF is main-thread-only — see the bridge
+      // timer because rAF is main-thread-only; see the bridge
       // shim in worker.js. Native winit windows pace via their
       // own event pump; this gate strips on host builds.
       #!wasm

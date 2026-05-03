@@ -1,8 +1,8 @@
-A TOML parser and serializer backed by the Rust `toml` crate. One class — `Toml` — with `parse`, `encode`, and `encodePretty`. Canonical TOML v1.0.0 behaviour; pair with `@hatch:fs` for config files and with `@hatch:json` when you need to round-trip between formats.
+A TOML parser and serializer backed by the Rust `toml` crate. One class, `Toml`, with `parse`, `encode`, and `encodePretty`. Canonical TOML v1.0.0 behaviour; pair with `@hatch:fs` for config files and with `@hatch:json` for round-trips between formats.
 
 ## Overview
 
-Top-level documents are always tables, so `Toml.parse` returns a `Map`. `Toml.encode` requires a `Map` for symmetric reasons — pass any nested mix of scalars, arrays, and tables and the encoder picks inline or `[header]` form per the canonical rules.
+Top-level documents are always tables, so `Toml.parse` returns a `Map`. `Toml.encode` requires a `Map` for symmetric reasons. Pass any nested mix of scalars, arrays, and tables; the encoder picks inline or `[header]` form per the canonical rules.
 
 ```wren
 import "@hatch:toml" for Toml
@@ -28,7 +28,7 @@ System.print(Toml.encode({
 // host = "localhost"
 ```
 
-`Toml.encodePretty(value)` runs the same encoder with the crate's pretty-printer — multi-line arrays and a touch of whitespace for human readability.
+`Toml.encodePretty(value)` runs the same encoder with the crate's pretty-printer: multi-line arrays and a touch of whitespace for human readability.
 
 ## Type mapping
 
@@ -43,9 +43,9 @@ System.print(Toml.encode({
 
 Encoding round-trips cleanly for everything except datetimes, which come back as `String`s. If you need a datetime in the output, pass it as a pre-formatted RFC 3339 string.
 
-> **Note — fallible parsing**
+> **Note: fallible parsing**
 > Malformed input aborts the fiber with a message from the parser. Wrap in `Fiber.new { Toml.parse(text) }.try()` when you want graceful recovery (config-file loaders, mostly).
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Native only — `#!wasm` builds need a separate WASM-compiled `toml` bridge that hasn't shipped yet. Pair with `@hatch:fs` for config-file loading.
+Wren 0.4 with WrenLift runtime 0.1 or newer. Native only; `#!wasm` builds need a separate WASM-compiled `toml` bridge that hasn't shipped yet. Pair with `@hatch:fs` for config-file loading.

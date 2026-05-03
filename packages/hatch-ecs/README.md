@@ -2,7 +2,7 @@ A pure-Wren entity-component-system. `World` for storage, `Query` for filtered i
 
 ## Overview
 
-Storage is `Map<ComponentClass, Map<id, instance>>` — class-keyed pools, monotonic ids. That trades archetype-iteration speed for an API small enough to keep in your head, and stays plenty fast at the few-thousand-entity scale most 2D and mid-size 3D games sit at.
+Storage is `Map<ComponentClass, Map<id, instance>>`: class-keyed pools with monotonic ids. That trades archetype-iteration speed for an API small enough to keep in your head, and stays fast at the few-thousand-entity scale most 2D and mid-size 3D games sit at.
 
 ```wren
 import "@hatch:ecs" for World, Schedule
@@ -35,13 +35,13 @@ schedule.run(world, { "dt": 1 / 60 })
 
 ## Cross-cutting pieces
 
-`Resources` are typed singletons attached to the world — input state, the current camera, an asset db. `Events<T>` is a per-type broadcast buffer: producers push during one system, consumers drain during the next, and `world.flushEvents` clears at the end of the frame. `Commands` is the deferred-mutation escape hatch — record `spawn` / `despawn` / `attach` calls during a query body, then apply them with `world.applyCommands(cmds)` once iteration completes.
+`Resources` are typed singletons attached to the world: input state, the current camera, an asset db. `Events<T>` is a per-type broadcast buffer. Producers push during one system, consumers drain during the next, and `world.flushEvents` clears at the end of the frame. `Commands` is the deferred-mutation escape hatch. Record `spawn` / `despawn` / `attach` calls during a query body, then apply them with `world.applyCommands(cmds)` once iteration completes.
 
 `world.onAdd(Class) {|w, e, c| ... }` and `world.onRemove(Class) {|w, e| ... }` fire on component lifecycle. Use them for animation triggers, audio, or to maintain spatial indexes.
 
-> **Tip — query during, mutate after**
+> **Tip: query during, mutate after.**
 > Spawning or despawning entities mid-iteration invalidates the active query. Use `Commands` to record changes inside the loop, then `world.applyCommands(cmds)` once. Same shape as Bevy's deferred command buffer.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Pure-Wren — no native dependencies. Optional integration with `@hatch:game` for the frame loop and with `@hatch:gpu` for GPU-resource components.
+Wren 0.4 + WrenLift runtime 0.1 or newer. Pure-Wren, with no native dependencies. Optional integration with `@hatch:game` for the frame loop and with `@hatch:gpu` for GPU-resource components.

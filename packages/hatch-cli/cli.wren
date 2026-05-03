@@ -1,4 +1,4 @@
-// `@hatch:cli` — clap-style argument parser.
+// `@hatch:cli`: clap-style argument parser.
 //
 // ```wren
 // import "@hatch:cli" for Cli, Arg

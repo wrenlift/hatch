@@ -1,4 +1,4 @@
-/// `@hatch:path` — filesystem path manipulation.
+/// `@hatch:path`: filesystem path manipulation.
 ///
 /// ```wren
 /// import "@hatch:path" for Path
@@ -19,8 +19,8 @@
 /// `@hatch:os`; until that lands, consumers on Windows should use
 /// forward slashes explicitly or post-process the result.
 ///
-/// All operations are pure string manipulation — nothing touches
-/// the filesystem here. That belongs in `@hatch:fs`.
+/// All operations are pure string manipulation. Nothing here touches
+/// the filesystem. That belongs in `@hatch:fs`.
 
 class Path {
   static SEP { "/" }
@@ -35,7 +35,7 @@ class Path {
     }
     if (b == "") return a
     if (a == "") return b
-    // An absolute `b` wins — it "resets" the path the same way
+    // An absolute `b` wins. It "resets" the path the same way
     // `cd /tmp; cd /home` ends up at `/home`.
     if (isAbsolute(b)) return b
     if (endsWithSep_(a)) return a + b
@@ -82,8 +82,8 @@ class Path {
 
   // -- parent / basename / stem / extname ------------------------------------
 
-  /// Directory portion. `"/a/b/c"` → `"/a/b"`, `"c"` → `""`,
-  /// `"/"` → `"/"`.
+  /// Returns the directory portion. `"/a/b/c"` becomes `"/a/b"`,
+  /// `"c"` becomes `""`, and `"/"` stays `"/"`.
   static parent(path) {
     if (!(path is String)) Fiber.abort("Path.parent: expected a string")
     if (path == "") return ""
@@ -95,8 +95,8 @@ class Path {
     return stripped[0...idx]
   }
 
-  /// Final path component. `"/a/b/c.txt"` → `"c.txt"`,
-  /// `"/"` → `""`, `"foo"` → `"foo"`.
+  /// Returns the final path component. `"/a/b/c.txt"` becomes
+  /// `"c.txt"`, `"/"` becomes `""`, and `"foo"` stays `"foo"`.
   static basename(path) {
     if (!(path is String)) Fiber.abort("Path.basename: expected a string")
     var stripped = stripTrailingSep_(path)
@@ -106,9 +106,9 @@ class Path {
     return stripped[(idx + 1)...stripped.count]
   }
 
-  /// basename without the extension. `"foo/bar.txt"` → `"bar"`.
-  /// Leading-dot files without a further `.` keep their full name
-  /// (`".bashrc"` → `".bashrc"`).
+  /// Returns the basename without the extension. `"foo/bar.txt"`
+  /// becomes `"bar"`. Leading-dot files without a further `.` keep
+  /// their full name (`".bashrc"` stays `".bashrc"`).
   static stem(path) {
     var base = basename(path)
     if (base == "") return ""
@@ -117,13 +117,13 @@ class Path {
     return base[0...(base.count - ext.count)]
   }
 
-  /// Extension including the leading dot. `"foo.tar.gz"` → `".gz"`,
-  /// `"README"` → `""`, `".bashrc"` → `""` (leading dot alone is not
-  /// an extension).
+  /// Returns the extension including the leading dot.
+  /// `"foo.tar.gz"` becomes `".gz"`. `"README"` and `".bashrc"`
+  /// both return `""` (a leading dot alone is not an extension).
   static extname(path) {
     var base = basename(path)
     var idx = lastIndexOf_(base, ".")
-    // No dot, or leading dot with no other — no extension.
+    // No dot, or leading dot with no other: no extension.
     if (idx <= 0) return ""
     return base[idx...base.count]
   }
@@ -140,11 +140,11 @@ class Path {
 
   // -- normalize -------------------------------------------------------------
 
-  /// Collapse `a/./b` → `a/b`, `a//b` → `a/b`, and resolve `..`
-  /// against the preceding segment. Absolute paths stay absolute;
-  /// relative paths that ascend above the start keep the leading
-  /// `..` segments (we can't resolve past the root of a relative
-  /// path without touching the filesystem).
+  /// Collapses `a/./b` to `a/b`, `a//b` to `a/b`, and resolves `..`
+  /// against the preceding segment. Absolute paths stay absolute.
+  /// Relative paths that ascend above the start keep the leading
+  /// `..` segments, since the root of a relative path cannot be
+  /// resolved without touching the filesystem.
   static normalize(path) {
     if (!(path is String)) Fiber.abort("Path.normalize: expected a string")
     if (path == "") return "."
@@ -205,7 +205,7 @@ class Path {
     return s[0...i]
   }
 
-  // Wren's String lacks `lastIndexOf` — scan manually.
+  // Wren's String lacks `lastIndexOf`, so scan manually.
   static lastIndexOf_(s, needle) {
     var i = s.count - 1
     while (i >= 0) {

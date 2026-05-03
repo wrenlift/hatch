@@ -1,4 +1,4 @@
-// `@hatch:datetime` — timezone-aware `DateTime` + `Duration`
+// `@hatch:datetime`: timezone-aware `DateTime` and `Duration`
 // arithmetic.
 //
 // ```wren
@@ -19,11 +19,11 @@
 // // Arithmetic returns fresh DateTime values.
 // var later    = dt.add(Duration.hours(2))
 // var earlier  = dt.subtract(Duration.minutes(15))
-// var between  = later.diff(earlier)             // → Duration
+// var between  = later.diff(earlier)             // returns Duration
 // between.seconds                                // Num (integer)
 // between.minutes                                // fractional Num
 //
-// // Compare by the underlying UTC instant — offset doesn't matter.
+// // Compare by the underlying UTC instant; offset doesn't matter.
 // DateTime.parse("2026-01-01T12:00:00+00:00") ==
 //   DateTime.parse("2026-01-01T13:00:00+01:00")       // true
 // ```
@@ -32,7 +32,7 @@
 // this package layers a real value-type on top with offsets,
 // parsing, calendar math, and a `Duration` companion. Builds on
 // `TimeCore.utc(seconds)` from the runtime `time` module for the
-// unix → components direction; the reverse (components → unix)
+// unix-to-components direction; the reverse (components to unix)
 // is pure Wren via the civil-from-days algorithm.
 
 import "time" for TimeCore
@@ -106,7 +106,7 @@ class Duration {
   >=(other) { other is Duration && _s >= other.seconds }
 
   toString {
-    // Pick the most human unit for the display — keeps debug output
+    // Pick the most human unit for the display; keeps debug output
     // readable without losing precision.
     if (_s.abs >= 86400) return "%(days)d"
     if (_s.abs >= 3600)  return "%(hours)h"
@@ -125,7 +125,7 @@ class DateTime {
   construct new_(unix, offsetMinutes) {
     _unix = unix
     _off  = offsetMinutes
-    // Pre-compute component getters — cached to avoid calling
+    // Pre-compute component getters; cached to avoid calling
     // TimeCore.utc on every .year / .month / .day access.
     _c = TimeCore.utc(unix + offsetMinutes * 60)
   }
@@ -244,7 +244,7 @@ class DateTime {
     Fiber.abort("DateTime.subtract: expected a Duration or DateTime")
   }
 
-  /// Alias for `subtract` when both sides are DateTimes — reads
+  /// Alias for `subtract` when both sides are DateTimes; reads
   /// nicer in time-between-events contexts.
   diff(other) {
     if (!(other is DateTime)) Fiber.abort("DateTime.diff: expected a DateTime")
@@ -265,8 +265,8 @@ class DateTime {
 
   // --- Comparison --------------------------------------------------
   // Always by UTC instant. Two DateTimes at the same moment
-  // but different offsets compare equal — they're the same
-  // point in time just described differently.
+  // but different offsets compare equal; they're the same
+  // point in time, just described differently.
 
   ==(other) { other is DateTime && _unix == other.unix }
   !=(other) { !(this == other) }
@@ -327,8 +327,8 @@ class Parser_ {
     var day    = readInt_(text, i, 2)
         i = i + 2
 
-    // Optional time part. RFC 3339 requires `T`; we also accept a
-    // plain space for readability / human-entered inputs.
+    // Optional time part. RFC 3339 requires `T`; a plain space
+    // is also accepted for readability and human-entered inputs.
     var hour = 0
     var minute = 0
     var second = 0
@@ -344,7 +344,7 @@ class Parser_ {
         i = i + 1
       second = readInt_(text, i, 2)
         i = i + 2
-      // Drop fractional seconds — we keep integer precision in
+      // Drop fractional seconds; integer precision is kept in
       // the unix timestamp. They're skipped silently so JSON
       // emitted from other languages parses without surprise.
       if (i < n && text[i] == ".") {
@@ -375,7 +375,7 @@ class Parser_ {
       Fiber.abort("DateTime.parse: trailing characters at offset %(i)")
     }
 
-    // Compute UTC unix from local components + offset.
+    // Compute UTC unix from local components and offset.
     var localSeconds =
       DateTime.daysFromCivil_(year, month, day) * 86400 +
       hour * 3600 + minute * 60 + second

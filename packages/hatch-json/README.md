@@ -1,4 +1,4 @@
-A pure-Wren JSON parser and serializer. One class — `JSON` — with `parse`, `encode`, and a hook for custom types via a `toJson()` method on your class. No native dependencies; the JIT optimises it like any other hot Wren code.
+A pure-Wren JSON parser and serializer. Provides one class, `JSON`, with `parse`, `encode`, and a hook for custom types via a `toJson()` method on your class. No native dependencies; the JIT optimises it like any other hot Wren code.
 
 ## Overview
 
@@ -25,7 +25,7 @@ System.print(JSON.encode({ "x": 1 }, 2))          // pretty, 2-space indent
 
 ## Custom types
 
-Define `toJson()` on your class and the encoder will pick it up. The method returns any JSON-encodable value — typically a `Map` of fields. The encoder recurses on the returned value, so nested custom objects round-trip cleanly.
+Define `toJson()` on your class and the encoder will pick it up. The method returns any JSON-encodable value, typically a `Map` of fields. The encoder recurses on the returned value, so nested custom objects round-trip cleanly.
 
 ```wren
 class Point {
@@ -40,9 +40,9 @@ System.print(JSON.encode(Point.new(1, 2)))
 // {"x":1,"y":2}
 ```
 
-> **Note — fallible parsing means `Fiber.try()`**
-> Malformed input aborts with a message pointing at the offending byte offset. Wrap the call in `Fiber.new { JSON.parse(text) }.try()` when you want graceful recovery rather than a top-level fiber abort.
+> **Note: fallible parsing means `Fiber.try()`**
+> Malformed input aborts with a message pointing at the offending byte offset. Wrap the call in `Fiber.new { JSON.parse(text) }.try()` for graceful recovery rather than a top-level fiber abort.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Pure-Wren — no native dependencies, no host capabilities. Pairs with `@hatch:http` for API clients, with `@hatch:fs` for config files.
+Wren 0.4 and WrenLift runtime 0.1 or newer. Pure-Wren, with no native dependencies and no host capabilities. Pairs with `@hatch:http` for API clients, with `@hatch:fs` for config files.

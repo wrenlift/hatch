@@ -1,4 +1,4 @@
-// `@hatch:assert` — fluent assertions for `*.spec.wren` files.
+// `@hatch:assert`: fluent assertions for `*.spec.wren` files.
 //
 // ```wren
 // import "@hatch:assert" for Expect
@@ -13,8 +13,8 @@
 // Each failing assertion aborts the enclosing fiber with a message
 // the test runner (`@hatch:test`, landing next) captures and
 // attributes to the offending `it` block. Used bare, a failed
-// assertion crashes the spec file with the same message — enough
-// signal for a standalone `wlift foo.spec.wren` run.
+// assertion crashes the spec file with the same message, which is
+// enough signal for a standalone `wlift foo.spec.wren` run.
 
 /// One assertion in flight. Build via [Expect.that], chain a
 /// matcher (`.toBe`, `.toEqual`, `.toBeNull`, …), optionally
@@ -35,8 +35,8 @@ class Assertion {
   }
 
   /// Reference equality via `==`. Two different list instances
-  /// that happen to hold the same elements are *not* equal —
-  /// use [Assertion.toEqual] for structural comparison.
+  /// that happen to hold the same elements are *not* equal.
+  /// Use [Assertion.toEqual] for structural comparison.
   ///
   /// @param {Object} expected
   toBe(expected) {
@@ -112,7 +112,7 @@ class Assertion {
     check_(ok, "toContain", item)
   }
 
-  /// Pass when `actual is klass`. Classes only — scalars go
+  /// Pass when `actual is klass`. Classes only; scalars go
   /// through [Assertion.toBe] or [Assertion.toBeTruthy].
   ///
   /// @param {Class} klass
@@ -210,8 +210,8 @@ class Assertion {
   }
 }
 
-/// Single entry point — `Expect.that(x).toBe(y)` reads as
-/// plain English. Returns a fresh [Assertion] you chain
+/// Single entry point. `Expect.that(x).toBe(y)` reads as
+/// plain English. Returns a fresh [Assertion] to chain
 /// matchers off of.
 ///
 /// ## Example

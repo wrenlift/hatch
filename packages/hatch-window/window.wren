@@ -1,4 +1,4 @@
-// `@hatch:window` — entry module that re-exports the right
+// `@hatch:window`: entry module that re-exports the right
 // window-provider backend for the bundle target.
 //
 // | File                 | Backend                                                                                                                                  |

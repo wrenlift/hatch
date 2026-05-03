@@ -1,4 +1,4 @@
-A content-addressable assets database with hot reload. One `Assets` API, two backends — filesystem-walking on native (SHA-256 indexed, watched via `Hatch.watchFile`), manifest-driven on web (lazy `fetch` reads against an `assets-manifest.json` shipped alongside your bundle). Edit a shader or texture or config file and registered subscribers fire on the next safepoint.
+A content-addressable assets database with hot reload. One `Assets` API, two backends: filesystem-walking on native (SHA-256 indexed, watched via `Hatch.watchFile`), and manifest-driven on web (lazy `fetch` reads against an `assets-manifest.json` shipped alongside the bundle). Edits to a shader, texture, or config file fire registered subscribers on the next safepoint.
 
 ## Overview
 
@@ -21,15 +21,15 @@ Register a hook with `db.on(path)` and the dev loop wires it through `Hatch.watc
 
 ```wren
 db.on("shaders/triangle.wgsl") {|asset|
-  System.print("shader changed (%(asset.hash[0..7])) — rebuild pipeline")
+  System.print("shader changed (%(asset.hash[0..7])); rebuild pipeline")
 }
 ```
 
 `@hatch:gpu`'s shader pipeline and `@hatch:game`'s texture / mesh / audio loaders sit on top of this directly. You don't need to poll, debounce, or diff.
 
-> **Note — Web target uses the manifest, not the filesystem**
-> On `#!wasm` builds the package re-exports `assets_web.wren` instead. There is no filesystem walk and no hot reload — the page must ship an `assets-manifest.json` next to the assets, and reads go through `fetch`. The Wren-level surface stays identical; the production bundle just doesn't watch.
+> **Note: Web target uses the manifest, not the filesystem**
+> On `#!wasm` builds the package re-exports `assets_web.wren` instead. There is no filesystem walk and no hot reload. The page must ship an `assets-manifest.json` next to the assets, and reads go through `fetch`. The Wren-level surface stays identical; the production bundle just doesn't watch.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Native backend depends on `@hatch:fs` and `@hatch:hash`; web backend depends on `@hatch:json`. The runtime imports the whole package on either target — the inactive backend's foreign methods stay unbound and inert.
+Wren 0.4 + WrenLift runtime 0.1 or newer. Native backend depends on `@hatch:fs` and `@hatch:hash`; web backend depends on `@hatch:json`. The runtime imports the whole package on either target; the inactive backend's foreign methods stay unbound and inert.

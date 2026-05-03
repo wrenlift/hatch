@@ -1,4 +1,4 @@
-// @hatch:assets — web backend.
+// @hatch:assets: web backend.
 //
 // Mirrors `assets_native.wren`'s `Asset` / `Assets` shape but
 // the database is mounted from a VFS manifest the server (or
@@ -22,7 +22,7 @@
 //
 // A node is a *file* iff its value is a Map containing `"hash"`.
 // Anything else is a *directory* whose children are nested under
-// it. Servers can hydrate this from any source — a `find`-style
+// it. Servers can hydrate this from any source: a `find`-style
 // dump, a database query, an embedded asset bundle. The page
 // fetches the manifest at `<baseUrl>/assets-manifest.json` and
 // `Assets.open(baseUrl)` mounts the tree as a VFS on top of the
@@ -43,8 +43,8 @@
 // (path)` re-fetches the manifest + the named asset and fires
 // any subscribers if the hash advances. Browsers don't surface
 // filesystem-watch events, so the user wires `reload` to a UI
-// affordance (a "refresh shaders" button, a debug-channel
-// websocket message, etc.).
+// affordance: a "refresh shaders" button, a debug-channel
+// websocket message, etc.
 //
 // **Run from a fiber.** `Assets.open` and `Asset.text` reach
 // the network through `Browser.fetch(...).await`, and `await`
@@ -80,8 +80,8 @@ class Asset {
   absolute { _url }
   hash     { _hash }
   size     { _size }
-  /// Filesystem mtime has no analogue here — the browser's HTTP
-  /// caching layer + the manifest hash drive change detection.
+  /// Filesystem mtime has no analogue here; the browser's HTTP
+  /// caching layer and the manifest hash drive change detection.
   mtime    { 0 }
 
   /// Lazily fetch text. Cached after the first read; `db.reload
@@ -91,9 +91,9 @@ class Asset {
     return _text
   }
 
-  /// Bytes path is currently a String shim — the Browser bridge
+  /// Bytes path is currently a String shim. The Browser bridge
   /// resolves `fetch(url).then(r => r.text())`, which is fine for
-  /// shaders / configs but loses fidelity on binary payloads
+  /// shaders and configs but loses fidelity on binary payloads
   /// (UTF-8 decode with replacement chars). Real binary support
   /// lands once `Browser.fetchBytes` ships; until then, the abort
   /// makes the limitation loud rather than letting a corrupted
@@ -126,7 +126,7 @@ class Assets {
 
   /// Fetch the manifest and mount its VFS at `baseUrl`. Manifest
   /// shape is documented at the top of this file. Must run from
-  /// inside a fiber — see the file header.
+  /// inside a fiber; see the file header.
   static open(baseUrl) {
     var url = baseUrl + "/assets-manifest.json"
     var text = Browser.fetch(url).await
@@ -134,7 +134,7 @@ class Assets {
     var manifest = JSON.parse(text)
     if (!(manifest is Map)) Fiber.abort("Assets.open: manifest at %(url) must be a JSON object, got %(manifest.type).")
 
-    // Schema validation — `version` + `tree` are required so the
+    // Schema validation: `version` and `tree` are required so the
     // user gets a clear hint rather than a silent zero-asset
     // mount when they ship an old or wrong shape.
     if (!manifest.containsKey("tree")) {
@@ -259,7 +259,7 @@ class Assets {
 
   /// Re-fetch the manifest, refresh a single asset's metadata,
   /// drop its content cache, and fire watchers iff the hash
-  /// changed. Cheap dev affordance — a "refresh shaders" button
+  /// changed. Cheap dev affordance: a "refresh shaders" button
   /// can wire straight to this.
   reload(relPath) {
     var entry = _entries[relPath]

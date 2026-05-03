@@ -1,4 +1,4 @@
-// @hatch:assets — content-addressable assets database.
+// @hatch:assets: content-addressable assets database.
 //
 //   import "@hatch:assets" for Assets
 //
@@ -8,24 +8,24 @@
 //   var pixels = db.bytes("textures/atlas.png")
 //
 //   db.on("shaders/triangle.wgsl") {|asset|
-//     // Auto-fired when the file's content hash changes — wire
+//     // Auto-fired when the file's content hash changes. Wire
 //     // it up once at startup and the dev loop keeps it fresh
-//     // without you polling anything.
-//     System.print("shader changed (hash %(asset.hash)) — rebuild pipeline")
+//     // without polling.
+//     System.print("shader changed (hash %(asset.hash)); rebuild pipeline")
 //   }
 //
 // `Assets.open(root)` indexes a directory tree at `root`,
 // hashing each file with SHA-256. `db.get(path)` re-stats the
-// file on each call: if the on-disk mtime advanced we re-hash;
-// if the hash differs from the indexed value we update the
-// entry. Hash equality across two paths is meaningful — the
-// content hash is the canonical identity, so caches keyed by
-// hash automatically dedupe identical content stored at
-// different paths.
+// file on each call: if the on-disk mtime advanced, the file
+// is re-hashed; if the hash differs from the indexed value the
+// entry is updated. Hash equality across two paths is
+// meaningful: the content hash is the canonical identity, so
+// caches keyed by hash automatically dedupe identical content
+// stored at different paths.
 //
 // Hot reload integration: `db.on(path, fn)` registers
 // `Hatch.watchFile(absolutePath, hook)`. Edit the file, the
-// runtime's SIGUSR1 safepoint pass fires, the hook re-reads +
+// runtime's SIGUSR1 safepoint pass fires, the hook re-reads and
 // re-hashes, and `fn(asset)` runs only if the hash actually
 // changed (mtime-only touches are silent). Used by @hatch:gpu's
 // shader hot reload and by the game framework's texture / mesh /
@@ -35,8 +35,8 @@ import "@hatch:fs"   for Fs
 import "@hatch:hash" for Hash
 import "hatch"       for Hatch
 
-/// One indexed file. Bytes are read lazily — small assets stay
-/// out of memory until you actually ask for them.
+/// One indexed file. Bytes are read lazily; small assets stay
+/// out of memory until requested.
 class Asset {
   construct new_(db, relPath, absPath, hash, size, mtime) {
     _db    = db
@@ -93,13 +93,12 @@ class Assets {
     _hooked    = {}     // absolute path → true once Hatch.watchFile registered
   }
 
-  /// Open a database rooted at `dir`. Indexes every file under it
-  /// in one pass — for sub-second startup on workspaces with
-  /// thousands of small assets and ~tens-of-ms on small ones.
-  /// Hashing is content-addressable identity, so duplicate
-  /// contents at different paths share one Asset record? No —
-  /// separate Asset records per path; the hash field carries the
-  /// content identity callers can dedupe on themselves.
+  /// Open a database rooted at `dir`. Indexes every file under
+  /// it in one pass: sub-second startup on workspaces with
+  /// thousands of small assets, tens of milliseconds on small
+  /// ones. Duplicate contents at different paths still get
+  /// separate `Asset` records; the `hash` field carries the
+  /// content identity that callers can dedupe on themselves.
   static open(dir) {
     var db = Assets.new_(dir)
     db.scan_()
@@ -119,7 +118,7 @@ class Assets {
   absRoot { _absRoot }
   count   { _entries.count }
 
-  // Walk the root tree, hashing every file. Idempotent — re-runs
+  // Walk the root tree, hashing every file. Idempotent: re-runs
   // refresh existing entries instead of duplicating them.
   //
   // Fs.walk returns paths relative to the root; we hand
@@ -127,12 +126,12 @@ class Assets {
   // reconstructed absolute path the underlying readers want.
   //
   // Note: Fs.walk includes directory entries too (it reports
-  // every name in the recursive listing). We skip non-file entries
-  // explicitly rather than relying on isFile alone — calling
-  // Fs.isFile on every walk result inside a tight loop sometimes
-  // hits an issue with iteration order that surfaces as a
-  // string-concat error at the FFI boundary, so collect first
-  // then filter.
+  // every name in the recursive listing). Non-file entries are
+  // skipped explicitly rather than relying on isFile alone;
+  // calling Fs.isFile on every walk result inside a tight loop
+  // sometimes hits an issue with iteration order that surfaces
+  // as a string-concat error at the FFI boundary, so collect
+  // first then filter.
   scan_() {
     var rels = Fs.walk(_absRoot)
     var i = 0
@@ -170,7 +169,7 @@ class Assets {
   get(relPath) {
     var entry = _entries[relPath]
     if (entry == null) {
-      // Try to bring in a previously-unseen file — useful when
+      // Try to bring in a previously-unseen file; useful when
       // assets get added between scans.
       var abs = _absRoot + "/" + relPath
       if (!Fs.isFile(abs)) Fiber.abort("Assets.get: '%(relPath)' not found.")
@@ -179,7 +178,7 @@ class Assets {
     var abs = entry.absolute
     var mt  = Hatch.moduleMtime(abs) || 0
     if (mt > entry.mtime + 0.0001) {
-      // Re-read + re-hash; if the hash changed, fire subscribers.
+      // Re-read and re-hash; if the hash changed, fire subscribers.
       var oldHash = entry.hash
       indexFile_(relPath, abs)
       if (entry.hash != oldHash) fireSubscribers_(relPath, entry)
@@ -200,11 +199,11 @@ class Assets {
     if (!_watchers.containsKey(relPath)) _watchers[relPath] = []
     _watchers[relPath].add(fn)
 
-    // Ensure the entry exists + register the SIGUSR1 hook once
-    // per file. Re-subscriptions reuse the same Hatch.watchFile
-    // entry (de-duped on the runtime side by closure pointer +
-    // path; we de-dupe here to avoid registering N closures for
-    // N subscribers).
+    // Ensure the entry exists and register the SIGUSR1 hook
+    // once per file. Re-subscriptions reuse the same
+    // Hatch.watchFile entry (de-duped on the runtime side by
+    // closure pointer + path; de-duped here to avoid registering
+    // N closures for N subscribers).
     var asset = get(relPath)
     if (!_hooked.containsKey(asset.absolute)) {
       _hooked[asset.absolute] = true

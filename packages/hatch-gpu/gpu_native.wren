@@ -1,4 +1,4 @@
-// @hatch:gpu — GPU primitives backed by wgpu.
+// @hatch:gpu. GPU primitives backed by wgpu.
 //
 //   import "@hatch:gpu" for Gpu, Device
 //
@@ -164,7 +164,7 @@ foreign class GpuCore {
 
   // -- Texture upload --------------------------------------------
   // Image decoding lives in @hatch:image; this is the lower-level
-  // bytes→texture path (also used for font atlases, dynamic
+  // bytes-to-texture path (also used for font atlases, dynamic
   // updates, GPU compute outputs, etc.).
 
   #!symbol = "wlift_gpu_queue_write_texture"
@@ -178,11 +178,10 @@ class Gpu {
   /// Request a GPU device + queue. `descriptor` is a Map; all
   /// keys are optional:
   ///
-  /// - `"backends"`         — `"primary"` (default), `"all"`,
-  ///   `"metal"`, `"vulkan"`, `"dx12"`, or `"gl"`.
-  /// - `"powerPreference"`  — `"low-power"` or `"high-performance"`.
-  /// - `"label"`            — String passed to wgpu for
-  ///   diagnostics.
+  /// - `"backends"`: `"primary"` (default), `"all"`, `"metal"`,
+  ///   `"vulkan"`, `"dx12"`, or `"gl"`.
+  /// - `"powerPreference"`: `"low-power"` or `"high-performance"`.
+  /// - `"label"`: String passed to wgpu for diagnostics.
   ///
   /// Aborts the fiber when no compatible adapter is available.
   ///
@@ -199,8 +198,8 @@ class Gpu {
   static requestDevice() { Gpu.requestDevice({}) }
 }
 
-/// Owns one wgpu device + queue. All GPU resource creation hangs
-/// off here — buffers, textures, shaders, pipelines, command
+/// Owns one wgpu device and queue. All GPU resource creation
+/// hangs off here: buffers, textures, shaders, pipelines, command
 /// encoders, surfaces.
 class Device {
   construct new_(id) {
@@ -219,11 +218,11 @@ class Device {
 
   /// Allocate a [Buffer] on this device. Descriptor keys:
   ///
-  /// - `"size"`  — Num, bytes (must be multiple of 4).
-  /// - `"usage"` — list with any of `"vertex"`, `"index"`,
+  /// - `"size"`: Num, bytes (must be multiple of 4).
+  /// - `"usage"`: list with any of `"vertex"`, `"index"`,
   ///   `"uniform"`, `"storage"`, `"indirect"`, `"copy-src"`,
   ///   `"copy-dst"`, `"map-read"`, `"map-write"`.
-  /// - `"label"` — optional String, diagnostics.
+  /// - `"label"`: optional String, diagnostics.
   ///
   /// @param {Map} descriptor
   /// @returns {Buffer}
@@ -235,8 +234,8 @@ class Device {
 
   /// Compile a WGSL [ShaderModule]. Descriptor:
   ///
-  /// - `"code"`  — String, WGSL source.
-  /// - `"label"` — optional String, diagnostics.
+  /// - `"code"`: String, WGSL source.
+  /// - `"label"`: optional String, diagnostics.
   ///
   /// @param {Map} descriptor
   /// @returns {ShaderModule}
@@ -248,15 +247,14 @@ class Device {
 
   /// Allocate a [Texture]. Descriptor:
   ///
-  /// - `"width"`, `"height"` — Num.
-  /// - `"depth"`        — optional, layer count for arrays
-  ///   (default 1).
-  /// - `"format"`       — `"rgba8unorm"`, `"depth32float"`, …
-  /// - `"usage"`        — list with any of `"render-attachment"`,
+  /// - `"width"`, `"height"`: Num.
+  /// - `"depth"`: optional, layer count for arrays (default 1).
+  /// - `"format"`: `"rgba8unorm"`, `"depth32float"`, etc.
+  /// - `"usage"`: list with any of `"render-attachment"`,
   ///   `"texture-binding"`, `"storage-binding"`, `"copy-src"`,
   ///   `"copy-dst"`.
-  /// - `"sampleCount"`  — optional, default 1.
-  /// - `"label"`        — optional, diagnostics.
+  /// - `"sampleCount"`: optional, default 1.
+  /// - `"label"`: optional, diagnostics.
   ///
   /// @param {Map} descriptor
   /// @returns {Texture}
@@ -268,7 +266,7 @@ class Device {
 
   /// Build a [Texture] from a decoded image. The argument
   /// duck-types on `width`, `height`, and `pixels` (a `ByteArray`
-  /// or list of RGBA8 bytes) — anything that exposes those three
+  /// or list of RGBA8 bytes). Anything that exposes those three
   /// reads works, including `@hatch:image`'s `Image` class.
   ///
   /// ## Example
@@ -314,15 +312,15 @@ class Device {
     return tex
   }
 
-  /// Direct CPU → texture upload via the device queue. Useful
+  /// Direct CPU-to-texture upload via the device queue. Useful
   /// for dynamic textures (font atlases, GPU-readback round-
   /// trips, procedurally-generated content). Descriptor:
   ///
-  /// - `"x"`, `"y"` — optional copy origin within the texture
+  /// - `"x"`, `"y"`: optional copy origin within the texture
   ///   (default 0).
-  /// - `"width"`, `"height"` — Num.
-  /// - `"bytesPerRow"` — Num.
-  /// - `"rowsPerImage"` — optional, default `height`.
+  /// - `"width"`, `"height"`: Num.
+  /// - `"bytesPerRow"`: Num.
+  /// - `"rowsPerImage"`: optional, default `height`.
   ///
   /// @param {Texture} texture
   /// @param {ByteArray} bytes
@@ -333,13 +331,13 @@ class Device {
 
   /// Allocate a [Sampler]. Descriptor keys (all optional):
   ///
-  /// - `"magFilter"` / `"minFilter"` — `"nearest"` or
-  ///   `"linear"` (default `"linear"`).
-  /// - `"mipmapFilter"` — `"nearest"` or `"linear"`
-  ///   (default `"nearest"`).
-  /// - `"addressModeU"` / `"addressModeV"` / `"addressModeW"` —
+  /// - `"magFilter"` / `"minFilter"`: `"nearest"` or `"linear"`
+  ///   (default `"linear"`).
+  /// - `"mipmapFilter"`: `"nearest"` or `"linear"` (default
+  ///   `"nearest"`).
+  /// - `"addressModeU"` / `"addressModeV"` / `"addressModeW"`:
   ///   `"clamp-to-edge"`, `"repeat"`, or `"mirror-repeat"`.
-  /// - `"label"` — optional String.
+  /// - `"label"`: optional String.
   ///
   /// @param {Map} descriptor
   /// @returns {Sampler}
@@ -351,13 +349,13 @@ class Device {
 
   /// Create a [BindGroupLayout]. Descriptor:
   ///
-  /// - `"entries"` — list of Maps, each with:
-  ///   - `"binding"` — Num.
-  ///   - `"visibility"` — list with any of `"vertex"`,
+  /// - `"entries"`: list of Maps, each with:
+  ///   - `"binding"`: Num.
+  ///   - `"visibility"`: list with any of `"vertex"`,
   ///     `"fragment"`, `"compute"`.
-  ///   - `"kind"` — `"uniform"`, `"storage"`,
+  ///   - `"kind"`: `"uniform"`, `"storage"`,
   ///     `"read-only-storage"`, `"sampler"`, or `"texture"`.
-  ///   - `"sampleType"` (texture-only) — `"float"`, `"depth"`,
+  ///   - `"sampleType"` (texture-only): `"float"`, `"depth"`,
   ///     `"uint"`, or `"sint"`.
   ///
   /// @param {Map} descriptor
@@ -384,8 +382,8 @@ class Device {
   /// Bind buffers / samplers / texture views to a layout's
   /// slots. Descriptor:
   ///
-  /// - `"layout"` — a [BindGroupLayout].
-  /// - `"entries"` — list of Maps, each with `"binding": Num`
+  /// - `"layout"`: a [BindGroupLayout].
+  /// - `"entries"`: list of Maps, each with `"binding": Num`
   ///   plus one of `"buffer": Buffer` (optionally `"offset"` /
   ///   `"size"`), `"sampler": Sampler`, or `"view": TextureView`.
   ///
@@ -410,8 +408,8 @@ class Device {
 
   /// Compile a [RenderPipeline] from a descriptor (vertex /
   /// fragment shader entry points, primitive state, blend / cull
-  /// modes, target formats, …). See `gpu.spec.wren` for the full
-  /// descriptor shape.
+  /// modes, target formats, and so on). See `gpu.spec.wren` for
+  /// the full descriptor shape.
   ///
   /// @param {Map} descriptor
   /// @returns {RenderPipeline}
@@ -448,7 +446,7 @@ class Device {
   /// Build a [Surface] bound to this device from a raw window
   /// handle. The `handle` Map is platform-tagged with the same
   /// shape as `raw_window_handle`'s variants; any window provider
-  /// can produce one — `@hatch:window` is the default winit-backed
+  /// can produce one. `@hatch:window` is the default winit-backed
   /// implementation, but custom embedders (IDE viewports, native
   /// shells, host apps) just need to surface the right pointer
   /// integers and pick the right `"platform"` string.
@@ -467,7 +465,7 @@ class Device {
   /// ```
   ///
   /// The caller MUST keep the underlying window alive at least
-  /// as long as the Surface — wgpu doesn't pin it.
+  /// as long as the Surface; wgpu does not pin it.
   ///
   /// @param {Map} handle
   /// @returns {Surface}
@@ -477,7 +475,7 @@ class Device {
     return Surface.new_(sid, this)
   }
 
-  /// Drop the underlying wgpu device + queue. Idempotent —
+  /// Drop the underlying wgpu device and queue. Idempotent;
   /// calling twice is fine.
   destroy {
     GpuCore.deviceDestroy(_id)
@@ -487,10 +485,9 @@ class Device {
   toString { "Device(%(_id))" }
 }
 
-/// GPU buffer — vertex / index / uniform / storage. Always
-/// owned by exactly one [Device]; dropping the device
-/// invalidates the buffer (writes after that surface a runtime
-/// error).
+/// GPU buffer (vertex / index / uniform / storage). Always
+/// owned by exactly one [Device]. Dropping the device invalidates
+/// the buffer; writes after that surface a runtime error.
 class Buffer {
   construct new_(id, size) {
     _id = id
@@ -525,7 +522,7 @@ class Buffer {
   /// @param {List} mats
   writeMat4s(offset, mats) { GpuCore.bufferWriteMat4s(_id, offset, Buffer.dataOf_(mats)) }
 
-  /// Pack a list of `Vec3` values (3 f32 each, no padding —
+  /// Pack a list of `Vec3` values (3 f32 each, no padding; the
   /// caller pads if the shader expects std140-aligned vec3s).
   ///
   /// @param {Num} offset
@@ -556,8 +553,8 @@ class Buffer {
 
   /// Synchronously map for read + copy bytes back to Wren as a
   /// `List` of Nums (one entry per byte). Blocks the host while
-  /// wgpu drains pending submissions, so use sparingly — best
-  /// for tests and one-shot CPU readback.
+  /// wgpu drains pending submissions, so use sparingly. Best
+  /// suited for tests and one-shot CPU readback.
   ///
   /// @returns {List}
   readBytes() { GpuCore.bufferReadBytes(_id) }
@@ -571,7 +568,7 @@ class Buffer {
   toString { "Buffer(%(_id), %(_size) bytes)" }
 }
 
-/// Compiled WGSL module — stamped out by
+/// Compiled WGSL module. Stamped out by
 /// [Device.createShaderModule]. Used as a vertex / fragment /
 /// compute stage source on a pipeline.
 class ShaderModule {
@@ -587,9 +584,9 @@ class ShaderModule {
   toString { "ShaderModule(%(_id))" }
 }
 
-/// 2D texture — render attachment, readback source, or sampled
-/// input for fragment shaders. Only the `D2` dimension is
-/// exposed today; 1D / 3D / cube can be added on demand.
+/// 2D texture. Render attachment, readback source, or sampled
+/// input for fragment shaders. Only the `D2` dimension is exposed
+/// today; 1D / 3D / cube can be added on demand.
 class Texture {
   construct new_(id, descriptor) {
     _id     = id
@@ -607,13 +604,13 @@ class Texture {
   /// Texture height in texels.
   /// @returns {Num}
   height { _height }
-  /// Texture format string (`"rgba8unorm"`, `"depth32float"`, …).
+  /// Texture format string (`"rgba8unorm"`, `"depth32float"`, etc.).
   /// @returns {String}
   format { _format }
 
-  /// Build a default [TextureView] — covers the whole texture
-  /// at the texture's own format. Higher-level renderers can
-  /// build sliced views by calling the foreign API directly.
+  /// Build a default [TextureView]. Covers the whole texture at
+  /// the texture's own format. Higher-level renderers can build
+  /// sliced views by calling the foreign API directly.
   /// @returns {TextureView}
   createView() {
     var vid = GpuCore.textureCreateView(_id)
@@ -629,8 +626,8 @@ class Texture {
   toString { "Texture(%(_id), %(_width)x%(_height) %(_format))" }
 }
 
-/// View into a [Texture] — what gets bound into a pipeline's
-/// colour / depth attachments and into [BindGroup] entries.
+/// View into a [Texture]. Bound into a pipeline's colour and
+/// depth attachments, and into [BindGroup] entries.
 class TextureView {
   construct new_(id, format, width, height) {
     _id     = id
@@ -661,7 +658,7 @@ class TextureView {
   toString { "TextureView(%(_id))" }
 }
 
-/// GPU sampler — controls how a [Texture] is filtered and
+/// GPU sampler. Controls how a [Texture] is filtered and
 /// addressed when sampled in a fragment shader.
 class Sampler {
   construct new_(id) { _id = id }
@@ -771,9 +768,9 @@ class CommandEncoder {
   device { _device }
 
   /// Open a render pass against `descriptor` (colour / depth
-  /// attachments, clear values, …). Returns a [RenderPass] that
-  /// accumulates commands; call `pass.end` to flush them into
-  /// the encoder.
+  /// attachments, clear values, etc.). Returns a [RenderPass]
+  /// that accumulates commands; call `pass.end` to flush them
+  /// into the encoder.
   ///
   /// @param {Map} descriptor
   /// @returns {RenderPass}
@@ -784,8 +781,9 @@ class CommandEncoder {
   /// Copy `texture` into `buffer` so the host can read pixels
   /// back. Descriptor keys:
   ///
-  /// - `"width"`, `"height"` — copy region size.
-  /// - `"bytesPerRow"`, `"rowsPerImage"` — optional layout overrides.
+  /// - `"width"`, `"height"`: copy region size.
+  /// - `"bytesPerRow"`, `"rowsPerImage"`: optional layout
+  ///   overrides.
   ///
   /// @param {Texture} texture
   /// @param {Buffer} buffer
@@ -811,8 +809,8 @@ class CommandEncoder {
 
 /// Render-pass builder. Accumulates commands client-side and
 /// emits them in a single foreign call on `end`. Sidesteps the
-/// `wgpu::RenderPass<'a>` lifetime — no long-lived borrow on
-/// the encoder needs to cross the FFI boundary.
+/// `wgpu::RenderPass<'a>` lifetime; no long-lived borrow on the
+/// encoder needs to cross the FFI boundary.
 class RenderPass {
   construct new_(encoder, descriptor) {
     _encoder = encoder
@@ -890,7 +888,7 @@ class RenderPass {
   }
 
   /// Flush the recorded commands into the parent encoder.
-  /// Closes this render pass — call once per pass.
+  /// Closes this render pass; call once per pass.
   end {
     var dec = RenderPass.normalizeDescriptor_(_desc)
     dec["commands"] = _cmds
@@ -922,8 +920,8 @@ class RenderPass {
 
 // -- Renderer2D --------------------------------------------------
 //
-// Sprite batcher + ortho camera. Built on top of every other
-// primitive in this module — pure Wren, no extra plugin.
+// Sprite batcher and ortho camera. Built on top of every other
+// primitive in this module. Pure Wren, no extra plugin.
 //
 //   var renderer = Renderer2D.new(device, surfaceFormat)
 //   renderer.beginFrame(camera)
@@ -932,12 +930,13 @@ class RenderPass {
 //   renderer.drawSprite(texture, x, y, w, h)
 //   renderer.flush(pass)
 //
-// One pipeline + one vertex buffer + one uniform buffer per
+// One pipeline, one vertex buffer, and one uniform buffer per
 // renderer. Sprites with the same texture get coalesced into one
 // draw call; a texture switch flushes the current batch and
 // starts a new one. The current cap is 4096 sprites per flush
-// (32 floats per sprite × 4096 = 512 KB vertex buffer); flushes
-// are explicit so the user controls when GPU work goes out.
+// (32 floats per sprite times 4096 = 512 KB vertex buffer);
+// flushes are explicit so the user controls when GPU work goes
+// out.
 
 /// Orthographic camera for 2D scenes. `(0, 0)` is the top-left
 /// of the design-space rectangle the camera describes; `(width,
@@ -949,7 +948,7 @@ class RenderPass {
 /// a differently-sized surface without distorting aspect ratio.
 class Camera2D {
   /// Build a camera with the given design-space dimensions.
-  /// Defaults to the stretch-to-surface projection — call
+  /// Defaults to the stretch-to-surface projection. Call
   /// [Camera2D.fitContain] to letterbox.
   ///
   /// @param {Num} width
@@ -963,14 +962,14 @@ class Camera2D {
   }
 
   /// Aspect-fit-contain projection. The design rectangle
-  /// (`designW × designH`) renders at the largest size that
-  /// fits inside the surface (`surfaceW × surfaceH`), centred.
+  /// (`designW` by `designH`) renders at the largest size that
+  /// fits inside the surface (`surfaceW` by `surfaceH`), centred.
   /// The leftover area on the wider axis is padded by extending
   /// the orthographic bounds past the design rectangle, so any
   /// draw outside design space simply lands in the letterbox
-  /// region — and the render pass's clear colour already paints
-  /// that whole area, giving free letterbox bars without a
-  /// render-pass viewport call.
+  /// region. The render pass's clear colour already paints that
+  /// whole area, giving free letterbox bars without a render-pass
+  /// viewport call.
   ///
   /// ## Example
   ///
@@ -1009,7 +1008,7 @@ class Camera2D {
   origin=(v) { _origin = v }
 
   /// Refit the projection to a new surface size while keeping
-  /// the design rectangle (`width × height`) intact. Call from
+  /// the design rectangle (`width` by `height`) intact. Call from
   /// a `Game.resize` override so a single camera tracks resizes
   /// without being reallocated each frame.
   ///
@@ -1024,14 +1023,14 @@ class Camera2D {
     var sa = surfaceW / surfaceH
     var da = _width   / _height
     if (sa > da) {
-      // Surface is wider than design → pillarbox left + right.
+      // Surface is wider than design: pillarbox left and right.
       // Extend the ortho bounds horizontally so the design
       // rectangle's width maps to the largest centred sub-region
       // that preserves aspect.
       _padX = (_height * sa - _width) / 2
       _padY = 0
     } else {
-      // Surface is taller than design → letterbox top + bottom.
+      // Surface is taller than design: letterbox top and bottom.
       _padX = 0
       _padY = (_width / sa - _height) / 2
     }
@@ -1059,9 +1058,9 @@ class Camera2D {
   viewProj {
     var l = _origin.x - _padX
     var r = _origin.x + _width + _padX
-    // bottom > top → m[1,1] negative → y axis flips so screen-
-    // pixel coordinates (y-down) land on the WebGPU NDC the
-    // shader expects.
+    // bottom > top makes m[1,1] negative; y axis flips so
+    // screen-pixel coordinates (y-down) land on the WebGPU NDC
+    // the shader expects.
     var b = _origin.y + _height + _padY
     var t = _origin.y - _padY
     return Mat4.ortho(l, r, b, t, -1000, 1000)
@@ -1086,12 +1085,12 @@ class Camera2D {
 /// ```
 ///
 /// Capacity is `MAX_SPRITES_` (4096). Calling [Renderer2D.drawSprite]
-/// past the cap aborts the fiber — flush more often, or split
+/// past the cap aborts the fiber. Flush more often, or split
 /// the scene into multiple passes.
 class Renderer2D {
-  // Default sprite shader — position (vec2) + uv (vec2) +
-  // color (vec4) per vertex; one mat4 view-projection in a
-  // uniform; sampler + texture in the same bind group.
+  // Default sprite shader. Position (vec2), uv (vec2), and color
+  // (vec4) per vertex; one mat4 view-projection in a uniform;
+  // sampler + texture in the same bind group.
   static SPRITE_WGSL_ {
     return "
       struct Uniforms { vp: mat4x4<f32> };
@@ -1133,7 +1132,7 @@ class Renderer2D {
   /// attachment.
   ///
   /// @param {Device} device
-  /// @param {String} surfaceFormat — e.g. `"bgra8unorm"`.
+  /// @param {String} surfaceFormat (for example, `"bgra8unorm"`).
   construct new(device, surfaceFormat) {
     init_(device, surfaceFormat, null)
   }
@@ -1147,7 +1146,7 @@ class Renderer2D {
   ///
   /// @param {Device} device
   /// @param {String} surfaceFormat
-  /// @param {String} depthFormat — e.g. `"depth32float"`.
+  /// @param {String} depthFormat (for example, `"depth32float"`).
   construct new(device, surfaceFormat, depthFormat) {
     init_(device, surfaceFormat, depthFormat)
   }
@@ -1226,11 +1225,11 @@ class Renderer2D {
 
     // Per-frame state
     _floats     = []
-    // Reusable scratch List for the camera matrix upload — 16
+    // Reusable scratch List for the camera matrix upload. 16
     // floats every beginFrame. Pre-allocated to its final size so
     // `beginFrame` writes via index assignment (no `clear` /
-    // `add` per call) — keeps the per-frame allocation rate at
-    // zero on this path AND sidesteps a tiered-mode miscompile
+    // `add` per call). Keeps the per-frame allocation rate at
+    // zero on this path and sidesteps a tiered-mode miscompile
     // where the inner `add` calls inside two nested while-loops
     // were dropping elements (the user's first frame ended up
     // with `_cameraScratch[0] == null`, which surfaced as
@@ -1240,7 +1239,7 @@ class Renderer2D {
     _spriteCount = 0
     _curTexture  = null
     _curBindGroup = null
-    _bindGroups   = {}    // texture id → BindGroup (lazy cache)
+    _bindGroups   = {}    // texture id -> BindGroup (lazy cache)
   }
 
   /// Reset the per-frame batch and upload `camera.viewProj`'s
@@ -1254,7 +1253,7 @@ class Renderer2D {
     // ortho's translation column lands where the shader expects.
     // The transpose is unrolled and uses index assignment into
     // a pre-allocated `_cameraScratch` instead of nested while
-    // loops calling `add` — the looped form miscompiled under
+    // loops calling `add`; the looped form miscompiled under
     // tiered execution and dropped elements, surfacing as
     // `Buffer.writeFloats: every element must be a number`.
     var d = camera.viewProj.data
@@ -1293,8 +1292,8 @@ class Renderer2D {
     drawSprite_(texture, x, y, w, h, 0, 0, 1, 1, 1, 1, 1, 1)
   }
 
-  /// Queue an axis-aligned sprite with custom UV bounds —
-  /// useful for atlas slicing.
+  /// Queue an axis-aligned sprite with custom UV bounds. Useful
+  /// for atlas slicing.
   ///
   /// @param {Texture} texture
   /// @param {Num} x
@@ -1329,7 +1328,7 @@ class Renderer2D {
   /// @param {Sprite} sprite
   draw(sprite) { sprite.draw(this) }
 
-  // Internal — does the actual vertex emit. Two triangles per
+  // Internal. Does the actual vertex emit. Two triangles per
   // sprite, no shared vertices to keep the fragment-stage
   // colour interpolation correct without an index buffer.
   drawSprite_(texture, x, y, w, h, u0, v0, u1, v1, r, g, b, a) {
@@ -1344,11 +1343,11 @@ class Renderer2D {
     var y1 = y + h
     var f = _floats
 
-    // Triangle 1 — top-left, bottom-left, bottom-right
+    // Triangle 1: top-left, bottom-left, bottom-right.
     pushVertex_(f, x,  y,  u0, v0, r, g, b, a)
     pushVertex_(f, x,  y1, u0, v1, r, g, b, a)
     pushVertex_(f, x1, y1, u1, v1, r, g, b, a)
-    // Triangle 2 — top-left, bottom-right, top-right
+    // Triangle 2: top-left, bottom-right, top-right.
     pushVertex_(f, x,  y,  u0, v0, r, g, b, a)
     pushVertex_(f, x1, y1, u1, v1, r, g, b, a)
     pushVertex_(f, x1, y,  u1, v0, r, g, b, a)
@@ -1367,7 +1366,7 @@ class Renderer2D {
     f.add(a)
   }
 
-  // Lazily cache one BindGroup per (texture id) — sampler + UBO
+  // Lazily cache one BindGroup per (texture id). Sampler and UBO
   // are shared, so the only thing that varies per texture is the
   // view binding.
   bindGroupFor_(texture) {
@@ -1416,11 +1415,11 @@ class Renderer2D {
   }
 }
 
-/// Mutable sprite state — `(texture, x, y, w, h)` plus tint /
+/// Mutable sprite state. `(texture, x, y, w, h)` plus tint /
 /// scale / anchor / UV. Reuse one `Sprite` across many frames;
 /// mutate its fields between draws. The renderer batches by
-/// texture, so swapping `_quad`'s position + UV per call keeps
-/// everything in a single draw call.
+/// texture, so swapping `_quad`'s position and UV per call
+/// keeps everything in a single draw call.
 ///
 /// Anchor is a fractional offset (`(0, 0)` = top-left,
 /// `(0.5, 0.5)` = centre, `(1, 1)` = bottom-right) so changes
@@ -1497,11 +1496,11 @@ class Sprite {
     _scaleY = v
   }
 
-  /// Anchor X in `[0, 1]` — `0` = left edge, `0.5` = centre,
+  /// Anchor X in `[0, 1]`. `0` = left edge, `0.5` = centre,
   /// `1` = right.
   /// @returns {Num}
   anchorX  { _anchorX }
-  /// Anchor Y in `[0, 1]` — `0` = top, `0.5` = centre,
+  /// Anchor Y in `[0, 1]`. `0` = top, `0.5` = centre,
   /// `1` = bottom.
   /// @returns {Num}
   anchorY  { _anchorY }
@@ -1629,7 +1628,7 @@ class Camera3D {
 
   setProjection_(m) { _proj = m }
 
-  /// Build the view matrix from eye → target. Idempotent — call
+  /// Build the view matrix from eye to target. Idempotent; call
   /// every frame if the camera moves.
   lookAt(eye, target, up) {
     _eye = eye
@@ -1661,10 +1660,10 @@ class Camera3D {
 
 /// -- Light -------------------------------------------------------
 ///
-/// One directional light + ambient term, encoded as the Renderer3D
-/// expects. Set `direction` as the vector light *travels in* (i.e.
-/// from sun → ground); the shader negates it before dotting with
-/// the surface normal.
+/// One directional light plus ambient term, encoded as the
+/// Renderer3D expects. Set `direction` as the vector light
+/// *travels in* (sun-to-ground); the shader negates it before
+/// dotting with the surface normal.
 class Light {
   construct new() {
     _direction = Vec3.new(-0.3, -1.0, -0.5)
@@ -1681,12 +1680,13 @@ class Light {
 
 /// -- Mesh --------------------------------------------------------
 ///
-/// Vertex layout: position vec3 + normal vec3 + uv vec2, 32 bytes
-/// total. Indices are u32 so meshes with > 65k vertices work.
+/// Vertex layout: position vec3, normal vec3, uv vec2; 32 bytes
+/// total. Indices are u32 so meshes with more than 65k vertices
+/// work.
 ///
 /// Build meshes via the static helpers (`Mesh.cube`, etc.) for
 /// procedural primitives, or call `Mesh.fromArrays(device,
-/// vertices, indices)` to upload your own buffers — typically
+/// vertices, indices)` to upload your own buffers, typically
 /// from a glTF / OBJ loader.
 class Mesh {
   construct new_(device, vertexBuffer, indexBuffer, indexCount) {
@@ -1719,15 +1719,16 @@ class Mesh {
   }
 
   /// Axis-aligned cube centred on origin. Side length = 2 * half
-  /// (default 1 — total side length 2). Vertices are duplicated
-  /// per face so face-normals stay flat (no normal averaging).
+  /// (default 1, for a total side length of 2). Vertices are
+  /// duplicated per face so face-normals stay flat (no normal
+  /// averaging).
   static cube(device) { cube(device, 1) }
   static cube(device, half) {
     var h = half
-    // Vertices: 6 faces × 4 verts = 24, each (pos.xyz, n.xyz, u, v)
+    // Vertices: 6 faces, 4 verts each = 24, each (pos.xyz, n.xyz, u, v).
     var v = []
     var pushFace = Fn.new {|nx, ny, nz, p0, p1, p2, p3|
-      // Each face: 4 verts, normal shared, uvs (0,0)(1,0)(1,1)(0,1)
+      // Each face: 4 verts, normal shared, uvs (0,0)(1,0)(1,1)(0,1).
       var quad = [p0, p1, p2, p3]
       var uvs  = [[0, 0], [1, 0], [1, 1], [0, 1]]
       var i = 0
@@ -1816,17 +1817,19 @@ class Material {
 
 /// -- Renderer3D --------------------------------------------------
 ///
-/// One pipeline + one scene-uniform buffer + per-draw model + tint
-/// uploads. Each `renderer.draw(mesh, material, modelMatrix)`
-/// rewrites the per-draw uniform and emits one indexed draw call.
+/// One pipeline, one scene-uniform buffer, plus per-draw model
+/// and tint uploads. Each `renderer.draw(mesh, material,
+/// modelMatrix)` rewrites the per-draw uniform and emits one
+/// indexed draw call.
 ///
 ///   var renderer = Renderer3D.new(device, surfaceFormat, depthFormat)
 ///   renderer.beginFrame(pass, camera, light)
 ///   renderer.draw(cubeMesh, redMaterial, Mat4.translation(0, 0, 0))
 ///   renderer.draw(planeMesh, greenMaterial, Mat4.translation(0, -1, 0))
 ///
-/// The renderer doesn't own the depth target — the caller passes
-/// one as part of the render-pass descriptor (see the demo).
+/// The renderer does not own the depth target. The caller
+/// passes one as part of the render-pass descriptor (see the
+/// demo).
 class Renderer3D {
   // Default lit shader. Single uniform block with view-projection,
   // model, tint, and one directional light.
@@ -1940,8 +1943,8 @@ class Renderer3D {
     _pass      = null
   }
 
-  /// Begin a frame. Stores the active pass + scene uniforms;
-  /// each subsequent draw rewrites the model + tint slots.
+  /// Begin a frame. Stores the active pass and scene uniforms.
+  /// Each subsequent draw rewrites the model and tint slots.
   beginFrame(pass, camera, light) {
     _pass = pass
     _vp = camera.viewProj
@@ -1962,7 +1965,7 @@ class Renderer3D {
     appendMat4_(floats, _vp)
     appendMat4_(floats, model)
     // normal_mat = inverse(transpose(model)). For orthonormal
-    // model matrices (rotation + translation only), the model
+    // model matrices (rotation and translation only), the model
     // matrix's upper-3x3 itself works as the normal matrix.
     // Non-orthonormal models will need a real inverse-transpose
     // once `Mat4.inverse` is exposed.
@@ -1997,7 +2000,7 @@ class Renderer3D {
   // Mat4.data is row-major (math convention) but WGSL's
   // mat4x4<f32> consumes 16 floats as column-major. Transpose at
   // the upload boundary so the shader's M*v multiplies row 0
-  // dotted with v as expected. Unrolled (no nested while) — the
+  // dotted with v as expected. Unrolled (no nested while). The
   // looped form miscompiled under tiered execution; see the
   // matching note in `Renderer2D.beginFrame`.
   appendMat4_(out, m) {
@@ -2039,7 +2042,7 @@ class Renderer3D {
 /// Reads its WGSL from a `@hatch:assets` database; rebuilds the
 /// underlying RenderPipeline in place whenever the shader file's
 /// content hash advances. From the caller's perspective it
-/// behaves exactly like a normal RenderPipeline — bind it via
+/// behaves exactly like a normal RenderPipeline. Bind it via
 /// `pass.setPipeline(livePipeline)` and the .id getter resolves
 /// to the current internal pipeline at record time.
 ///
@@ -2068,14 +2071,14 @@ class LivePipeline {
     db.on(shaderPath) {|asset| self.rebuild_() }
   }
 
-  /// Forwards setPipeline / debug callers — always points at the
-  /// freshest internal pipeline.
+  /// Forwards `setPipeline` and debug callers. Always points at
+  /// the freshest internal pipeline.
   id { _pipeline.id }
 
-  /// Drop watchers + the underlying pipeline + shader. The
-  /// assets db's on() registration leaks intentionally — the
-  /// user is expected to keep the LivePipeline alive for the
-  /// lifetime of the application.
+  /// Drop watchers, the underlying pipeline, and the shader. The
+  /// assets db's on() registration leaks intentionally; the user
+  /// is expected to keep the LivePipeline alive for the lifetime
+  /// of the application.
   destroy {
     if (_pipeline != null) _pipeline.destroy
     if (_shader != null) _shader.destroy
@@ -2084,11 +2087,11 @@ class LivePipeline {
   }
 
   // Re-read shader source, recompile, rebuild the pipeline using
-  // the new shader as both vertex + fragment module. Old shader +
-  // pipeline are dropped after the new ones land — wgpu
-  // ref-counts them, so any setPipeline that already captured the
-  // old id still resolves correctly through the foreign registry
-  // until the encoder it lives in is submitted.
+  // the new shader as both vertex and fragment module. The old
+  // shader and pipeline are dropped after the new ones land;
+  // wgpu ref-counts them, so any `setPipeline` that already
+  // captured the old id still resolves correctly through the
+  // foreign registry until the encoder it lives in is submitted.
   rebuild_() {
     var oldPipe   = _pipeline
     var oldShader = _shader
@@ -2163,14 +2166,14 @@ class Surface {
   id { _id }
 
   /// Apply a configuration descriptor (`width`, `height`,
-  /// `format`, `presentMode`, …). Call after window resize.
+  /// `format`, `presentMode`, etc.). Call after window resize.
   /// @param {Map} descriptor
   configure(descriptor) { GpuCore.surfaceConfigure(_id, descriptor) }
 
   /// Acquire the next swap-chain image as a [SurfaceFrame].
   /// Its `view` is usable as a render-pass colour attachment;
   /// `frame.present` schedules the swap. Aborts the fiber if
-  /// the swap chain is lost / outdated — callers should
+  /// the swap chain is lost or outdated. Callers should
   /// re-configure on a window-resize event and retry.
   /// @returns {SurfaceFrame}
   acquire() {
