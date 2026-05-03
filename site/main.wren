@@ -31,7 +31,7 @@ var notFound = Fn.new {|requestedPath|
 // the runtime cuts a release — there's no native runtime API
 // to read it back yet, so we keep it as a literal here and
 // thread it through the page context.
-var WRENLIFT_VERSION = "0.1.0"
+var WRENLIFT_VERSION = "0.1.13"
 
 // `Cache-Control` policies, scaled to each route's update cadence.
 // `stale-while-revalidate` lets the browser show the cached page

@@ -1,5 +1,5 @@
 name        = "site"
-version     = "0.1.0"
+version     = "0.1.13"
 entry       = "main"
 description = "hatch.wrenlift.com — landing page for Hatch. Server-rendered with @hatch:web + @hatch:template, fragments swapped via htmx, packages catalog backed by an in-memory SQLite of the GitHub-hosted index.toml."
 
