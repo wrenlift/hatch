@@ -1,5 +1,5 @@
 name        = "@hatch:physics"
-version     = "0.1.3"
+version     = "0.1.4"
 entry       = "physics"
 description = "Rapier-backed physics. `World2D` and `World3D` from one import — bodies, colliders, gravity, force / impulse, position + velocity reads. Bundles rapier2d + rapier3d in a single cdylib so games never have to choose between dimensions at the package level. Wires into `@hatch:game` for a step-per-frame physics loop."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:physics"
@@ -9,7 +9,7 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-rev   = "02178e9a541b31c7cb97f880e05d19d30e333c7d"
+rev   = "6c2e530"
 crate = "wlift_physics"
 
 [native_libs.wlift_physics]
