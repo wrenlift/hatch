@@ -1,0 +1,265 @@
+name: Sweep + publish docs (no version bump)
+
+# Re-uploads each package's docs JSON + README to Supabase
+# Storage at the version currently declared in the hatchfile.
+# Use this when documentation prose changes (comment cleanup,
+# README tweaks, factual corrections) but the bundle / catalog
+# version hasn't moved.
+#
+# The hatch-bot Edge Function's `/docs-upload` and `/readme-upload`
+# routes both call Supabase Storage with `upsert: true`, so
+# re-uploading the same `<short>/<version>/docs.json` key
+# overwrites cleanly. Catalog rows already point at the
+# canonical URL, so no catalog upsert is needed; the URL is
+# stable, only the content changes.
+#
+# Why a separate workflow vs. re-firing publish-{pkg,plugin}.yml:
+#
+#   * `publish-plugin.yml` cross-compiles a 5-target cdylib
+#     matrix per package. Wasted CPU when only prose changed.
+#   * Both publish workflows refresh the GitHub Release at
+#     `publish/<pkg>@<ver>`. Re-firing on the same version
+#     conflicts on existing release assets.
+#   * This sweep only touches Supabase Storage. Safe to run
+#     after every doc cleanup or typo fix.
+#
+# Trigger: manual `workflow_dispatch`. The optional `package`
+# input narrows to one package; `dry_run` lists what would
+# upload without firing the POSTs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Single package directory (default: all)"
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: "List uploads but don't POST"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-docs-sweep
+  cancel-in-progress: true
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: docs-sweep-cargo-${{ runner.os }}-${{ hashFiles('packages/*/hatchfile') }}
+          restore-keys: |
+            docs-sweep-cargo-${{ runner.os }}-
+
+      - name: Install hatch + wlift from main
+        # `hatch docs <pkg_dir>` runs the doc collector that
+        # walks every `.wren` file under the package and emits
+        # `[ModuleDoc]` JSON. Identical to what `hatch publish`
+        # uploads internally; bypassing the publish path lets us
+        # skip the bundle build + GitHub Release dance.
+        run: |
+          cargo install --git https://github.com/wrenlift/WrenLift.git \
+                        --branch main --bins --locked \
+                        wren_lift
+
+      - name: Sweep
+        env:
+          HATCH_BOT_URL: ${{ vars.HATCH_BOT_URL }}
+          HATCH_BOT_SECRET: ${{ secrets.HATCH_BOT_SECRET }}
+          INPUT_PACKAGE: ${{ inputs.package }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -eu
+
+          if [ -z "${HATCH_BOT_URL:-}" ] || [ -z "${HATCH_BOT_SECRET:-}" ]; then
+            echo "::error::HATCH_BOT_URL or HATCH_BOT_SECRET unset"
+            exit 1
+          fi
+
+          # Strip a trailing `/publish` if present. The org var is
+          # configured as the hatch CLI's publish endpoint
+          # (`<bot>/publish`); the upload routes are siblings off
+          # the function root.
+          base="${HATCH_BOT_URL%/publish}"
+          base="${base%/}"
+
+          ok=0
+          skipped=0
+          failed=0
+          failed_pkgs=""
+
+          for pkg_dir in packages/*/; do
+            pkg=$(basename "$pkg_dir")
+
+            if [ -n "$INPUT_PACKAGE" ] && [ "$INPUT_PACKAGE" != "$pkg" ]; then
+              continue
+            fi
+
+            name=$(awk -F'"' '/^name *=/ {print $2; exit}' "$pkg_dir/hatchfile")
+            version=$(awk -F'"' '/^version *=/ {print $2; exit}' "$pkg_dir/hatchfile")
+
+            if [ -z "$name" ] || [ -z "$version" ]; then
+              echo "::warning::$pkg: name or version missing in hatchfile, skipping"
+              skipped=$((skipped+1))
+              continue
+            fi
+
+            echo "::group::$name @ $version ($pkg)"
+
+            # ---- Docs JSON ----
+            #
+            # `hatch docs` returns `[]` for packages with no `///`
+            # doc comments. Don't POST those — keeps the catalog
+            # row's `docs_url` whatever it was (probably null).
+            docs_json=$(hatch docs "$pkg_dir" 2>/dev/null) || {
+              echo "::warning::$pkg: hatch docs failed, skipping"
+              skipped=$((skipped+1))
+              echo "::endgroup::"
+              continue
+            }
+
+            stripped=$(echo "$docs_json" | tr -d '[:space:]')
+            if [ "$stripped" = "[]" ] || [ -z "$stripped" ]; then
+              echo "  no docs payload (empty / no \`///\` comments), skipping docs upload"
+            else
+              body=$(jq -n \
+                --arg n "$name" \
+                --arg v "$version" \
+                --argjson d "$docs_json" \
+                '{name:$n, version:$v, docs:$d}')
+
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "  [dry] would POST /docs-upload ($(echo "$body" | wc -c) bytes)"
+              else
+                if resp=$(curl -fsSL -X POST "$base/docs-upload" \
+                  -H "Authorization: Bearer $HATCH_BOT_SECRET" \
+                  -H "Content-Type: application/json" \
+                  -d "$body"); then
+                  url=$(echo "$resp" | jq -r '.url // "?"')
+                  echo "  docs uploaded → $url"
+                else
+                  echo "::error::$pkg: /docs-upload POST failed"
+                  failed=$((failed+1))
+                  failed_pkgs="$failed_pkgs $pkg"
+                  echo "::endgroup::"
+                  continue
+                fi
+              fi
+            fi
+
+            # ---- README markdown ----
+            readme_path=$(awk -F'"' '/^readme *=/ {print $2; exit}' "$pkg_dir/hatchfile")
+            [ -z "$readme_path" ] && readme_path="README.md"
+
+            readme_url=""
+            if [ "${readme_path#http}" != "$readme_path" ]; then
+              echo "  readme is an external URL, skipping upload"
+              readme_url="$readme_path"
+            elif [ -f "$pkg_dir/$readme_path" ]; then
+              readme_content=$(cat "$pkg_dir/$readme_path")
+              body=$(jq -n \
+                --arg n "$name" \
+                --arg v "$version" \
+                --arg r "$readme_content" \
+                '{name:$n, version:$v, readme:$r}')
+
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "  [dry] would POST /readme-upload ($(echo "$readme_content" | wc -c) bytes)"
+              else
+                if resp=$(curl -fsSL -X POST "$base/readme-upload" \
+                  -H "Authorization: Bearer $HATCH_BOT_SECRET" \
+                  -H "Content-Type: application/json" \
+                  -d "$body"); then
+                  readme_url=$(echo "$resp" | jq -r '.url // ""')
+                  echo "  readme uploaded → $readme_url"
+                else
+                  # README upload failure is logged as a warning,
+                  # not an error — docs already uploaded
+                  # successfully and a missing README isn't fatal
+                  # for the catalog row's content.
+                  echo "::warning::$pkg: /readme-upload POST failed (continuing)"
+                fi
+              fi
+            else
+              echo "  no README at $pkg_dir$readme_path, skipping"
+            fi
+
+            # ---- Catalog metadata refresh ----
+            #
+            # Re-POST `/publish` with the current hatchfile fields
+            # so the catalog row's `description` / `homepage` /
+            # `docs_url` / `readme_url` track whatever the
+            # hatchfile says today. The endpoint upserts on
+            # `(name, version)` so the row identity is stable;
+            # only the metadata columns refresh. Required for
+            # catalog visibility on description tweaks that
+            # accompany doc cleanup. `git` field is hard-coded
+            # since every package in this repo lives in
+            # `wrenlift/hatch`.
+            description=$(awk -F'"' '/^description *=/ {print $2; exit}' "$pkg_dir/hatchfile")
+            homepage=$(awk -F'"' '/^homepage *=/ {print $2; exit}' "$pkg_dir/hatchfile")
+
+            record_args=(
+              --arg n "$name"
+              --arg v "$version"
+              --arg g "https://github.com/wrenlift/hatch"
+            )
+            record_filter='{name:$n, version:$v, git:$g}'
+            if [ -n "$description" ]; then
+              record_args+=(--arg d "$description")
+              record_filter="$record_filter | .description = \$d"
+            fi
+            if [ -n "$homepage" ]; then
+              record_args+=(--arg h "$homepage")
+              record_filter="$record_filter | .homepage = \$h"
+            fi
+            if [ -n "$readme_url" ]; then
+              record_args+=(--arg ru "$readme_url")
+              record_filter="$record_filter | .readme = \$ru"
+            fi
+
+            record=$(jq -n "${record_args[@]}" "$record_filter")
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "  [dry] would POST /publish: $(echo "$record" | jq -c .)"
+            else
+              if resp=$(curl -fsSL -X POST "$base/publish" \
+                -H "Authorization: Bearer $HATCH_BOT_SECRET" \
+                -H "Content-Type: application/json" \
+                -d "$record"); then
+                echo "  catalog refreshed: $(echo "$resp" | jq -c .)"
+              else
+                echo "::warning::$pkg: /publish POST failed (continuing)"
+              fi
+            fi
+
+            ok=$((ok+1))
+            echo "::endgroup::"
+          done
+
+          echo
+          echo "==============================="
+          echo "Sweep complete: $ok ok, $skipped skipped, $failed failed"
+          if [ -n "$failed_pkgs" ]; then
+            echo "Failed:$failed_pkgs"
+          fi
+          if [ "$failed" -gt 0 ]; then
+            exit 1
+          fi
