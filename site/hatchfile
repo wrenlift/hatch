@@ -1,15 +1,20 @@
 name        = "site"
-version     = "0.1.13"
+version     = "0.1.14"
 entry       = "main"
 description = "hatch.wrenlift.com — landing page for Hatch. Server-rendered with @hatch:web + @hatch:template, fragments swapped via htmx, packages catalog backed by an in-memory SQLite of the GitHub-hosted index.toml."
 
 [dependencies]
 # `@hatch:http@0.3.2` moved onto `@hatch:json@0.1.2` (the same
-# version `@hatch:web@0.1.5` already pins), so the diamond no
+# version `@hatch:web@0.1.6` already pins), so the diamond no
 # longer trips the bundler. Catalog refresh + docs/readme fetch
 # now use the fiber-cooperative `Http.get` reads instead of
 # shelling out to `curl` via `@hatch:proc`.
-"@hatch:web"    = "0.1.5"
+#
+# `@hatch:web@0.1.6` bumps `@hatch:template` 0.1.2 → 0.1.3, which
+# restores `ExprParse_.parse`'s `pos_ < src.count` validation now
+# that wren_lift v0.1.17 fixed the JIT GC-rooting class that the
+# original bandaid was avoiding.
+"@hatch:web"    = "0.1.6"
 "@hatch:sqlite" = "0.1.5"
 "@hatch:http"   = "0.3.2"
 "@hatch:toml"   = "0.1.0"
