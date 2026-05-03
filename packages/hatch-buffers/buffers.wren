@@ -1,4 +1,4 @@
-/// `@hatch:buffers` — namespace re-export for the built-in typed
+/// `@hatch:buffers`: namespace re-export for the built-in typed
 /// buffer classes. `ByteArray`, `Float32Array`, and `Float64Array`
 /// live in the Wren prelude so they're always callable; this
 /// package exists so callers who prefer explicit imports can
@@ -31,7 +31,7 @@
 ///
 /// Typed arrays are drop-in replacements for `List<Num>` wherever
 /// `@hatch:crypto`, `@hatch:zip`, `@hatch:socket`, `@hatch:hash`,
-/// or `@hatch:io` expect a byte input — they accept `ByteArray`
+/// or `@hatch:io` expect a byte input. They accept `ByteArray`
 /// directly without a `List` round-trip.
 
 class Buffers {

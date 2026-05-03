@@ -1,4 +1,4 @@
-/// `@hatch:template` — Jinja / Twig-style templating for HTML
+/// `@hatch:template`: Jinja / Twig-style templating for HTML
 /// and XML.
 ///
 /// ```wren
@@ -28,17 +28,17 @@
 /// - Literals: `42`, `1.5`, `"str"`, `'str'`, `true`, `false`, `null`.
 /// - Comparisons: `==` `!=` `<` `<=` `>` `>=`.
 /// - Booleans: `and` / `or` / `not`.
-/// - Filters: `{{ x | upper }}` / `{{ x | default("—") }}`.
+/// - Filters: `{{ x | upper }}` / `{{ x | default("-") }}`.
 /// - Builtins: `escape`, `raw`, `upper`, `lower`, `default`,
 ///   `length`, `join`.
 ///
 /// ## htmx
 ///
-/// - `tpl.renderFragment("name", ctx)` — render a
+/// - `tpl.renderFragment("name", ctx)` renders a
 ///   `{% fragment %}` block only.
-/// - `ctx["#hx"] = { "request": true }` — exposed as `hx` in
+/// - `ctx["#hx"] = { "request": true }` is exposed as `hx` in
 ///   templates.
-/// - `Hx.response(body).trigger("x")` — build `HX-*` response
+/// - `Hx.response(body).trigger("x")` builds `HX-*` response
 ///   headers.
 
 class TemplateError {
@@ -859,7 +859,7 @@ class Scope_ {
 
 // Internal: wraps a {% fill %} body so a slot that exposes `with { ... }`
 // bindings can render it with those bindings in scope. The fill sees the
-// caller's scope — not the included template's — so references like
+// caller's scope (not the included template's), so references like
 // {{ outerUser.name }} resolve correctly from the embed site.
 class SlotFill_ {
   construct new(body, scope, comps, slots, registry) {
@@ -1048,8 +1048,8 @@ class Render_ {
       return
     }
     if (kind == "set") {
-      // Always evaluate — lets fragment renders see state built up
-      // by {% set %}s that appear before the fragment block.
+      // Always evaluate. Fragment renders need to see state built
+      // up by {% set %}s that appear before the fragment block.
       scope.set(n[1], evalExpr_(n[2], scope))
       return
     }
@@ -1063,7 +1063,7 @@ class Render_ {
           tpl = _registry.get(n[1])
         }
         if (tpl == null) Fiber.abort("unknown component: '" + n[1] + "'")
-        // Include renders the child AST in the caller's scope — bindings
+        // Include renders the child AST in the caller's scope so bindings
         // flow through naturally. Child's own {% extends %} is respected
         // via its blocks metadata. Forward tpl's own fragments so any
         // `{% call %}` inside the included template resolves correctly.
@@ -1088,7 +1088,7 @@ class Render_ {
       return
     }
     if (kind == "extends") {
-      // Extends is consumed at Template.analyze time — a stray node here
+      // Extends is consumed at Template.analyze time. A stray node here
       // means someone built an AST manually; ignore rather than abort.
       return
     }
@@ -1142,7 +1142,7 @@ class Render_ {
         var params = frag[2]
         var body = frag[3]
         // A null params list means the fragment was declared without a
-        // parameter clause — {% call %} against it must pass zero args.
+        // parameter clause; {% call %} against it must pass zero args.
         var expected = params == null ? 0 : params.count
         if (argExprs.count != expected) {
           Fiber.abort("call " + name + ": expected " + expected.toString +
@@ -1153,7 +1153,7 @@ class Render_ {
         var child = Scope_.child(scope)
         bindCallArgs_(params, argExprs, child, scope)
 
-        // Expose the call body as a `caller` slot — the fragment can
+        // Expose the call body as a `caller` slot. The fragment can
         // render it via `{% slot caller %}...{% endslot %}`. Using a
         // SlotFill_ lets `caller()` be evaluated lazily, against the
         // calling scope, matching Jinja's semantics.
@@ -1407,7 +1407,7 @@ class Render_ {
 
 // --- Public API ------------------------------------------------------------
 
-/// Loader protocol — any class with `load(name) → String|null` works.
+/// Loader protocol. Any class with `load(name) → String|null` works.
 /// The package ships two concrete loaders: MapLoader (in-memory) and
 /// FnLoader (adapt any 1-arg function). For a filesystem-backed loader
 /// the user would wire up a FnLoader with `@hatch:fs.read(path)`.
@@ -1472,8 +1472,8 @@ class Template {
   }
 
   // Split an AST into its extends/block metadata + remaining nodes.
-  // Child templates that extend a base are mostly block overrides —
-  // anything outside a `{% block %}` in an extending template is
+  // Child templates that extend a base are mostly block overrides.
+  // Anything outside a `{% block %}` in an extending template is
   // ignored at render time (matches Jinja semantics).
   analyze_(ast) {
     _extends = null
@@ -1493,8 +1493,8 @@ class Template {
     }
     _ast = filtered
     // Also surface fragments nested one level inside if/for/block so
-    // `{% call %}` can reach them. Deeper nesting is an anti-pattern —
-    // lift the fragment to the top if you want to call it.
+    // `{% call %}` can reach them. Deeper nesting is an anti-pattern;
+    // lift the fragment to the top to call it.
     collectFragments_(_ast)
   }
 
@@ -1580,9 +1580,9 @@ class Template {
 }
 
 // --- htmx response helper --------------------------------------------------
-/// Thin bag of body + headers. No HTTP opinions — the caller
-/// picks a transport. Every chainable method returns `this` so a
-/// response can be built inline:
+/// Thin bag of body + headers. No HTTP opinions; the caller
+/// picks a transport. Every chainable method returns `this`, so
+/// a response can be built inline:
 ///
 /// ```wren
 /// var r = Hx.response(tpl.renderFragment("row", ctx))
@@ -1688,8 +1688,8 @@ class Hx {
   static response(body) { HxResponse.new(body) }
   static response() { HxResponse.new("") }
 
-  /// Detect from a request headers map — any of the common
-  /// framework shapes.
+  /// Detects htmx from a request headers map. Accepts any of the
+  /// common framework shapes.
   ///
   /// ```wren
   /// Hx.isRequest(req.headers)    //= true if HX-Request present / truthy

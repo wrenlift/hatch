@@ -1,4 +1,4 @@
-// @hatch:gpu — web backend.
+// @hatch:gpu. Web backend.
 //
 // Mirrors `gpu_native.wren`'s API surface so portable game code
 // runs on both targets unchanged. The implementation differs:
@@ -10,27 +10,27 @@
 //
 // Two-class foreign indirection:
 //
-//   `GpuWeb_`   — foreign class. Low-level handle API as the
-//                 plugin exports it. Not part of the public
-//                 surface; users go through `GpuCore`.
+//   `GpuWeb_`: foreign class. Low-level handle API as the
+//              plugin exports it. Not part of the public
+//              surface; users go through `GpuCore`.
 //
-//   `GpuCore`   — Wren class. Takes the same Map descriptors
-//                 as gpu_native.wren's `GpuCore` foreign class,
-//                 stringifies + translates them, and delegates
-//                 to `GpuWeb_`.
+//   `GpuCore`: Wren class. Takes the same Map descriptors
+//              as gpu_native.wren's `GpuCore` foreign class,
+//              stringifies and translates them, and delegates
+//              to `GpuWeb_`.
 //
 // The wrapper classes (Device, Buffer, Texture, RenderPipeline,
 // CommandEncoder, RenderPass, Surface, Sprite, Renderer2D,
-// Renderer3D, …) are *identical* to gpu_native.wren and route
+// Renderer3D, etc.) are *identical* to gpu_native.wren and route
 // through `GpuCore`; both backends share the same author-facing
 // shape.
 
 import "@hatch:math" for Vec3, Vec4, Mat4
 
 // ---------------------------------------------------------------
-// Low-level foreign surface — the plugin's actual exports.
-// Users go through `GpuCore` / the wrapper classes; this exists
-// only to back them.
+// Low-level foreign surface. The plugin's actual exports.
+// Users go through `GpuCore` and the wrapper classes; this
+// exists only to back them.
 // ---------------------------------------------------------------
 #!native = "wlift_gpu"
 foreign class GpuWeb_ {
@@ -121,7 +121,7 @@ foreign class GpuWeb_ {
 
 // ---------------------------------------------------------------
 // JSON helpers. The JS bridge reads descriptor JSON from a Wren
-// String slot — these emit minimal, deterministic JSON for the
+// String slot. These emit minimal, deterministic JSON for the
 // shapes the bridge expects. Pulled in here rather than via
 // @hatch:json to keep gpu_web's dep graph identical to native's.
 // ---------------------------------------------------------------
@@ -164,7 +164,7 @@ class Json_ {
   }
   static numberToken_(n) {
     // Wren's `Num.toString` already emits a decimal form WebGPU
-    // accepts. The integer fast path keeps "1024.0" → "1024".
+    // accepts. The integer fast path keeps "1024.0" as "1024".
     if (n == n.floor && n.abs < 9007199254740992) return "%(n.floor)"
     return "%(n)"
   }
@@ -186,7 +186,7 @@ class Json_ {
 }
 
 // ---------------------------------------------------------------
-// Static module entry — `Gpu.requestDevice({...})`. Mirrors
+// Static module entry. `Gpu.requestDevice({...})`. Mirrors
 // gpu_native.wren's static class.
 // ---------------------------------------------------------------
 /// Static module entry. `Gpu.requestDevice({...})` returns the
@@ -212,7 +212,7 @@ class Gpu {
 }
 
 // ---------------------------------------------------------------
-/// `GpuCore` — Wren class that emulates gpu_native.wren's foreign
+/// `GpuCore`. Wren class that emulates gpu_native.wren's foreign
 /// `GpuCore` surface so the rest of the wrappers can be ported
 /// verbatim. Methods accept the same `descriptor` Maps the native
 /// foreign class does; this layer translates them into the web
@@ -346,10 +346,10 @@ class GpuCore {
   }
   static bindGroupLayoutDestroy(id) { GpuWeb_.destroy(id) }
 
-  /// PipelineLayout — web has no separate handle for it. Encode
-  /// the bgls as a list and stash; renderPipelineCreate consumes it.
-  /// Returns the JSON-encoded bgl-id list as the "id"; consumers
-  /// pass the wrapper through unchanged.
+  /// PipelineLayout. Web has no separate handle for it. Encode
+  /// the bgls as a list and stash; renderPipelineCreate consumes
+  /// it. Returns the JSON-encoded bgl-id list as the "id";
+  /// consumers pass the wrapper through unchanged.
   static pipelineLayoutCreate(deviceId, descriptor) {
     return descriptor["bindGroupLayouts"]   // List<Num> (bgl ids)
   }
@@ -393,7 +393,7 @@ class GpuCore {
       // l is either "auto" or a List<Num> (from pipelineLayoutCreate
       // above), or an Object with .id (PipelineLayout wrapper).
       if (l is String) {
-        // "auto" — just omit, JS bridge defaults.
+        // "auto": just omit, JS bridge defaults.
       } else if (l is List) {
         json["layouts"] = l
       } else {
@@ -428,7 +428,7 @@ class GpuCore {
     var cas = []
     for (a in descriptor["colorAttachments"]) {
       var rec = {}
-      // `view: -1` is the SurfaceFrame sentinel — omit so the JS
+      // `view: -1` is the SurfaceFrame sentinel; omit so the JS
       // bridge falls back to the frame's surface view.
       if (a.containsKey("view") && a["view"] >= 0) rec["view"] = a["view"]
       if (a.containsKey("loadOp"))     rec["loadOp"]     = a["loadOp"]
@@ -486,10 +486,11 @@ class GpuCore {
 
   /// -- Surface ------------------------------------------------
   /// Web's surface is just the canvas attachment. `handle` is
-  /// either a Map (native shape) or a Num (web shape — the canvas
-  /// handle from @hatch:window's `Window.create_`). We accept
-  /// both; Map shape takes the canvas handle from `handle["canvas"]`
-  /// when present (a future bridge form), otherwise aborts.
+  /// either a Map (native shape) or a Num (web shape: the canvas
+  /// handle from @hatch:window's `Window.create_`). Both are
+  /// accepted; the Map shape takes the canvas handle from
+  /// `handle["canvas"]` when present (a future bridge form),
+  /// otherwise aborts.
   static surfaceCreate(deviceId, handle) {
     var canvas = -1
     if (handle is Num) canvas = handle
@@ -504,7 +505,7 @@ class GpuCore {
   static surfaceAcquire(id) {
     var frame = GpuWeb_.beginFrame(id)
     if (frame < 0) Fiber.abort("GpuCore.surfaceAcquire: beginFrame failed.")
-    // No separate "view" handle on web — the JS bridge resolves
+    // No separate "view" handle on web. The JS bridge resolves
     // the surface view internally when the render pass omits it.
     return { "frame": frame, "view": -1 }
   }
@@ -520,7 +521,7 @@ class GpuCore {
     if (descriptor.containsKey("height"))       json["height"]       = descriptor["height"]
     if (descriptor.containsKey("depth"))        json["depth"]        = descriptor["depth"]
     if (descriptor.containsKey("mipLevel"))     json["mipLevel"]     = descriptor["mipLevel"]
-    // Native uses "x"/"y" inline — translate to WebGPU's "origin".
+    // Native uses "x"/"y" inline; translate to WebGPU's "origin".
     if (descriptor.containsKey("x") || descriptor.containsKey("y")) {
       json["origin"] = {
         "x": descriptor.containsKey("x") ? descriptor["x"] : 0,
@@ -587,12 +588,12 @@ class GpuCore {
 }
 
 // ---------------------------------------------------------------
-// Wrapper classes — identical shape to gpu_native.wren.
+// Wrapper classes. Identical shape to gpu_native.wren.
 // `GpuCore` (above) handles the foreign translation; everything
 // below is target-agnostic.
 // ---------------------------------------------------------------
 
-/// GPU device — the root of every GPU resource. Build one with
+/// GPU device. The root of every GPU resource. Build one with
 /// [Gpu.requestDevice], then create [Buffer]s, [Texture]s,
 /// [Sampler]s, [ShaderModule]s, [BindGroupLayout]s,
 /// [PipelineLayout]s, [BindGroup]s, [RenderPipeline]s,
@@ -609,7 +610,7 @@ class Device {
   /// @returns {String}
   info { GpuCore.deviceInfo(_id) }
 
-  // Web-only — the most-recently-acquired SurfaceFrame's handle.
+  // Web-only. The most-recently-acquired SurfaceFrame's handle.
   // `Surface.acquire()` stamps it; `createCommandEncoder()` reads
   // it so a fresh encoder targets the live frame. Native users
   // never need this getter; on web it lets the same flow
@@ -696,7 +697,7 @@ class Device {
   }
 
   /// Allocate a [Sampler] from a descriptor (`magFilter`,
-  /// `minFilter`, `addressModeU`, …).
+  /// `minFilter`, `addressModeU`, etc.).
   ///
   /// @param {Map} descriptor
   /// @returns {Sampler}
@@ -737,7 +738,7 @@ class Device {
 
   /// Compile a [RenderPipeline] from a descriptor (vertex /
   /// fragment shader entry points, primitive state, blend / cull
-  /// modes, target formats, …).
+  /// modes, target formats, etc.).
   ///
   /// @param {Map} descriptor
   /// @returns {RenderPipeline}
@@ -966,7 +967,7 @@ class CommandEncoder {
     _frame = -1
   }
 
-  /// Foreign-handle id. Internal — passed to GPU bridge calls.
+  /// Foreign-handle id (internal). Passed to GPU bridge calls.
   /// @returns {Num}
   id     { _id }
   /// The owning [Device].
@@ -980,7 +981,7 @@ class CommandEncoder {
   attachFrame_(f)  { _frame = f }
 
   /// Open a render pass against the given descriptor (colour /
-  /// depth attachments, clear values, …) and return a
+  /// depth attachments, clear values, etc.) and return a
   /// [RenderPass] for recording draws.
   ///
   /// ## Example
@@ -1105,7 +1106,7 @@ class Surface {
   id { _id }
 
   /// Apply a configuration descriptor (`width`, `height`,
-  /// `format`, `presentMode`, …). Call after window resize.
+  /// `format`, `presentMode`, etc.). Call after window resize.
   /// @param {Map} descriptor
   configure(descriptor) { GpuCore.surfaceConfigure(_id, descriptor) }
 
@@ -1129,9 +1130,9 @@ class Surface {
   }
 }
 
-/// One frame's worth of [Surface] state — texture view + handle.
-/// Returned by [Surface.acquire]; pass `view` into the colour
-/// attachment of [CommandEncoder.beginRenderPass].
+/// One frame's worth of [Surface] state. Carries the texture
+/// view and handle. Returned by [Surface.acquire]; pass `view`
+/// into the colour attachment of [CommandEncoder.beginRenderPass].
 class SurfaceFrame {
   construct new_(frameId, viewId) {
     _id   = frameId
@@ -1163,7 +1164,7 @@ class SurfaceFrame {
 }
 
 // ---------------------------------------------------------------
-// Higher-level helpers — pure Wren, ported verbatim from
+// Higher-level helpers. Pure Wren, ported verbatim from
 // gpu_native.wren. They build on Device / Buffer / Texture /
 // RenderPipeline / RenderPass and have no foreign calls of their
 // own, so the same code runs on both targets.
@@ -1190,7 +1191,7 @@ class Camera2D {
   }
 
   /// Build a camera and fit it into a surface in one call. The
-  /// design rect (`designW × designH`) is letterboxed to keep
+  /// design rect (`designW` by `designH`) is letterboxed to keep
   /// its aspect ratio when the surface aspect differs.
   ///
   /// @param {Num} designW
@@ -1217,8 +1218,8 @@ class Camera2D {
   origin=(v) { _origin = v }
 
   /// Recompute letterbox padding so the design rect fits inside
-  /// `(surfaceW × surfaceH)` while preserving aspect ratio.
-  /// Call after window resizes — `Game.resize` is the typical
+  /// `(surfaceW` by `surfaceH)` while preserving aspect ratio.
+  /// Call after window resizes; `Game.resize` is the typical
   /// home for this.
   ///
   /// @param {Num} surfaceW
@@ -1278,7 +1279,7 @@ class Camera2D {
 /// ```
 ///
 /// Capacity is `MAX_SPRITES_` (4096). Calling [Renderer2D.drawSprite]
-/// past the cap aborts the fiber — flush more often, or split
+/// past the cap aborts the fiber. Flush more often, or split
 /// the scene into multiple passes.
 class Renderer2D {
   static SPRITE_WGSL_ {
@@ -1321,7 +1322,7 @@ class Renderer2D {
   /// Build a 2D sprite batcher targeting a colour-only attachment.
   ///
   /// @param {Device} device
-  /// @param {String} surfaceFormat — e.g. `"bgra8unorm"`.
+  /// @param {String} surfaceFormat (for example, `"bgra8unorm"`).
   construct new(device, surfaceFormat) { init_(device, surfaceFormat, null) }
 
   /// Build a 2D batcher that also writes to a depth attachment.
@@ -1329,7 +1330,7 @@ class Renderer2D {
   ///
   /// @param {Device} device
   /// @param {String} surfaceFormat
-  /// @param {String} depthFormat — e.g. `"depth32float"`.
+  /// @param {String} depthFormat (for example, `"depth32float"`).
   construct new(device, surfaceFormat, depthFormat) { init_(device, surfaceFormat, depthFormat) }
 
   init_(device, surfaceFormat, depthFormat) {
@@ -1369,7 +1370,7 @@ class Renderer2D {
           "format": surfaceFormat,
           // Standard alpha-blend (src-over). Without this the
           // colour target writes RGB verbatim regardless of the
-          // fragment's alpha — soft sprites (gradient glows,
+          // fragment's alpha; soft sprites (gradient glows,
           // anti-aliased edges) read as hard discs.
           "blend": {
             "color": {
@@ -1465,8 +1466,8 @@ class Renderer2D {
     drawSprite_(texture, x, y, w, h, 0, 0, 1, 1, 1, 1, 1, 1)
   }
 
-  /// Queue an axis-aligned sprite with custom UV bounds —
-  /// useful for atlas slicing.
+  /// Queue an axis-aligned sprite with custom UV bounds. Useful
+  /// for atlas slicing.
   ///
   /// @param {Texture} texture
   /// @param {Num} x
@@ -1612,11 +1613,11 @@ class Renderer2D {
   }
 }
 
-/// Mutable sprite state — `(texture, x, y, w, h)` plus tint /
+/// Mutable sprite state. `(texture, x, y, w, h)` plus tint /
 /// scale / anchor / rotation / UV. Reuse one `Sprite` across
 /// many frames; mutate its fields between draws. The renderer
-/// batches by texture, so swapping `_quad`'s position + UV per
-/// call keeps everything in a single draw call.
+/// batches by texture, so swapping `_quad`'s position and UV
+/// per call keeps everything in a single draw call.
 ///
 /// ```wren
 /// _quad = Sprite.new(_atlas)
@@ -1688,10 +1689,10 @@ class Sprite {
     _scaleX = v
     _scaleY = v
   }
-  /// Anchor X in `[0, 1]` — `0` = left edge, `0.5` = centre, `1` = right.
+  /// Anchor X in `[0, 1]`. `0` = left edge, `0.5` = centre, `1` = right.
   /// @returns {Num}
   anchorX  { _anchorX }
-  /// Anchor Y in `[0, 1]` — `0` = top, `0.5` = centre, `1` = bottom.
+  /// Anchor Y in `[0, 1]`. `0` = top, `0.5` = centre, `1` = bottom.
   /// @returns {Num}
   anchorY  { _anchorY }
   /// Set the anchor in one call.

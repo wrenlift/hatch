@@ -1,10 +1,10 @@
-// `@hatch:uuid` — UUID generation and parsing.
+// `@hatch:uuid`: UUID generation and parsing.
 //
 // ```wren
 // import "@hatch:uuid" for Uuid
 //
-// Uuid.v4        // "8f14e45f-ceea-467a-9575-f86bb6a20b12" — random
-// Uuid.v7        // "0190f9a8-12ab-7b4e-9d3e-..." — time-ordered
+// Uuid.v4        // "8f14e45f-ceea-467a-9575-f86bb6a20b12" (random)
+// Uuid.v7        // "0190f9a8-12ab-7b4e-9d3e-..." (time-ordered)
 // Uuid.nil       // "00000000-0000-0000-0000-000000000000"
 //
 // // Namespaced, deterministic (RFC 4122 v5, SHA-1).
@@ -14,13 +14,13 @@
 // // Parse + validate. Returns the canonical hyphenated lower-case
 // // form, or null on malformed input.
 // Uuid.parse("550E8400-E29B-41D4-A716-446655440000")
-//   // → "550e8400-e29b-41d4-a716-446655440000"
+//   // returns "550e8400-e29b-41d4-a716-446655440000"
 // Uuid.isValid("not-a-uuid")                 // false
 // Uuid.version("0190f9a8-12ab-7b4e-9d3e-...")  // 7
 //
 // // Binary form (16 bytes).
 // Uuid.toBytes("550e8400-e29b-41d4-a716-446655440000")  // [85, 14, ...]
-// Uuid.fromBytes(bytes)                                  // → string
+// Uuid.fromBytes(bytes)                                  // returns the string
 // ```
 //
 // ## Version guidance
@@ -28,7 +28,7 @@
 // | Version | Use                                                            |
 // |---------|----------------------------------------------------------------|
 // | `v4`    | Arbitrary random identifiers.                                  |
-// | `v5`    | Stable ids derived from strings (think "slug → UUID").         |
+// | `v5`    | Stable ids derived from strings (think "slug to UUID").        |
 // | `v7`    | DB primary keys; time-ordered preserves B-tree locality.       |
 //
 // Backed by the `uuid` crate.
@@ -70,7 +70,7 @@ class Uuid {
     return UuidCore.isValid(text)
   }
 
-  /// Returns the version number (1–7) or null on malformed input.
+  /// Returns the version number (1-7) or null on malformed input.
   static version(text) {
     if (!(text is String)) Fiber.abort("Uuid.version: text must be a string")
     return UuidCore.version(text)
@@ -84,7 +84,7 @@ class Uuid {
     return UuidCore.toBytes(text)
   }
 
-  /// 16-byte list → canonical UUID string. Any length other than 16
+  /// 16-byte list to canonical UUID string. Any length other than 16
   /// aborts; values must be integers in 0..=255.
   static fromBytes(bytes) {
     if (!(bytes is List)) Fiber.abort("Uuid.fromBytes: bytes must be a list")

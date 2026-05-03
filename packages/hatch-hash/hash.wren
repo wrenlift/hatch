@@ -1,4 +1,4 @@
-// `@hatch:hash` — cryptographic hashes, HMAC, base64.
+// `@hatch:hash`: cryptographic hashes, HMAC, base64.
 //
 // ```wren
 // import "@hatch:hash" for Hash
@@ -10,7 +10,7 @@
 // Hash.sha256("hello")
 // Hash.sha512("hello")
 //
-// // Raw bytes (List<Num>) when you need to feed another primitive.
+// // Raw bytes (List<Num>) for feeding another primitive.
 // Hash.sha256Bytes("hello")
 //
 // // HMAC. key and message both accept string or bytes.
@@ -28,8 +28,8 @@
 // ```
 //
 // Backed by RustCrypto + base64 crates via the runtime `hash`
-// module. Constant-time comparisons aren't exposed — we'll add a
-// `compare` helper if auth use cases demand it.
+// module. Constant-time comparisons aren't exposed; a `compare`
+// helper may land if auth use cases demand it.
 
 import "hash" for HashCore
 

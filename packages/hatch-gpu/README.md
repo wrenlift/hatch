@@ -2,7 +2,7 @@ GPU primitives plus 2D and 3D renderers, written once against `wgpu` on native a
 
 ## Overview
 
-Open a device against your window's surface, allocate buffers and textures, build a pipeline, encode a pass per frame. The high-level renderers handle the bind-group dance for the common 2D / 3D shapes; the low-level `RenderPipeline` API is there when you want full control.
+Open a device against your window's surface, allocate buffers and textures, build a pipeline, encode a pass per frame. The high-level renderers handle the bind-group dance for the common 2D / 3D shapes; the low-level `RenderPipeline` API is there when full control is needed.
 
 ```wren
 import "@hatch:gpu"   for Renderer2D, Camera2D, Sprite
@@ -18,7 +18,7 @@ sprite.draw(renderer)
 renderer.flush(g.pass)
 ```
 
-`Renderer2D` is a batcher — every `sprite.draw(renderer)` accumulates against the current camera; `flush(pass)` issues the actual draw calls. The 3D renderer follows the same pacing with `Renderer3D` + `Mesh` + `Material`.
+`Renderer2D` is a batcher. Every `sprite.draw(renderer)` accumulates against the current camera; `flush(pass)` issues the actual draw calls. The 3D renderer follows the same pacing with `Renderer3D`, `Mesh`, and `Material`.
 
 ## Hot reload via `LivePipeline`
 
@@ -36,12 +36,12 @@ live.poll
 g.pass.setPipeline(live.pipeline)
 ```
 
-> **Note — backends aren't yet identical**
-> The native backend ships the full surface (renderers, `LivePipeline`, hot reload). The web backend covers the primitive layer plus `Renderer2D`; some 3D bits are still being ported. Cross-target game code should either stay on the lowest common denominator or branch with `#!native` / `#!wasm` attributes.
+> **Note: cross-target gaps**
+> Both backends ship the full class surface (`Renderer2D`, `Renderer3D`, `LivePipeline`, plus the underlying `Buffer` / `Texture` / `Shader` / `RenderPipeline` primitives). The web backend has two outstanding gaps: GPU→CPU readback (`Buffer.readBytes`, `encoderCopyTextureToBuffer`) lands when WebGPU's mapAsync path is wired, and `LivePipeline` shader hot-reload is build-once on web pending a browser-side filesystem watch. Cross-target game code that avoids those features works unchanged; opt in via `#!native` / `#!wasm` attributes when a path needs them.
 
-> **Warning — WebGPU support is patchy**
-> Chromium ships WebGPU on by default. Safari and Firefox are flag-gated as of writing. Surface creation aborts on browsers without WebGPU; check `navigator.gpu` from the host page if you need to fall back to a 2D-canvas path.
+> **Note: WebGPU on the desktop browser matrix**
+> Chromium, recent Firefox, and Safari on current macOS all ship WebGPU by default. Some mobile builds and older Safari versions (pre-current macOS) lack the API. Surface creation aborts on browsers without WebGPU; check `navigator.gpu` from the host page if a 2D-canvas fallback is needed.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Depends on `@hatch:math`. Native targets pull `wgpu` (Vulkan / Metal / DirectX 12 / OpenGL); web targets reach for `navigator.gpu`. Optional companions: `@hatch:assets` for `LivePipeline`, `@hatch:image` for texture decode.
+Wren 0.4 and WrenLift runtime 0.1 or newer. Depends on `@hatch:math`. Native targets pull `wgpu` (Vulkan / Metal / DirectX 12 / OpenGL); web targets reach for `navigator.gpu`. Optional companions: `@hatch:assets` for `LivePipeline`, `@hatch:image` for texture decode.

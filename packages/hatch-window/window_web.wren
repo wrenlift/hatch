@@ -1,4 +1,4 @@
-// @hatch:window — web backend.
+// @hatch:window: web backend.
 //
 // Mirrors the native @hatch:window shape: a thin foreign class
 // (`WindowCore`) holds the plugin's actual exports; the regular
@@ -6,7 +6,7 @@
 // game code touches. Same public method names as the native
 // variant, so portable code reads the same on both targets.
 
-/// Low-level foreign surface — the plugin's actual exports.
+/// Low-level foreign surface: the plugin's actual exports.
 /// Game code goes through [Window]; this exists only to back it.
 #!native = "wlift_window"
 foreign class WindowCore {
@@ -16,15 +16,15 @@ foreign class WindowCore {
   ///
   /// Descriptor keys:
   ///
-  /// - `"canvas"` — String, DOM id of an existing `<canvas>`.
+  /// - `"canvas"`: String, DOM id of an existing `<canvas>`.
   ///   When set, `"parent"` / `"width"` / `"height"` are
   ///   ignored (the page owns the element's layout).
-  /// - `"title"` — String, default `"wlift"`.
-  /// - `"width"` — Num, default 800 (fresh-canvas only).
-  /// - `"height"` — Num, default 600 (fresh-canvas only).
-  /// - `"parent"` — String, CSS id of the host element to
+  /// - `"title"`: String, default `"wlift"`.
+  /// - `"width"`: Num, default 800 (fresh-canvas only).
+  /// - `"height"`: Num, default 600 (fresh-canvas only).
+  /// - `"parent"`: String, CSS id of the host element to
   ///   append a fresh canvas to (default `"stage"`).
-  /// - `"resizable"` — Bool, default `true` (currently unused).
+  /// - `"resizable"`: Bool, default `true` (currently unused).
   ///
   /// @param {Map} descriptor
   /// @returns {Num}
@@ -119,7 +119,7 @@ class Window {
   /// @returns {Object}
   handle { _id }
 
-  /// Latest canvas size — `{"width": Num, "height": Num}`.
+  /// Latest canvas size as `{"width": Num, "height": Num}`.
   /// @returns {Map}
   size { WindowCore.size(_id) }
 

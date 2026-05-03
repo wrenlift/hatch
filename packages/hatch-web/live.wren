@@ -1,7 +1,7 @@
-// @hatch:web/live — fiber-cooperative scheduler, in-memory
+// @hatch:web/live: fiber-cooperative scheduler, in-memory
 // Channel pub/sub, and Server-Sent Events streaming.
 //
-// All of this is cooperative — a handler blocks the server until it
+// All of this is cooperative: a handler blocks the server until it
 // either returns, yields (via the scheduler's `Fiber.yield()` hook),
 // or finishes. @hatch:socket's `tryAccept` / `tryRead` do the
 // would-block signalling; the scheduler reads that and swaps fibers.
@@ -11,7 +11,7 @@
 //   // Register a channel on the app (cheap; named string).
 //   var chat = app.channel("chat")
 //
-//   // Post a message — broadcasts to every subscriber.
+//   // Post a message: broadcasts to every subscriber.
 //   app.post("/chat") {|req|
 //     chat.broadcast("<div>" + req.form["msg"] + "</div>")
 //     return ""  // htmx POSTs care only about status
@@ -50,7 +50,7 @@ class Scheduler_ {
   }
 
   /// Returns the Fiber so the caller can inspect .error after run
-  /// if needed. Don't call .try() on it yourself — the scheduler owns
+  /// if needed. Don't call .try() on it directly; the scheduler owns
   /// the run.
   spawn(fn) {
     var f = Fiber.new(fn)
@@ -69,8 +69,8 @@ class Scheduler_ {
     while (i < _fibers.count) {
       var f = _fibers[i]
       if (f.isDone) {
-        // Shouldn't normally happen — we remove done fibers when
-        // they finish in this tick — but defensive.
+        // Shouldn't normally happen (done fibers are removed when
+        // they finish in this tick), but defensive.
         Scheduler_.removeAt_(_fibers, i)
       } else {
         f.try()
@@ -80,7 +80,7 @@ class Scheduler_ {
             // error so handler bugs are debuggable from server logs.
             // Requires `VMConfig.fiber_stack_traces = true` upstream
             // (`hatch run` sets it; standalone `wlift` doesn't by
-            // default — that path falls back to the placeholder
+            // default; that path falls back to the placeholder
             // string built into `Fiber.stackTrace`).
             System.print("scheduler: fiber aborted: %(f.error)")
             System.print(f.stackTrace)
@@ -115,7 +115,7 @@ class Scheduler_ {
       if (i != idx) out.add(list[i])
       i = i + 1
     }
-    // Mutate in place — Wren's List has no direct removeAt, and the
+    // Mutate in place. Wren's List has no direct removeAt, and the
     // swap-and-pop trick would break fiber order under nested ticks.
     // Small lists (tens of connections), small cost.
     var j = 0
@@ -137,7 +137,7 @@ class Scheduler_ {
 // No persistence, no backpressure, no cleanup-on-disconnect beyond
 // `Subscription.close`. Intended for "one process, many clients"
 // scenarios like chat rooms and live dashboards. Production scale
-// wants a real broker — that's a different library.
+// wants a real broker; that's a different library.
 
 class Subscription_ {
   // Cap on pending messages per subscription. If the queue grows
@@ -174,7 +174,7 @@ class Subscription_ {
     while (!_closed) {
       if (_queue.count > 0) {
         var head = _queue[0]
-        // Drop head the cheap way — shift via a new list.
+        // Drop head the cheap way: shift via a new list.
         var rest = []
         var i = 1
         while (i < _queue.count) {
@@ -215,7 +215,7 @@ class Channel {
   }
 
   /// Fan-out a message to every attached subscriber. Subscribers
-  /// whose queue overflows the limit (almost certainly stale —
+  /// whose queue overflows the limit (almost certainly stale,
   /// their serve fiber died without close) are reaped here. Without
   /// this, a closed browser tab leaves a Subscription accumulating
   /// every broadcast forever; over a busy stream that's an unbounded
@@ -282,7 +282,7 @@ class Sse {
   static frame(payload) {
     if (payload is String) {
       if (payload.count > 0 && payload[0] == ":") {
-        // Comment / heartbeat — pass through as-is + blank line.
+        // Comment / heartbeat: pass through as-is plus a blank line.
         return payload + "\n\n"
       }
       return "data: " + Sse.escapeLines_(payload) + "\n\n"
@@ -298,7 +298,7 @@ class Sse {
     return "data: " + payload.toString + "\n\n"
   }
 
-  // SSE data lines are delimited by \n — embedded newlines need to
+  // SSE data lines are delimited by \n; embedded newlines need to
   // become multiple `data:` lines.
   static escapeLines_(s) {
     if (!(s is String)) return s.toString

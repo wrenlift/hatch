@@ -1,4 +1,4 @@
-// `@hatch:web` — server-rendered, htmx-native web framework.
+// `@hatch:web`: server-rendered, htmx-native web framework.
 //
 // ```wren
 // import "@hatch:web" for App
@@ -13,16 +13,16 @@
 //
 // Routes receive a `Request` and may return:
 //
-// - a `String` — 200 `text/html` body.
-// - a `Response` — full control.
-// - an `HxResponse` — `@hatch:template` builder.
-// - `null` — 204 No Content.
+// - a `String`: 200 `text/html` body.
+// - a `Response`: full control.
+// - an `HxResponse`: `@hatch:template` builder.
+// - `null`: 204 No Content.
 //
 // Middleware is a `Fn` taking `(req, next)`: `next.call(req)`
 // forwards, anything else short-circuits. Middleware run
 // outermost-first, handler innermost.
 //
-// HTTP/1.1 cleartext on top of `@hatch:socket` — no TLS, no h2,
+// HTTP/1.1 cleartext on top of `@hatch:socket`: no TLS, no h2,
 // no WebSockets yet. Content-Length bodies only. One request
 // per connection (no keep-alive). Pipelining and keep-alive
 // are planned.
@@ -114,7 +114,7 @@ class Request {
   }
 
   /// Validate the form body against a `Form` schema. Equivalent
-  /// to `form.validate(req.form)` — just spares the handler one
+  /// to `form.validate(req.form)`; spares the handler one
   /// line.
   ///
   /// ```wren
@@ -126,7 +126,7 @@ class Request {
   /// ```
   validate(form) { form.validate(this.form) }
 
-  /// Internal — App.handle sets this so render() can include the
+  /// Internal: App.handle sets this so render() can include the
   /// app's global CSS alongside the fragment CSS.
   globalSheet=(s) { _globalSheet = s }
   globalSheet    { _globalSheet }
@@ -142,7 +142,7 @@ class Request {
   }
 
   /// application/x-www-form-urlencoded body parsed into a Map.
-  /// Triggered explicitly — we don't want to silently eat the body
+  /// Triggered explicitly to avoid silently eating the body
   /// for JSON/multipart requests.
   form {
     if (_formCache != null) return _formCache
@@ -159,7 +159,7 @@ class Request {
     return null
   }
 
-  /// htmx request context — `request`, `boosted`, `target`,
+  /// htmx request context: `request`, `boosted`, `target`,
   /// `trigger`, `triggerName`, `currentUrl`. Cached.
   hx {
     if (_hxCache != null) return _hxCache
@@ -167,7 +167,7 @@ class Request {
     return _hxCache
   }
 
-  /// Convenience — most handlers just want to know "is this htmx?"
+  /// Convenience for the common "is this htmx?" check.
   isHx { hx["request"] == true }
 
   /// Render a Template against a context. Content-negotiates:
@@ -237,7 +237,7 @@ class Response {
     return this
   }
 
-  /// Set-Cookie — supports the common attributes. Multiple calls
+  /// Set-Cookie. Supports the common attributes. Multiple calls
   /// stack (you can set multiple cookies on one response).
   cookie(name, value) { cookie(name, value, {}) }
   cookie(name, value, opts) {
@@ -302,7 +302,7 @@ class Response {
 //
 // Linear scan of registered routes. Path compilation splits on /
 // and records which segments are `:params`. Matching is O(routes
-// × avg-segments) — good enough up to hundreds of routes; a
+// × avg-segments): good enough up to hundreds of routes. A
 // radix tree can come later without changing the API.
 
 class Route_ {
@@ -532,7 +532,7 @@ class App {
   /// Dispatch a parsed Request through the middleware pipeline and
   /// router. Exposed so tests can drive it without a socket.
   handle(req) {
-    // Hoist fields into locals — closures below must not rely on
+    // Hoist fields into locals; closures below must not rely on
     // field access, because a Fiber boundary or an Fn.new-created
     // closure won't have the enclosing `this` bound.
     var router   = _router
@@ -567,12 +567,12 @@ class App {
   ///
   /// Fibers yield on would-block I/O (see `ByteBuf_.fill_`), on
   /// `Channel.receive` waiting for a broadcast, and inside SSE
-  /// writers between emits. The whole thing is cooperative —
+  /// writers between emits. The whole thing is cooperative:
   /// one fiber can't preempt another, but it also can't starve
   /// the rest if it parks on an `Fiber.yield()`.
   ///
   /// Hot reload (`hatch web serve`) is driven by the runtime's
-  /// SIGUSR1 watcher — there's nothing for the framework to do.
+  /// SIGUSR1 watcher; there's nothing for the framework to do.
   listen(addr) {
     var listener = TcpListener.bind(addr)
     System.print("@hatch:web listening on http://%(addr)")
@@ -619,7 +619,7 @@ class App {
     return this
   }
 
-  /// Channel registry — `app.channel("room-42")` hands back the
+  /// Channel registry. `app.channel("room-42")` hands back the
   /// same Channel every call, so handlers and SSE writers share
   /// subscribers for the same name.
   channel(name) {
@@ -648,7 +648,7 @@ class App {
         var frame = Sse.frame(payload)
         conn.write(frame)
       }
-      // Fiber boundary already — `writer.call(emit)` runs inside
+      // Fiber boundary already; `writer.call(emit)` runs inside
       // THIS serve fiber. It's free to yield; the scheduler keeps
       // everyone else going.
       writer.call(emit)
@@ -668,8 +668,8 @@ class App {
 // keep-alive, TLS, and WebSocket upgrade are all planned.
 
 class Http_ {
-  /// Entry point — reads one request off a TcpStream, returns a
-  /// Request or null (malformed / EOF before request line).
+  /// Entry point. Reads one request off a TcpStream and returns a
+  /// Request, or null (malformed / EOF before request line).
   static readRequest(conn) {
     var buf = ByteBuf_.new(conn)
     var line = buf.readLine
@@ -701,7 +701,7 @@ class Http_ {
       query = qIdx + 1 < target.count ? target[(qIdx + 1)..(target.count - 1)] : ""
     }
 
-    // Body — Content-Length framing only. Chunked transfer-
+    // Body: Content-Length framing only. Chunked transfer-
     // encoding is planned.
     var body = ""
     var clen = 0
@@ -735,8 +735,8 @@ class Http_ {
   /// `resp.body` may be a String (HTML / text), a `ByteArray` /
   /// `List<Num>` (binary; static-file path), or null. The
   /// underlying `TcpStream.write` accepts all three via
-  /// `bytes_from_value`, so we keep bytes as bytes end-to-end —
-  /// converting an 880KB PNG to a String per byte was the static
+  /// `bytes_from_value`, so bytes stay as bytes end-to-end.
+  /// Converting an 880KB PNG to a String per byte was the static
   /// handler's old O(n²) trap.
   static writeResponse(conn, resp) {
     var status  = resp.status
@@ -977,7 +977,7 @@ class ByteBuf_ {
 /// prefix. Maps them to files under `root`. `..` in the path is
 /// rejected out of hand. On a miss, hands off to the next
 /// middleware so your dynamic routes still win for unknown paths
-/// — a 404 only comes from the router, not here.
+/// (a 404 only comes from the router, not here).
 ///
 /// `Content-Type` is inferred from extension. A tiny MIME table
 /// covers the common web assets; unknown extensions fall back to
@@ -986,7 +986,7 @@ class ByteBuf_ {
 class Static {
   /// Per-process cache of (bytes, content-type) keyed by absolute
   /// file path. Public assets in a `Static.serve` mount don't
-  /// change at runtime — restart picks up new files — so caching
+  /// change at runtime (restart picks up new files), so caching
   /// at first read removes the per-request `Fs.readBytes` +
   /// `mimeOf_` work and lets the response shrink to a Map lookup
   /// plus a header set. Wren is single-threaded inside the
@@ -1025,7 +1025,7 @@ class Static {
       // List<Num> / ByteArray / String via the runtime's
       // `bytes_from_value` coercion, and `writeResponse` reads
       // `bodyLen` via `Http_.bodyLen_`. Round-tripping through
-      // `String.fromByte` per element was O(n²) — death on
+      // `String.fromByte` per element was O(n²): death on
       // anything bigger than a kilobyte.
       r.body = entry["bytes"]
       return r
@@ -1058,7 +1058,7 @@ class Static {
     return s
   }
 
-  // Minimal MIME table — enough for HTML apps with htmx, CSS,
+  // Minimal MIME table: enough for HTML apps with htmx, CSS,
   // a few images, fonts. Anything missing falls back to
   // application/octet-stream which is always a safe default.
   static mimeOf_(path) {
@@ -1110,7 +1110,7 @@ class Static {
 /// Tamper / bad signature / malformed cookie = empty session;
 /// we never trust a partially-valid cookie.
 ///
-/// Stateless by default — the whole session lives in the cookie.
+/// Stateless by default: the whole session lives in the cookie.
 /// Fine for small sessions (user id, role, flash), bad for
 /// megabytes. Server-side stores come later.
 
@@ -1252,7 +1252,7 @@ class Session {
 /// ── CSRF protection ────────────────────────────────────────────────────
 ///
 /// ```wren
-/// app.use(Session.cookie("..."))   // required — CSRF lives in session
+/// app.use(Session.cookie("..."))   // required: CSRF lives in session
 /// app.use(Csrf.middleware)
 /// ```
 ///
@@ -1263,7 +1263,7 @@ class Session {
 /// For state-changing methods (`POST` / `PUT` / `PATCH` /
 /// `DELETE`), the middleware demands a matching token in either
 /// the form body (field `"_csrf"`) or the `"X-CSRF-Token"`
-/// header. Missing or mismatched → 403. `SameSite=Lax` on the
+/// header. Missing or mismatched returns 403. `SameSite=Lax` on the
 /// session cookie covers most of the CSRF risk already; this is
 /// defense in depth.
 
@@ -1313,7 +1313,7 @@ class Csrf {
     }
   }
 
-  // htmx AJAX requests opt out of the form-field dance — they
+  // htmx AJAX requests opt out of the form-field dance: they
   // set the header instead. This is the escape hatch so routes
   // that accept fragment POSTs don't need to inject a hidden
   // input into every hx-post element.
@@ -1340,7 +1340,7 @@ class Csrf {
     return "<input type=\"hidden\" name=\"_csrf\" value=\"" + t + "\">"
   }
 
-  /// Token accessor — useful when you want to emit it via a
+  /// Token accessor. Useful for emitting the token via a
   /// <meta> tag for htmx's hx-headers config.
   static token(req) {
     if (req.session == null) return null

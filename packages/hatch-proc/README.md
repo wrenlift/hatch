@@ -63,9 +63,9 @@ var jobs = [
 var results = Scheduler.runAll(jobs)
 ```
 
-> **Warning — kill is best-effort**
-> `p.kill` sends SIGKILL on Unix and `TerminateProcess` on Windows. Children of the killed process aren't reaped automatically — if your subprocess spawns its own subprocesses, set up process-group plumbing on the spawn side or expect orphans.
+> **Warning: kill is best-effort**
+> `p.kill` sends SIGKILL on Unix and `TerminateProcess` on Windows. Children of the killed process are not reaped automatically. A subprocess that spawns its own subprocesses needs process-group plumbing on the spawn side, or it will leave orphans.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Native only — there's no browser equivalent. Depends on `@hatch:io` for the `Reader` / `Writer` shapes used by `writeStdin` / `readStdout`.
+Wren 0.4 with WrenLift runtime 0.1 or newer. Native only; there is no browser equivalent. Depends on `@hatch:io` for the `Reader` / `Writer` shapes used by `writeStdin` / `readStdout`.

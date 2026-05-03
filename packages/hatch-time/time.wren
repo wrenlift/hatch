@@ -1,4 +1,4 @@
-// `@hatch:time` — clocks and UTC timestamp formatting.
+// `@hatch:time`: clocks and UTC timestamp formatting.
 //
 // ```wren
 // import "@hatch:time" for Time, Clock
@@ -14,7 +14,7 @@
 //   doWork()
 // }                             // Num seconds
 //
-// // Point in time — instances of Time
+// // Point in time (instances of Time)
 // var t = Time.now              // now
 // var t = Time.fromUnix(1776700800)
 //
@@ -30,7 +30,7 @@
 
 import "time" for TimeCore
 
-/// Re-export under the same name — gives users a single import
+/// Re-exports under the same name. Gives callers a single import
 /// surface without pulling the raw "time" module themselves.
 class Clock {
   static unix { TimeCore.unix }
@@ -85,7 +85,7 @@ class Time {
   }
 
   /// Custom format. Tokens: YYYY, MM, DD, HH, mm, ss, SSS (millis).
-  /// Everything else passes through verbatim. Minimal on purpose —
+  /// Everything else passes through verbatim. Minimal on purpose;
   /// full strftime is a later upgrade.
   format(pattern) {
     if (!(pattern is String)) Fiber.abort("Time.format: pattern must be a string")
@@ -105,7 +105,7 @@ class Time {
 
   // Helpers --------------------------------------------------------------
 
-  // Left-pad `n` with zeros to at least `width`. Pure Wren —
+  // Left-pad `n` with zeros to at least `width`. Pure Wren;
   // no String.format machinery in the core. Static so the
   // formatters can reach it via `Time.pad_(...)`.
   static pad_(n, width) {

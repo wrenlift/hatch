@@ -1,4 +1,4 @@
-// `@hatch:socket` — TCP + UDP sockets.
+// `@hatch:socket`: TCP and UDP sockets.
 //
 // ```wren
 // import "@hatch:socket" for TcpListener, TcpStream, UdpSocket
@@ -24,18 +24,18 @@
 // var msg = b.recvFrom(1024)               // [bytes, fromAddr]
 // ```
 //
-// Non-blocking variants — `tryAccept`, `tryRead`, `tryRecvFrom`
-// — return `null` when nothing is ready, so callers can yield
-// back to a fiber scheduler (e.g. `@hatch:events`) without
-// needing OS threads. Pair `conn.tryRead(n)` with `Fiber.yield()`
-// to write cooperative servers in pure Wren.
+// Non-blocking variants (`tryAccept`, `tryRead`, `tryRecvFrom`)
+// return `null` when nothing is ready, so callers can yield back
+// to a fiber scheduler (such as `@hatch:events`) without needing
+// OS threads. Pair `conn.tryRead(n)` with `Fiber.yield()` to
+// write cooperative servers in pure Wren.
 //
 // Byte conventions match the rest of the stdlib: writes accept a
 // `String` (UTF-8 bytes) or a `List<Num>` in `0..=255`; reads
 // always hand back `List<Num>`. An empty list means EOF on TCP.
 //
 // Backed by `std::net` (blocking sockets with per-call non-block
-// toggle) — no external runtime, no async runtime leaking into
+// toggle). No external runtime, no async runtime leaking into
 // Wren code.
 
 import "socket" for SocketCore
@@ -43,7 +43,7 @@ import "socket" for SocketCore
 class TcpListener {
   /// Bind + listen on an address string ("host:port"). The host
   /// half accepts IPv4, IPv6, or a DNS name. Returns a listener.
-  /// Pass port 0 to let the OS pick a free port — read it back
+  /// Pass port 0 to let the OS pick a free port. Read it back
   /// from `.address`.
   static bind(addr) {
     if (!(addr is String)) Fiber.abort("TcpListener.bind: addr must be a string")
@@ -59,8 +59,8 @@ class TcpListener {
     return TcpStream.fromId_(SocketCore.tcpAccept(_id))
   }
 
-  /// Non-blocking accept. Returns a `TcpStream` or `null` if no
-  /// peer is pending — pair with `Fiber.yield()` for cooperative
+  /// Non-blocking accept. Returns a `TcpStream`, or `null` if no
+  /// peer is pending. Pair with `Fiber.yield()` for cooperative
   /// servers.
   tryAccept {
     var sid = SocketCore.tcpTryAccept(_id)
@@ -92,7 +92,7 @@ class TcpStream {
     return TcpStream.fromId_(SocketCore.tcpConnect(addr, timeoutMs))
   }
 
-  // Internal factory — listeners hand back raw ids after accept,
+  // Internal factory. Listeners hand back raw ids after accept;
   // this wraps them in a TcpStream without re-entering the OS.
   static fromId_(id) {
     return TcpStream.new_(id)
@@ -110,9 +110,9 @@ class TcpStream {
 
   /// Non-blocking read. Returns:
   ///
-  /// - non-empty `List<Num>` — bytes ready.
-  /// - empty `List` — EOF.
-  /// - `null` — no data available right now.
+  /// - non-empty `List<Num>`: bytes ready.
+  /// - empty `List`: EOF.
+  /// - `null`: no data available right now.
   ///
   /// Cooperative fiber loop:
   ///
@@ -141,7 +141,7 @@ class TcpStream {
   localAddr { SocketCore.tcpLocalAddr(_id) }
 
   /// Shut down both halves and release the OS handle. Calling
-  /// `close` twice is safe — the second call is a no-op.
+  /// `close` twice is safe; the second call is a no-op.
   close {
     SocketCore.tcpClose(_id)
     return null

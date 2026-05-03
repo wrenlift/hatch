@@ -1,4 +1,4 @@
-// `@hatch:ecs` — entity-component-system for Wren.
+// `@hatch:ecs`: entity-component-system for Wren.
 //
 // ```wren
 // import "@hatch:ecs" for World, Schedule
@@ -30,39 +30,38 @@
 // schedule.run(world, { "dt": 1/60 })
 // ```
 //
-// Storage stays pleasantly direct: `Map<ComponentClass, Map<id,
-// instance>>` — class-keyed pools, monotonic u53 ids. Plenty fast
-// for the few-thousand-entity scale most 2D / mid-size 3D games
-// work at; trades zero-cost archetype iteration for a smaller
-// surface area you can actually hold in your head.
+// Storage is `Map<ComponentClass, Map<id, instance>>`: class-keyed
+// pools with monotonic u53 ids. Fast for the few-thousand-entity
+// scale most 2D and mid-size 3D games work at. Trades zero-cost
+// archetype iteration for a smaller surface area.
 //
 // ## What's bundled
 //
-// - `World` — entities, components, queries (the simple
+// - `World`. Entities, components, queries (the simple
 //   `world.query([A, B])` form is still here).
-// - `Query` — fluent builder with `.with(C)` / `.without(C)`
+// - `Query`. Fluent builder with `.with(C)` / `.without(C)`
 //   filters for when the simple form isn't enough.
-// - `Bundle` — group a set of components so
+// - `Bundle`. Groups a set of components so
 //   `world.spawnWith(bundle)` attaches them all in one call.
-// - `Resources` — typed singleton storage on the world (input
-//   state, current camera, asset db, …).
-// - `Events<T>` — per-type broadcast buffer. Push during one
-//   system, drain during the next; cleared at the end of each
+// - `Resources`. Typed singleton storage on the world (input
+//   state, current camera, asset db).
+// - `Events<T>`. Per-type broadcast buffer. Push during one
+//   system, drain during the next. Cleared at the end of each
 //   frame by `world.flushEvents`.
-// - `Commands` — deferred mutation buffer. Useful inside a
-//   query body where you need to spawn / despawn entities
-//   without invalidating the active iteration; apply the buffer
-//   after the loop with `world.applyCommands(cmds)`.
-// - `Schedule` — named system functions with
+// - `Commands`. Deferred mutation buffer. Useful inside a
+//   query body where the system needs to spawn or despawn
+//   entities without invalidating the active iteration. Apply
+//   the buffer after the loop with `world.applyCommands(cmds)`.
+// - `Schedule`. Named system functions with
 //   `.before(label, other)` / `.after(label, other)` ordering
-//   hints; `run(world, ctx)` topologically orders and dispatches
+//   hints. `run(world, ctx)` topologically orders and dispatches
 //   each.
-// - Hooks — `world.onAdd(Class) {|w, e, c| …}` /
-//   `world.onRemove(Class) {|w, e| …}` for component-lifecycle
+// - Hooks. `world.onAdd(Class) {|w, e, c| ...}` and
+//   `world.onRemove(Class) {|w, e| ...}` for component-lifecycle
 //   callbacks (animations, audio, indexing).
-// - Hierarchy — `world.setParent(child, parent)` /
-//   `world.childrenOf(parent)`. Backed by built-in `Parent` /
-//   `Children` components so queries can include / exclude them
+// - Hierarchy. `world.setParent(child, parent)` and
+//   `world.childrenOf(parent)`. Backed by built-in `Parent` and
+//   `Children` components so queries can include or exclude them
 //   like any other.
 
 // ---------------------------------------------------------------
@@ -96,7 +95,7 @@ class Children {
 }
 
 // ---------------------------------------------------------------
-/// Bundles — a list of pre-built component instances that can be
+/// Bundles. A list of pre-built component instances that can be
 /// attached as a unit. Trivial wrapper over List<component>; the
 /// abstraction is the named API, not the storage shape.
 // ---------------------------------------------------------------
@@ -108,15 +107,15 @@ class Bundle {
 }
 
 // ---------------------------------------------------------------
-// Resources — typed singleton store keyed by class. Lives on
+// Resources. Typed singleton store keyed by class. Lives on
 // the world so systems can pull `dt`, the active camera, the
 // input state, the asset db, etc. without threading them through
 // every signature.
 // ---------------------------------------------------------------
 
 /// Per-world singleton store. Holds objects every system
-/// might need — `dt`, the active camera, input state, an
-/// asset db — without threading them through every system
+/// might need (`dt`, the active camera, input state, an
+/// asset db) without threading them through every system
 /// signature. Access via `world.resources.get(Class)`.
 class Resources {
   construct new_() { _store = {} }
@@ -127,8 +126,8 @@ class Resources {
   }
 
   /// Convenience for primitive resources (Num / String / Map / List)
-  /// that don't carry a class identity worth looking up against —
-  /// user provides the key class explicitly.
+  /// that don't carry a class identity worth looking up against.
+  /// The caller provides the key class explicitly.
   insertAs(klass, value) {
     _store[klass] = value
     return value
@@ -144,7 +143,7 @@ class Resources {
 }
 
 // ---------------------------------------------------------------
-// Events — per-type buffered queues. Systems push during one
+// Events. Per-type buffered queues. Systems push during one
 // pass, downstream systems drain in a later pass; `flushEvents`
 // at frame-end clears anything no one drained.
 // ---------------------------------------------------------------
@@ -152,7 +151,7 @@ class Resources {
 /// Per-world event bus. Systems emit events with `push(...)`
 /// and consume them with `drain(Class)` (returns the queued
 /// events for that class and clears the queue). Events are
-/// frame-scoped — a system that doesn't drain a queue loses
+/// frame-scoped. A system that doesn't drain a queue loses
 /// the events at the next tick.
 class Events {
   construct new_() { _queues = {} }
@@ -184,7 +183,7 @@ class Events {
 }
 
 // ---------------------------------------------------------------
-// Commands — deferred mutation buffer. Records spawn / attach /
+// Commands. Deferred mutation buffer. Records spawn / attach /
 // detach / despawn ops; `world.applyCommands(cmds)` replays them.
 // Lets a system mutate the world from inside a query loop without
 // invalidating the active iterator.
@@ -231,7 +230,7 @@ class Commands {
   clear { _ops = [] }
 }
 
-// Internal — represents an entity that hasn't been allocated yet.
+// Internal. Represents an entity that hasn't been allocated yet.
 // `applyCommands` resolves these to real ids on flush.
 class PendingSpawn_ {
   construct new_(buffer, opIndex) {
@@ -245,7 +244,7 @@ class PendingSpawn_ {
 }
 
 // ---------------------------------------------------------------
-// Query builder — fluent filter chain. `.with(C)` adds a required
+// Query builder. Fluent filter chain. `.with(C)` adds a required
 // component, `.without(C)` adds an excluded one. `iterate` returns
 // the matching entity list.
 // ---------------------------------------------------------------
@@ -255,7 +254,7 @@ class PendingSpawn_ {
 /// exclude tags; iterate via `.each { |e, comp1, comp2| ... }`
 /// or `.entities` to get just the matching entity ids.
 ///
-/// Internally walks the world's component table — cheap for
+/// Internally walks the world's component table. Cheap for
 /// the common case of one or two component types, but worth
 /// caching the query if it fires every frame.
 class Query {
@@ -288,16 +287,16 @@ class Query {
     for (e in iterate) block.call(_world, e)
   }
 
-  /// Count-only — useful for HUD overlays / debug.
+  /// Count-only. Useful for HUD overlays and debug.
   count {
     return iterate.count
   }
 }
 
 // ---------------------------------------------------------------
-// Schedule — labelled system fns with optional ordering hints.
+// Schedule. Labelled system fns with optional ordering hints.
 // `run(world, ctx)` resolves the order topologically and dispatches
-// each system once. `ctx` is whatever Map you want — typical use:
+// each system once. `ctx` is any Map. Typical use:
 // `{"dt": dt, "frame": frame, "input": input}`.
 // ---------------------------------------------------------------
 
@@ -306,12 +305,12 @@ class Query {
 /// expresses ordering constraints; `tick(world, ctx)` runs
 /// every registered system in dependency order.
 ///
-/// Constraint cycles abort the fiber at first `tick` —
-/// resolution is cached until the graph changes.
+/// Constraint cycles abort the fiber at first `tick`.
+/// Resolution is cached until the graph changes.
 class Schedule {
   construct new() {
     _systems = {}    // label → fn(world, ctx)
-    _after   = {}    // label → List<label> — must run AFTER these
+    _after   = {}    // label → List<label>; must run AFTER these
     _order   = null  // resolved topo order (cached until invalidated)
   }
 
@@ -414,11 +413,11 @@ class Schedule {
 }
 
 // ---------------------------------------------------------------
-// World — the main store. Same simple core as before, with the
+// World. The main store. Same simple core as before, with the
 // extras above hanging off it.
 // ---------------------------------------------------------------
 
-/// The ECS world — entity factory, component store, system
+/// The ECS world. Entity factory, component store, system
 /// scheduler, and event bus. One World owns the whole ECS;
 /// every other class hangs off it.
 ///
@@ -454,7 +453,7 @@ class World {
     return _components[klass].count
   }
 
-  /// Live entity ids snapshot — copy-out for safe iteration.
+  /// Live entity ids snapshot. Copies out for safe iteration.
   entities {
     var out = []
     for (id in _entities.keys) out.add(id)
@@ -514,8 +513,8 @@ class World {
     // isn't registered yet.
     var p = _entities.containsKey(e) ? _entities[e] : null
     _entities.remove(e)
-    // Cascading children-of-removed-parent cleanup is planned
-    // — `p` is captured here so a future pass can rewalk the
+    // Cascading children-of-removed-parent cleanup is planned.
+    // `p` is captured here so a future pass can rewalk the
     // hierarchy without changing this signature.
     if (p != null) {}
   }
@@ -588,7 +587,7 @@ class World {
 
   // -- Queries ------------------------------------------------
 
-  /// Original simple form — match every entity that has every
+  /// Original simple form. Matches every entity that has every
   /// class in `klasses`.
   query(klasses) {
     if (klasses is Class) klasses = [klasses]

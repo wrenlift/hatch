@@ -1,4 +1,4 @@
-// `@hatch:fs` — filesystem I/O.
+// `@hatch:fs`: filesystem I/O.
 //
 // ```wren
 // import "@hatch:fs" for Fs
@@ -23,7 +23,7 @@
 // Fs.cwd / Fs.home / Fs.tmpDir
 // ```
 //
-// All operations are synchronous and abort on failure — wrap in
+// All operations are synchronous and abort on failure. Wrap in
 // `Fiber.new { ... }.try()` to catch.
 //
 // Backed by the runtime `fs` module (Rust `std::fs`). Unix-ish
@@ -84,8 +84,8 @@ class Fs {
   static removeTree(path) { FS.removeTree(path) }
   static rename(from, to) { FS.rename(from, to) }
 
-  /// walk(path) → flat list of path strings relative to `path`,
-  /// recursive, sorted per-level. Skips nothing — callers that want
+  /// Returns a flat list of path strings relative to `path`,
+  /// recursive, sorted per-level. Skips nothing; callers that want
   /// to exclude (e.g.) `.git/` filter the returned list.
   static walk(path) {
     var results = []

@@ -1,8 +1,8 @@
-A minimal game framework for Wren. Subclass `Game`, override `setup` / `update` / `draw`, hand the class to `Game.run` — you get a window, a GPU device, a per-frame loop, and aggregated input state wired in. The same source drives a `winit` window on native and a page-attached canvas on web. Composes with `@hatch:ecs` for entities, `@hatch:assets` for hot-reloaded content, `@hatch:audio` for sound, and `@hatch:physics` for collision.
+A minimal game framework for Wren. Subclass `Game`, override `setup` / `update` / `draw`, and hand the class to `Game.run`. The result is a window, a GPU device, a per-frame loop, and aggregated input state wired in. The same source drives a `winit` window on native and a page-attached canvas on web. Composes with `@hatch:ecs` for entities, `@hatch:assets` for hot-reloaded content, `@hatch:audio` for sound, and `@hatch:physics` for collision.
 
 ## Overview
 
-State lives on your subclass — no userdata scratchpad, no closure ceremony. `Game.run` instantiates the class (so declare a `construct new() {}`), opens the window using your `config` getter, then drives the loop until something flips `g.requestQuit`.
+State lives on the subclass. No userdata scratchpad, no closure ceremony. `Game.run` instantiates the class (so declare a `construct new() {}`), opens the window using the `config` getter, then drives the loop until something flips `g.requestQuit`.
 
 ```wren
 import "@hatch:game"  for Game
@@ -43,12 +43,12 @@ Game.run(MyGame)
 
 ## Input and timing
 
-`g.input` aggregates keyboard and mouse state. Use `isDown(key)` for held-state polling, `justPressed(key)` for edge-triggered actions. Key names match `winit`'s `physical_key` Debug formatting (`KeyA`, `Space`, `Escape`, `ArrowLeft`). The raw event list lives at `g.events` if you want to drive your own state machine instead.
+`g.input` aggregates keyboard and mouse state. Use `isDown(key)` for held-state polling, `justPressed(key)` for edge-triggered actions. Key names match `winit`'s `physical_key` Debug formatting (`KeyA`, `Space`, `Escape`, `ArrowLeft`). The raw event list lives at `g.events` for callers that prefer to drive their own state machine.
 
-`g.dt` is the seconds-since-last-frame `Num`, clamped to a sane upper bound so a paused tab doesn't dump a giant integration step into your update.
+`g.dt` is the seconds-since-last-frame `Num`, clamped to a sane upper bound so a paused tab doesn't dump a giant integration step into the update.
 
-> **Note — web target yields each frame**
-> On `#!wasm` builds, the loop parks on `Browser.nextFrame.await` (vsync-paced via `requestAnimationFrame`) so the JS event loop drains and the page stays responsive. Native builds strip that import via the cfg pre-pass; you don't see the difference at the source level.
+> **Note: web target yields each frame.**
+> On `#!wasm` builds, the loop parks on `Browser.nextFrame.await` (vsync-paced via `requestAnimationFrame`) so the JS event loop drains and the page stays responsive. Native builds strip that import via the cfg pre-pass; the difference is invisible at the source level.
 
 ## Compatibility
 

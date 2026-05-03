@@ -1,4 +1,4 @@
-// `@hatch:random` — random numbers, sampling, shuffling.
+// `@hatch:random`: random numbers, sampling, shuffling.
 //
 // ```wren
 // import "@hatch:random" for Rand
@@ -25,9 +25,9 @@
 //
 // Static `Rand.*` methods all route through a single module-level
 // default stream. That stream is initialised unseeded at import
-// time — set `Rand.seed = n` if you need reproducibility across a
-// whole program. For per-call reproducibility or concurrent
-// streams, hold your own `Rand.stream(seed)` handle.
+// time. Set `Rand.seed = n` for reproducibility across a whole
+// program. For per-call reproducibility or concurrent streams,
+// hold a separate `Rand.stream(seed)` handle.
 //
 // Backed by the runtime's built-in `Random` module (xoshiro256++
 // PRNG). `sample` and `shuffle` are uniform; `int` is free of
@@ -37,7 +37,7 @@ import "random" for Random
 
 // Shared default stream. Module var so `Rand.seed=(n)` can
 // reassign it on demand. Zero-arg `Random.new` is registered
-// as a getter, not a method call — hence no parens.
+// as a getter, not a method call, hence no parens.
 var default_ = Random.new
 
 class Rand {

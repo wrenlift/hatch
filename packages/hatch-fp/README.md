@@ -1,4 +1,4 @@
-Fluent and functional collection operations — `flatMap`, `groupBy`, `partition`, `zipWith`, `sortedBy`, `chunked`, `windowed`, `scan`, `distinct`, `tap`, `takeWhile`, `dropWhile`, plus the usual suspects. Two surfaces: a `FP` static toolbox you call directly, and a `Pipe` builder for fluent left-to-right chains. Pure Wren — no runtime module, so the JIT tier-ups it like any hot user code.
+Fluent and functional collection operations: `flatMap`, `groupBy`, `partition`, `zipWith`, `sortedBy`, `chunked`, `windowed`, `scan`, `distinct`, `tap`, `takeWhile`, `dropWhile`, plus the usual suspects. Two surfaces: a `FP` static toolbox to call directly, and a `Pipe` builder for fluent left-to-right chains. Pure Wren, with no runtime module, so the JIT tier-ups it like any hot user code.
 
 ## Overview
 
@@ -30,11 +30,11 @@ var squares = Pipe.of(1..10)
 
 ## Defaults and helpers
 
-`FP.identity`, `FP.constant(v)`, and `FP.noop` cover the common slot-fillers — pass them as the default key-extractor for `distinctBy`, the default value for `map(FP.constant(0))`, the default body for `tap` when you only want a debug print. `FP.generate(n, fn)` and `FP.repeat(value, n)` are constructor shorthands; `FP.range(start, end)` covers `start..end` when you want a list eagerly.
+`FP.identity`, `FP.constant(v)`, and `FP.noop` cover the common slot-fillers. Pass them as the default key-extractor for `distinctBy`, the default value for `map(FP.constant(0))`, or the default body for `tap` when only a debug print is wanted. `FP.generate(n, fn)` and `FP.repeat(value, n)` are constructor shorthands; `FP.range(start, end)` covers `start..end` when a list is wanted eagerly.
 
-> **Tip — eager materialisation is intentional**
+> **Tip: eager materialisation is intentional.**
 > Lazy iteration would mean dragging Wren's iterator protocol through every step. Eager `List` materialisation keeps each op O(n) and cheap to reason about, and the JIT optimises away the intermediate allocations on hot paths.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Pure-Wren — no native dependencies, no host capabilities.
+Wren 0.4 + WrenLift runtime 0.1 or newer. Pure-Wren, with no native dependencies and no host capabilities.

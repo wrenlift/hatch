@@ -1,4 +1,4 @@
-// @hatch:web/css — a small Tailwind-dialect CSS-in-Wren combinator.
+// @hatch:web/css: a small Tailwind-dialect CSS-in-Wren combinator.
 //
 // The pitch:
 //
@@ -11,27 +11,27 @@
 //   btn.className     // "c-a7b3d2"
 //   btn.css           // ".c-a7b3d2 { background-color: #3b82f6; ... }"
 //                     // ".c-a7b3d2:hover { background-color: #1d4ed8; ... }"
-//   btn.styleTag      // "<style>...</style>" — inline-ready
+//   btn.styleTag      // "<style>...</style>" (inline-ready)
 //
 // Three scopes for where the CSS lands:
 //
-//   * Global — call `app.globalCss(style)` at startup. A route-scope
+//   * Global: call `app.globalCss(style)` at startup. A route-scope
 //     stylesheet collects every global Style; `req.render` injects
 //     the aggregated `<style>` tag into the `<head>` of full-page
 //     renders. Deduped by class name, so adding the same style
 //     twice is free.
 //
-//   * Fragment — call `req.fragmentCss(style)` inside a handler. The
+//   * Fragment: call `req.fragmentCss(style)` inside a handler. The
 //     `<style>` tag is emitted adjacent to the fragment's HTML, so
-//     htmx `hx-swap` brings the CSS along with the swapped DOM —
-//     no leaked styles from unmounted fragments, no build step.
+//     htmx `hx-swap` brings the CSS along with the swapped DOM.
+//     No leaked styles from unmounted fragments, no build step.
 //
-//   * Slot — same wire shape as Fragment. The distinction is purely
+//   * Slot: same wire shape as Fragment. The distinction is purely
 //     author intent: "this CSS belongs to this slot's content" vs.
 //     "this CSS belongs to this fragment". Use whichever reads
 //     better at the call site.
 //
-// Dialect: a deliberate *subset* of Tailwind — enough to style a
+// Dialect: a deliberate *subset* of Tailwind, enough to style a
 // real app without shipping a 200KB runtime. ~200 utilities,
 // procedurally generated so `p-7`, `mx-11`, `gap-3`, etc. all
 // work without a 1000-line lookup. Add to `Tw_` as the surface
@@ -42,8 +42,8 @@ import "@hatch:hash" for Hash
 
 // ── Tailwind token expansion ───────────────────────────────────────────
 //
-// Token → Map<String, String> of CSS declarations. Returns null for
-// anything unrecognised — callers decide whether to warn or silently
+// Token to Map<String, String> of CSS declarations. Returns null for
+// anything unrecognised; callers decide whether to warn or silently
 // drop. State / responsive prefixes are stripped before this lookup;
 // pseudo-wrapping happens in the Style builder.
 
@@ -131,7 +131,7 @@ class Tw_ {
     if (token == null || token.count == 0) return null
     var parts = token.split("-")
 
-    // Quick literal matches — short circuit.
+    // Quick literal matches; short circuit.
     if (token == "flex")         return {"display": "flex"}
     if (token == "grid")         return {"display": "grid"}
     if (token == "block")        return {"display": "block"}
@@ -236,7 +236,7 @@ class Tw_ {
         return {"font-size": fs[0], "line-height": fs[1]}
       }
 
-      // max-w-{sm/md/lg/xl/2xl/4xl/6xl} — prose widths.
+      // max-w-{sm/md/lg/xl/2xl/4xl/6xl}: prose widths.
       if (head == "max-w") {
         if (tail == "sm")  return {"max-width": "24rem"}
         if (tail == "md")  return {"max-width": "28rem"}
@@ -251,7 +251,7 @@ class Tw_ {
         if (tail == "full")return {"max-width": "100%"}
       }
 
-      // text-{color}-{shade} when shade is a number — fallthrough below.
+      // text-{color}-{shade} when shade is a number; fallthrough below.
     }
 
     // color-shaded families: bg-blue-500, text-gray-700, border-red-300
@@ -276,7 +276,7 @@ class Tw_ {
 /// ── Style ──────────────────────────────────────────────────────────────
 ///
 /// Immutable builder. Combinator methods (`tw`, `hover`, `focus`, `raw`)
-/// return NEW Style instances — share safely across routes / threads.
+/// return new Style instances; share safely across routes and threads.
 ///
 /// A Style is a base declaration map + an ordered list of pseudo and
 /// media buckets. Emitting CSS walks each bucket in the order it was
@@ -330,8 +330,8 @@ class Style {
   /// Css.raw({"border-image": "url(...)", "-webkit-appearance": "none"})
   /// ```
   ///
-  /// Wren has no schema for CSS values — this is the escape
-  /// hatch for anything Tailwind dialect doesn't cover.
+  /// Wren has no schema for CSS values; this is the escape
+  /// hatch for anything the Tailwind dialect doesn't cover.
   raw(decls) {
     var next = Style.clone_(this)
     for (k in decls.keys) next.baseMerge_(k, decls[k])
@@ -362,7 +362,7 @@ class Style {
     return _classCache
   }
 
-  /// Compiled CSS — rule for the base class, then each pseudo, then
+  /// Compiled CSS: rule for the base class, then each pseudo, then
   /// each @media bucket (itself containing the `.c-...` rule at the
   /// breakpoint). No whitespace minification beyond "clean".
   css {
@@ -515,8 +515,8 @@ class Style {
     return Style.new_(base, ps, mq)
   }
 
-  // Canonical text used for the className hash — sorted keys and
-  // deterministic emission order, so equivalent builders share a
+  // Canonical text used for the className hash. Sorted keys and
+  // deterministic emission order ensure equivalent builders share a
   // class name.
   normalizedForHash_ {
     var out = "|"
@@ -529,7 +529,7 @@ class Style {
   static dumpSorted_(m) {
     var keys = []
     for (k in m.keys) keys.add(k)
-    // Insertion sort — Wren's List has no .sort in the stdlib we use,
+    // Insertion sort. Wren's List has no .sort in the stdlib used here,
     // and 10-key maps are the common case.
     var i = 1
     while (i < keys.count) {
@@ -568,7 +568,7 @@ class Style {
         // Key format is ":hover::background-color". Split it back.
         var hh = Style.indexOf_(k, ":")
         var tt = Style.indexOf_(k[1..(k.count - 1)], ":")
-        // This path is NYI in v1 — silently drop so we don't emit
+        // This path is NYI in v1; silently drop to avoid emitting
         // malformed CSS. Follow-up ticket.
       } else {
         out = out + " " + k + ": " + decls[k] + ";"

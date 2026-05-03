@@ -1,4 +1,4 @@
-A URL parser, builder, and percent-encoder. One class — `Url` — with parse, build, and round-trip serialization, plus standalone helpers for component encoding and `key=value` query strings. Pure Wren, follows RFC 3986 loosely; scope is "good-enough" URL handling for HTTP requests and link generation.
+A URL parser, builder, and percent-encoder. One class, `Url`, with parse, build, and round-trip serialization, plus standalone helpers for component encoding and `key=value` query strings. Pure Wren, follows RFC 3986 loosely; scope is "good-enough" URL handling for HTTP requests and link generation.
 
 ## Overview
 
@@ -32,11 +32,11 @@ System.print(Url.encodeQuery({ "a": 1, "b": "two" }))   // "a=1&b=two"
 System.print(Url.decodeQuery("a=1&b=two"))               // { "a": "1", "b": "two" }
 ```
 
-`encodeQuery` accepts `Num`, `String`, `Bool`, and `null` values; everything else aborts. Decoded values come back as strings — Wren doesn't have JSON-like type sniffing on the URL surface.
+`encodeQuery` accepts `Num`, `String`, `Bool`, and `null` values; everything else aborts. Decoded values come back as strings; Wren doesn't have JSON-like type sniffing on the URL surface.
 
-> **Note — what's not in scope**
-> No IDN / punycode handling, no relative-URL resolution, no path-normalisation (`..` collapsing). If you need any of those, route through a host-side library on the way in. The package is sized for the "build a request URL and tear apart a redirect" job.
+> **Note: what's not in scope**
+> No IDN / punycode handling, no relative-URL resolution, no path-normalisation (`..` collapsing). For any of those, route through a host-side library on the way in. The package is sized for the "build a request URL and tear apart a redirect" job.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Pure-Wren — no native dependencies. Pair with `@hatch:http` for outbound requests; `Http.get` accepts plain strings, but pre-parsing through `Url` gives you query-map ergonomics.
+Wren 0.4 with WrenLift runtime 0.1 or newer. Pure Wren, no native dependencies. Pair with `@hatch:http` for outbound requests; `Http.get` accepts plain strings, but pre-parsing through `Url` gives you query-map ergonomics.

@@ -1,4 +1,4 @@
-A timezone-aware `DateTime` value type with `Duration` arithmetic, RFC 3339 parse and format. Layers on top of `@hatch:time`'s UTC-only unix-seconds primitive — this package adds offsets, calendar fields, parsing, formatting, and span arithmetic. Comparisons and equality work against the underlying UTC instant, so two `DateTime`s with different offsets but the same moment compare equal.
+A timezone-aware `DateTime` value type with `Duration` arithmetic, RFC 3339 parse and format. Layers on top of `@hatch:time`'s UTC-only unix-seconds primitive: this package adds offsets, calendar fields, parsing, formatting, and span arithmetic. Comparisons and equality work against the underlying UTC instant, so two `DateTime`s with different offsets but the same moment compare equal.
 
 ## Overview
 
@@ -29,8 +29,8 @@ System.print(
 
 `dt.offsetMinutes` is the signed minutes-from-UTC the local fields render at (`0` for UTC, `60` for `+01:00`, `-300` for `-05:00`). Calendar getters (`year`, `month`, `day`, `hour`, `minute`, `second`, `weekday`) reflect the offset; the underlying instant doesn't move when you change it.
 
-> **Note — no IANA tz database**
-> The package handles fixed UTC offsets, not named zones like `America/New_York`. DST transitions and historical zone changes aren't modelled here. If you need them, parse / format at the boundary and do business logic in UTC.
+> **Note: no IANA tz database**
+> The package handles fixed UTC offsets, not named zones like `America/New_York`. DST transitions and historical zone changes aren't modelled here. When those are needed, parse and format at the boundary and do business logic in UTC.
 
 ## Compatibility
 

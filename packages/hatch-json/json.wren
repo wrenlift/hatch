@@ -1,4 +1,4 @@
-// `@hatch:json` — JSON parser and serializer.
+// `@hatch:json`. JSON parser and serializer.
 //
 // ```wren
 // import "@hatch:json" for JSON
@@ -21,9 +21,9 @@
 // | object         | `Map` (string keys) |
 //
 // Custom types: define `toJson()` on your class and it becomes
-// encodable. The method returns any JSON-encodable value —
-// typically a `Map` of fields. Nested custom objects work too;
-// the encoder recurses on the returned value.
+// encodable. The method returns any JSON-encodable value, typically
+// a `Map` of fields. Nested custom objects work too; the encoder
+// recurses on the returned value.
 //
 // ```wren
 // class Point {
@@ -41,12 +41,12 @@
 // wrap the call in `Fiber.new { JSON.parse(text) }.try()`.
 //
 // (An attribute-driven `#json`-on-getters approach was prototyped
-// but runs into a separate dispatch quirk — see `QUIRKS.md` — and
+// but runs into a separate dispatch quirk (see `QUIRKS.md`) and
 // will land once that's unblocked.)
 
 /// JSON parser and serializer.
 ///
-/// Type mapping (JSON ↔ Wren):
+/// Type mapping (JSON to/from Wren):
 ///
 /// | JSON              | Wren                 |
 /// |-------------------|----------------------|
@@ -89,7 +89,7 @@ class JSON {
     return value
   }
 
-  /// Compact encode — no whitespace between tokens.
+  /// Compact encode. Emits no whitespace between tokens.
   ///
   /// @param {Object} value
   /// @returns {String}
@@ -155,7 +155,7 @@ class Parser_ {
     Fiber.abort("JSON: unexpected character %(c) at offset %(_i)")
   }
 
-  // Wren's String class only defines `==` — no ordering operators —
+  // Wren's String class only defines `==` (no ordering operators),
   // so character range checks go through the raw byte.
   isDigit_(c) {
     var b = c.bytes

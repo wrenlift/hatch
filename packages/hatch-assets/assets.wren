@@ -1,4 +1,4 @@
-// `@hatch:assets` — entry module that re-exports the right
+// `@hatch:assets`: entry module that re-exports the right
 // backend for the bundle target.
 //
 // | Backend               | Behaviour                                              |
@@ -9,7 +9,7 @@
 // Same package, target-conditional re-exports. Bundler picks
 // the matching set per `--bundle-target`.
 //
-// Both backends expose the same `Asset` / `Assets` shape — the
+// Both backends expose the same `Asset` / `Assets` shape; the
 // one Wren-level API works against either. See each backend's
 // header for behaviour notes (binary fetch, hot-reload signal,
 // etc.).

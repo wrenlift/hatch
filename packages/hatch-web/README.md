@@ -1,4 +1,4 @@
-A server-rendered, htmx-native web framework for Wren. Router with path parameters, middleware pipeline, content-negotiated rendering through `@hatch:template`, sessions, flash messages, fragment-scoped CSS, server-sent events, and an HTTP/1.1 server on top of `@hatch:socket`. Designed for the "make HTML on the server, swap fragments on the client" shape — no SPA build pipeline, no API gateway in front.
+A server-rendered, htmx-native web framework for Wren. Router with path parameters, middleware pipeline, content-negotiated rendering through `@hatch:template`, sessions, flash messages, fragment-scoped CSS, server-sent events, and an HTTP/1.1 server on top of `@hatch:socket`. Designed for the "make HTML on the server, swap fragments on the client" shape: no SPA build pipeline, no API gateway in front.
 
 ## Overview
 
@@ -26,13 +26,13 @@ Path parameters (`:who`) populate `req.params` after router match. `req.query` i
 
 ## Middleware
 
-Middleware is a `Fn(req, next)` — call `next.call(req)` to forward, return anything else to short-circuit. Outermost runs first, the handler runs innermost.
+Middleware is a `Fn(req, next)`. Call `next.call(req)` to forward, or return anything else to short-circuit. Outermost runs first; the handler runs innermost.
 
 ```wren
 app.use {|req, next|
   var start = Clock.mono
   var res = next.call(req)
-  Log.info("%(req.method) %(req.path) — %((Clock.mono - start) * 1000)ms")
+  Log.info("%(req.method) %(req.path) %((Clock.mono - start) * 1000)ms")
   return res
 }
 ```
@@ -53,11 +53,11 @@ app.get("/button") {|req|
 }
 ```
 
-Server-sent events live under `Sse` / `SseStream` for streaming updates (chat, notifications, build status). The `Channel` primitive is a fiber-cooperative pub/sub for in-process fan-out — wire it through `Sse` to push messages.
+Server-sent events live under `Sse` / `SseStream` for streaming updates (chat, notifications, build status). The `Channel` primitive is a fiber-cooperative pub/sub for in-process fan-out; wire it through `Sse` to push messages.
 
-> **Note — the runtime is HTTP/1.1 cleartext today**
+> **Note: the runtime is HTTP/1.1 cleartext today**
 > No TLS, no HTTP/2, no WebSockets, no keep-alive (one request per connection). Front it with a reverse proxy (Caddy, nginx, fly.io's edge) for TLS termination and connection reuse until the server picks those up natively.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Native only — `#!wasm` builds use `@hatch:web`'s browser-side `Document` bridge instead of this server. Depends on `@hatch:socket`, `@hatch:template`, `@hatch:log`, `@hatch:hash`, `@hatch:json`, `@hatch:crypto`, `@hatch:fs`, and `@hatch:time`.
+Wren 0.4 with WrenLift runtime 0.1 or newer. Native only; `#!wasm` builds use `@hatch:web`'s browser-side `Document` bridge instead of this server. Depends on `@hatch:socket`, `@hatch:template`, `@hatch:log`, `@hatch:hash`, `@hatch:json`, `@hatch:crypto`, `@hatch:fs`, and `@hatch:time`.

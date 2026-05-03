@@ -1,4 +1,4 @@
-// `@hatch:log` — level-filtered logger.
+// `@hatch:log`. Level-filtered logger.
 //
 // ```wren
 // import "@hatch:log" for Log
@@ -9,9 +9,9 @@
 // Log.debug("cache hit key=%(k)")
 // ```
 //
-// Levels (lowest → highest): `debug`, `info`, `warn`, `error`.
+// Levels (lowest to highest): `debug`, `info`, `warn`, `error`.
 // Set `Log.level = Log.DEBUG` to see everything, `Log.WARN` to
-// hide info / debug, etc. Default is `INFO`.
+// hide info / debug, and so on. Default is `INFO`.
 //
 // Customise output:
 //
@@ -22,8 +22,8 @@
 // ```
 //
 // Format is `LEVEL <prefix>message` with the level tag colored
-// via `@hatch:fmt` (cyan / green / yellow / red). One line per
-// call — callers with multi-line payloads split or interpolate.
+// via `@hatch:fmt` (cyan / green / yellow / red). Emits one line
+// per call. Callers with multi-line payloads split or interpolate.
 
 import "@hatch:fmt" for Fmt
 

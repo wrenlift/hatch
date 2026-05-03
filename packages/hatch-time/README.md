@@ -1,8 +1,8 @@
-Clocks, sleep, and UTC timestamp formatting. Two classes — `Clock` for the wall-clock and monotonic time sources, and `Time` for formatted UTC moments. Pair with `@hatch:datetime` when you need offsets and calendar arithmetic; this package is the thin layer over the runtime's `time` module.
+Clocks, sleep, and UTC timestamp formatting. Two classes: `Clock` for the wall-clock and monotonic time sources, and `Time` for formatted UTC moments. Pair with `@hatch:datetime` when you need offsets and calendar arithmetic; this package is the thin layer over the runtime's `time` module.
 
 ## Overview
 
-`Clock.unix` is wall-clock seconds since the Unix epoch — fine for timestamps but vulnerable to clock adjustment. `Clock.mono` is a monotonic source that always advances at one second per second — use it for measuring durations.
+`Clock.unix` is wall-clock seconds since the Unix epoch. It is suitable for timestamps but vulnerable to clock adjustment. `Clock.mono` is a monotonic source that always advances at one second per second; use it for measuring durations.
 
 ```wren
 import "@hatch:time" for Time, Clock
@@ -28,9 +28,9 @@ System.print(t.format("YYYY-MM-DD HH:mm:ss")) // "2026-04-20 14:23:45"
 
 `format` recognises `YYYY`, `MM`, `DD`, `HH`, `mm`, `ss`, `SSS`; everything else passes through verbatim. Full strftime is a later upgrade.
 
-> **Note — UTC only**
+> **Note: UTC only**
 > `Time` doesn't model offsets or named zones. For local time, DST handling, or arithmetic over `Duration`, reach for `@hatch:datetime`, which layers a real value-type on top of this primitive.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Built on the runtime's `time` module — works on every supported target. `Clock.sleep` is a real OS sleep on native; on `#!wasm` it goes through the runtime's microtask scheduler.
+Wren 0.4 with WrenLift runtime 0.1 or newer. Built on the runtime's `time` module; works on every supported target. `Clock.sleep` is a real OS sleep on native; on `#!wasm` it goes through the runtime's microtask scheduler.

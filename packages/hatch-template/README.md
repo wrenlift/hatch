@@ -1,4 +1,4 @@
-Jinja / Twig-style templating for HTML and XML, with first-class htmx support — fragments, components, slots, conditionals, loops, and response-header helpers. `Template.parse(source)` compiles once, `tpl.render(ctx)` produces output, `tpl.renderFragment(name, ctx)` returns just one named block for partial-update responses.
+Jinja / Twig-style templating for HTML and XML, with first-class htmx support: fragments, components, slots, conditionals, loops, and response-header helpers. `Template.parse(source)` compiles once. `tpl.render(ctx)` produces output. `tpl.renderFragment(name, ctx)` returns just one named block for partial-update responses.
 
 ## Overview
 
@@ -25,7 +25,7 @@ Statement tags cover the usual control-flow and structural pieces:
 | `{% include "name" %}` | Render a registered component |
 | `{# comment #}` | Stripped at parse time |
 
-Expressions support paths (`user.name`, `items[0]`, `ctx["key"]`), literals, comparisons, boolean ops, and pipe filters (`{{ x | upper }}`, `{{ x | default("—") }}`). Built-in filters: `escape`, `raw`, `upper`, `lower`, `default`, `length`, `join`.
+Expressions support paths (`user.name`, `items[0]`, `ctx["key"]`), literals, comparisons, boolean ops, and pipe filters (`{{ x | upper }}`, `{{ x | default("-") }}`). Built-in filters: `escape`, `raw`, `upper`, `lower`, `default`, `length`, `join`.
 
 ## htmx integration
 
@@ -41,11 +41,11 @@ return page.render({ "user": user })
 return page.renderFragment("user-card", { "user": user })
 ```
 
-`Hx.response(body)` builds an HTTP response shape with the right `HX-*` headers — chain `.trigger("name")`, `.redirect(url)`, `.swap("outerHTML")` to build progressive-enhancement responses without hand-formatting headers. Templates can also detect htmx requests via `ctx["#hx"]` (exposed as `hx` in expressions).
+`Hx.response(body)` builds an HTTP response shape with the right `HX-*` headers. Chain `.trigger("name")`, `.redirect(url)`, and `.swap("outerHTML")` to build progressive-enhancement responses without hand-formatting headers. Templates can also detect htmx requests via `ctx["#hx"]` (exposed as `hx` in expressions).
 
-> **Tip — escape by default**
-> `{{ }}` HTML-escapes its input, so user-supplied values are safe in attribute and text contexts. Use `{{{ }}}` only for content you've explicitly rendered through another template or sanitised. Don't disable escaping globally; that's a footgun without a corresponding upside.
+> **Tip: escape by default**
+> `{{ }}` HTML-escapes its input, so user-supplied values are safe in attribute and text contexts. Use `{{{ }}}` only for content already rendered through another template or sanitised. Disabling escaping globally is a footgun without a corresponding upside.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Pure-Wren — no native dependencies. Pairs with `@hatch:http` for serving HTML responses and `@hatch:web` for rendering into a `Document` on the client.
+Wren 0.4 with WrenLift runtime 0.1 or newer. Pure Wren, no native dependencies. Pairs with `@hatch:http` for serving HTML responses and `@hatch:web` for rendering into a `Document` on the client.

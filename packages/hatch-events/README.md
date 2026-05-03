@@ -1,4 +1,4 @@
-In-process pub/sub plus a cooperative fiber scheduler. `Signal` is a single-channel observer with disconnect closures; `EventEmitter` is the Node-style named-events shape; `Scheduler` drives a list of fibers until each one finishes. Pure Wren — emit runs synchronously on the caller, fibers cooperate at `Fiber.yield` boundaries.
+In-process pub/sub plus a cooperative fiber scheduler. `Signal` is a single-channel observer with disconnect closures; `EventEmitter` is the Node-style named-events shape; `Scheduler` drives a list of fibers until each one finishes. Pure Wren. `emit` runs synchronously on the caller, fibers cooperate at `Fiber.yield` boundaries.
 
 ## Overview
 
@@ -36,8 +36,8 @@ var results = Scheduler.runAll(jobs)
 // results[i] is the return value, or the error string if that fiber aborted
 ```
 
-`Scheduler.spawn(fn)` is a thin `Fiber.new` wrapper that documents intent — start work now, drain it later in a `runAll` batch.
+`Scheduler.spawn(fn)` is a thin `Fiber.new` wrapper that documents intent: start work now, drain it later in a `runAll` batch.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Pure-Wren — no native dependencies, no host capabilities. Pairs with `@hatch:http` and `@hatch:web` for IO-driven event flows.
+Wren 0.4 + WrenLift runtime 0.1 or newer. Pure-Wren, with no native dependencies and no host capabilities. Pairs with `@hatch:http` and `@hatch:web` for IO-driven event flows.

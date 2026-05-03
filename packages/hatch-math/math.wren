@@ -1,4 +1,4 @@
-// `@hatch:math` — vectors, matrices, quaternions, easings.
+// `@hatch:math`. Vectors, matrices, quaternions, easings.
 //
 // ```wren
 // import "@hatch:math" for Vec2, Vec3, Vec4, Mat4, Quat, Math, Ease
@@ -16,23 +16,23 @@
 //
 // ## Conventions
 //
-// - Row-major `Mat4` storage — `m.at(row, col)` /
+// - Row-major `Mat4` storage. Use `m.at(row, col)` and
 //   `m.set(row, col, v)`.
 // - Right-handed coordinates with OpenGL-style clip space
 //   (`-1..1` depth, `y` up) for `Mat4.perspective` and `lookAt`.
-// - All factory names spell out intent — `Vec3.unitY` rather
-//   than `Vec3.up`, `Mat4.rotationX` rather than `Mat4.rx`.
+// - Factory names spell out intent. `Vec3.unitY` rather than
+//   `Vec3.up`, `Mat4.rotationX` rather than `Mat4.rx`.
 // - Every binary op (`+`, `*`, etc.) returns a fresh instance.
 //   For hot loops with fixed buffers, every type exposes
-//   in-place companions: `addInto(a, b)`, `mulInto(a, s)` etc.,
-//   which write into `this` without allocating.
+//   in-place companions: `addInto(a, b)`, `mulInto(a, s)`, and
+//   so on, which write into `this` without allocating.
 // - `==` is exact bit-equality. Use `Math.approxEq(a, b, eps)`
 //   or the `approxEq(other[, eps])` method on each type for
 //   fuzzy comparison under accumulated floating-point error.
 
-/// Scalar math helpers and constants — `Math.PI`, `Math.TAU`,
-/// `Math.lerp(a, b, t)`, `Math.clamp(x, lo, hi)`, etc. Pure
-/// Wren, no native deps; precision matches the host's `Num`
+/// Scalar math helpers and constants: `Math.PI`, `Math.TAU`,
+/// `Math.lerp(a, b, t)`, `Math.clamp(x, lo, hi)`, and friends.
+/// Pure Wren, no native deps. Precision matches the host's `Num`
 /// (double-precision float).
 class Math {
   static PI           { 3.141592653589793 }
@@ -46,11 +46,11 @@ class Math {
   static degrees(rad) { rad * 57.29577951308232 }
 
   /// Linear interpolation from `a` to `b` at `t` in `[0, 1]`. `t`
-  /// outside that range extrapolates — `clampedLerp` clamps first.
+  /// outside that range extrapolates; `clampedLerp` clamps first.
   static lerp(a, b, t)        { a + (b - a) * t }
   static clampedLerp(a, b, t) { lerp(a, b, Math.clamp(t, 0, 1)) }
 
-  /// Inverse lerp — given a value, return its `t` on the `[a, b]`
+  /// Inverse lerp. Given a value, returns its `t` on the `[a, b]`
   /// axis. Useful for remapping ranges with `lerp(c, d, inv(a, b, v))`.
   static inverseLerp(a, b, v) {
     if (a == b) return 0
@@ -66,14 +66,15 @@ class Math {
   /// Clamp to `[0, 1]`. Named after the GLSL / HLSL intrinsic.
   static saturate(v)       { Math.clamp(v, 0, 1) }
 
-  /// Hermite smoothstep — zero-slope endpoints at `a` and `b`.
+  /// Hermite smoothstep. Zero-slope endpoints at `a` and `b`.
   /// Classic shader / animation staple for ease-in-out curves.
   static smoothstep(a, b, v) {
     var t = Math.saturate(Math.inverseLerp(a, b, v))
     return t * t * (3 - 2 * t)
   }
-  /// Higher-order smoothstep (Ken Perlin's — zero second derivative
-  /// at endpoints). Smoother still than the cubic version.
+  /// Higher-order smoothstep (Ken Perlin's, with zero second
+  /// derivative at endpoints). Smoother still than the cubic
+  /// version.
   static smootherstep(a, b, v) {
     var t = Math.saturate(Math.inverseLerp(a, b, v))
     return t * t * t * (t * (6 * t - 15) + 10)
@@ -87,7 +88,7 @@ class Math {
   static approxEq(a, b)        { approxEq(a, b, 0.000001) }
   static approxEq(a, b, eps)   { (a - b).abs < eps }
 
-  /// Wraps `v` into `[lo, hi)` — handy for angle wrap-around.
+  /// Wraps `v` into `[lo, hi)`. Handy for angle wrap-around.
   static wrap(v, lo, hi) {
     var range = hi - lo
     if (range <= 0) return lo
@@ -150,7 +151,7 @@ class Ease {
     return 1 - u * u * u / 2
   }
 
-  /// Asymmetric elastic-like overshoot — `t` exits just past 1
+  /// Asymmetric elastic-like overshoot. `t` exits just past 1
   /// before settling back. Gentle pop for bouncy UI transitions.
   static inBack(t) {
     var s = Math.saturate(t)
@@ -162,8 +163,8 @@ class Ease {
     return 1 + 2.70158 * u * u * u + 1.70158 * u * u
   }
 
-  /// Exponential — strong acceleration / deceleration with
-  /// zero-crossing pinned to the endpoints.
+  /// Exponential acceleration or deceleration with zero-crossing
+  /// pinned to the endpoints.
   static inExpo(t) {
     var s = Math.saturate(t)
     if (s == 0) return 0
@@ -176,11 +177,10 @@ class Ease {
   }
 }
 
-/// 2-component vector (`x`, `y`). Constructed via
-/// [Vec2.new], or one of the factory getters (`Vec2.zero`,
-/// `Vec2.one`, …). Operators `+`, `-`, `*`, `/`, `==` work
-/// component-wise; methods return new vectors (immutable
-/// math is the convention).
+/// 2-component vector (`x`, `y`). Constructed via [Vec2.new] or
+/// one of the factory getters (`Vec2.zero`, `Vec2.one`, ...).
+/// Operators `+`, `-`, `*`, `/`, `==` work component-wise.
+/// Methods return new vectors (immutable math is the convention).
 class Vec2 {
   /// Factory methods --------------------------------------------------
 
@@ -230,7 +230,7 @@ class Vec2 {
     return dx * dx + dy * dy
   }
   distance(other)   { distanceSq(other).sqrt }
-  /// Right-hand 2D cross — returns the scalar z-component as if
+  /// Right-hand 2D cross. Returns the scalar z-component as if
   /// the vectors had z=0. Useful for signed area / winding.
   cross(other)      { _x * other.y - _y * other.x }
 
@@ -264,11 +264,11 @@ class Vec2 {
   /// Conversion / comparison -----------------------------------------
 
   toList           { [_x, _y] }
-  /// Raw component list, ordered (x, y). Companion to `Vec3.data` /
-  /// `Vec4.data` / `Mat4.data` / `Quat.data` — used by foreign GPU
+  /// Raw component list, ordered (x, y). Companion to `Vec3.data`,
+  /// `Vec4.data`, `Mat4.data`, and `Quat.data`. Used by foreign GPU
   /// upload paths that need a stable, list-shaped view of the
-  /// underlying storage. Currently allocates each call (fields are
-  /// scalars); cheap enough for the uses we care about.
+  /// underlying storage. Allocates on each call (fields are
+  /// scalars); cheap enough for the supported uses.
   data             { [_x, _y] }
   approxEq(other) { approxEq(other, 0.000001) }
   approxEq(other, eps) {
@@ -328,7 +328,7 @@ class Vec3 {
   }
   distance(o)   { distanceSq(o).sqrt }
 
-  /// Right-handed cross product — `a.cross(b)` is perpendicular
+  /// Right-handed cross product. `a.cross(b)` is perpendicular
   /// to both and follows the right-hand rule.
   cross(o) {
     return Vec3.new(
@@ -409,7 +409,7 @@ class Vec4 {
   static zero     { Vec4.new(0, 0, 0, 0) }
   static one      { Vec4.new(1, 1, 1, 1) }
 
-  /// RGBA convenience — same constructor, different mental model.
+  /// RGBA convenience. Same constructor, different mental model.
   /// Component getters return r/g/b/a aliases so colour code stays
   /// readable without forcing callers to pick a separate type.
   static rgba(r, g, b, a) { Vec4.new(r, g, b, a) }
@@ -465,16 +465,16 @@ class Vec4 {
   toString { "Vec4(%(_x), %(_y), %(_z), %(_w))" }
 }
 
-/// 4×4 matrix in row-major storage. `at(r, c)` reads,
+/// 4x4 matrix in row-major storage. `at(r, c)` reads,
 /// `set(r, c, v)` writes. Static factories produce the
-/// common affine + projection matrices every renderer needs:
+/// common affine and projection matrices every renderer needs:
 /// `Mat4.identity`, `Mat4.perspective(fovY, aspect, near, far)`,
-/// `Mat4.ortho(...)`, `Mat4.lookAt(eye, target, up)`,
-/// translation / rotation / scale helpers, etc.
+/// `Mat4.ortho(...)`, `Mat4.lookAt(eye, target, up)`, plus
+/// translation / rotation / scale helpers.
 ///
-/// `data` returns the underlying `List<Num>` for buffer
-/// uploads; mutate the matrix through the named setters
-/// rather than indexing into `data`.
+/// `data` returns the underlying `List<Num>` for buffer uploads.
+/// Mutate the matrix through the named setters rather than
+/// indexing into `data`.
 class Mat4 {
   construct new() {
     _m = List.filled(16, 0)
@@ -576,7 +576,7 @@ class Mat4 {
   }
 
   /// View matrix: camera at `eye` looking at `target` with the
-  /// given world-space `up`. Right-handed convention — -z points
+  /// given world-space `up`. Right-handed convention; -z points
   /// into the scene.
   static lookAt(eye, target, up) {
     var f = (target - eye).normalized      // forward
@@ -647,7 +647,7 @@ class Mat4 {
   setRaw_(i, v) { _m[i] = v }
 
   /// Raw row-major 16-element list. Returns the underlying storage
-  /// by reference — foreign GPU upload paths read sequentially with
+  /// by reference. Foreign GPU upload paths read sequentially with
   /// List indexing instead of paying for 16 `at(r, c)` method calls
   /// per matrix. Mutating the returned list mutates the matrix.
   data { _m }
@@ -666,8 +666,8 @@ class Mat4 {
     return r
   }
 
-  /// Transform a `Vec3` as a point (w=1). Homogeneous divide
-  /// applied if the result's `w` isn't 1.
+  /// Transform a `Vec3` as a point (w=1). Applies the homogeneous
+  /// divide if the result's `w` is not 1.
   transformPoint(v) {
     var x = at(0, 0) * v.x + at(0, 1) * v.y + at(0, 2) * v.z + at(0, 3)
     var y = at(1, 0) * v.x + at(1, 1) * v.y + at(1, 2) * v.z + at(1, 3)
@@ -679,8 +679,8 @@ class Mat4 {
     return Vec3.new(x, y, z)
   }
 
-  /// Transform a `Vec3` as a direction (w=0). Translation column
-  /// has no effect — useful for normals and velocities.
+  /// Transform a `Vec3` as a direction (w=0). The translation
+  /// column has no effect; useful for normals and velocities.
   transformDir(v) {
     var x = at(0, 0) * v.x + at(0, 1) * v.y + at(0, 2) * v.z
     var y = at(1, 0) * v.x + at(1, 1) * v.y + at(1, 2) * v.z
@@ -719,9 +719,9 @@ class Mat4 {
 }
 
 /// Rotation as a unit quaternion. Layout `(w, x, y, z)`;
-/// identity is `(1, 0, 0, 0)`. Multiplication is
-/// Hamilton-convention — `a * b` applies `b` first then `a`,
-/// matching Mat4 composition order.
+/// identity is `(1, 0, 0, 0)`. Multiplication is the Hamilton
+/// convention: `a * b` applies `b` first then `a`, matching Mat4
+/// composition order.
 ///
 /// Constructors: [Quat.new], `Quat.identity`,
 /// `Quat.fromAxisAngle(axis, angle)`,
@@ -775,7 +775,7 @@ class Quat {
     return Quat.new(_w / l, _x / l, _y / l, _z / l)
   }
 
-  /// Conjugate — for a UNIT quaternion this is the inverse.
+  /// Conjugate. For a unit quaternion this is the inverse.
   conjugate { Quat.new(_w, -_x, -_y, -_z) }
 
   // Hamilton product. Non-commutative.
@@ -807,7 +807,7 @@ class Quat {
       bz = -bz
     }
     if (c > 0.9995) {
-      // Near-parallel — normalize a straight lerp.
+      // Near-parallel. Normalize a straight lerp.
       return Quat.new(
         a.w + (bw - a.w) * t,
         a.x + (bx - a.x) * t,
@@ -847,8 +847,8 @@ class Quat {
     )
   }
 
-  /// Emit the equivalent 4x4 rotation matrix. Bakes the unit
-  /// assumption — pass `q.normalized` first for safety.
+  /// Emit the equivalent 4x4 rotation matrix. Bakes in the unit
+  /// assumption; pass `q.normalized` first for safety.
   toMat4 {
     var xx = _x * _x
     var yy = _y * _y
@@ -872,10 +872,10 @@ class Quat {
     return m
   }
 
-  /// Raw component list. Order is `(w, x, y, z)` — same as the
-  /// `Quat.new(w, x, y, z)` constructor — so foreign upload paths
-  /// can stream the list directly into shader uniforms that store
-  /// quaternions in scalar-first layout.
+  /// Raw component list. Order is `(w, x, y, z)`, the same as
+  /// the `Quat.new(w, x, y, z)` constructor, so foreign upload
+  /// paths can stream the list directly into shader uniforms that
+  /// store quaternions in scalar-first layout.
   data { [_w, _x, _y, _z] }
 
   approxEq(o) { approxEq(o, 0.000001) }

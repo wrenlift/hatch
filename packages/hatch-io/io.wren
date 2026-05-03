@@ -1,4 +1,4 @@
-// `@hatch:io` — byte buffers and stream interfaces.
+// `@hatch:io`. Byte buffers and stream interfaces.
 //
 // ```wren
 // import "@hatch:io" for Buffer, Reader, Writer, BufferReader, BufferWriter, StringReader
@@ -17,7 +17,7 @@
 // b.toString             // "hello"
 // b.append(" world")
 // b.slice(0, 5).toString // "hello"
-// b.indexOf(0x20)        // 5 — the space
+// b.indexOf(0x20)        // 5 (the space)
 // ```
 //
 // `Buffer.fromBytes(list)` and `buffer.toList` let you drop back
@@ -27,10 +27,10 @@
 // ## Streams
 //
 // `Reader` and `Writer` are abstract interfaces. Subclass them
-// by providing `readRaw_(maxBytes) → List<Num> or null` (null =
-// EOF) for readers, or `writeRaw_(bytes) → null` for writers;
-// the base class supplies line-oriented, string, and buffer
-// conveniences.
+// by providing `readRaw_(maxBytes)` returning `List<Num>` or null
+// (null = EOF) for readers, or `writeRaw_(bytes)` returning null
+// for writers. The base class supplies line-oriented, string, and
+// buffer conveniences.
 //
 // ```wren
 // class MyReader is Reader {
@@ -62,9 +62,9 @@
 // stripped). Byte-oriented IO stays explicit to avoid surprises
 // with non-UTF-8 data.
 //
-// Writers are simpler: `Writer.write(data)` accepts a `Buffer`,
+// Writers are simpler. `Writer.write(data)` accepts a `Buffer`,
 // `String`, or `List<Num>`. `Writer.close` is a no-op unless the
-// concrete subclass needs it (e.g. `ProcessWriter` closes
+// concrete subclass needs it (for example, `ProcessWriter` closes
 // stdin).
 
 import "io" for IoCore
@@ -77,8 +77,8 @@ class Buffer {
   }
 
   // Private constructor that adopts a list without copying. Keep
-  // it internal — callers should go through `fromBytes` if they
-  // have a list they want wrapped.
+  // it internal. Callers should go through `fromBytes` if they have
+  // a list they want wrapped.
   construct new_(bytes) {
     _bytes = bytes
   }
@@ -101,9 +101,9 @@ class Buffer {
     return Buffer.new_(IoCore.stringToBytes(s))
   }
 
-  /// Copies the input list so mutations on the original don't
-  /// leak through. If you want to share the list, construct via
-  /// the returned Buffer and mutate through it.
+  /// Copies the input list so mutations on the original do not
+  /// leak through. To share the list, construct via the returned
+  /// Buffer and mutate through it.
   static fromBytes(list) {
     if (!(list is List)) Fiber.abort("Buffer.fromBytes: expected a list")
     var bs = []
@@ -123,9 +123,9 @@ class Buffer {
   isEmpty  { _bytes.count == 0 }
 
   /// Mutable view of the underlying list. Mutating this is
-  /// equivalent to mutating the buffer; appending via `.add` won't
-  /// surprise the Buffer because the Buffer doesn't cache count.
-  /// Use sparingly; `toList` if you want a copy.
+  /// equivalent to mutating the buffer; appending via `.add` does
+  /// not surprise the Buffer because the Buffer does not cache
+  /// count. Use sparingly. Call `toList` for a copy.
   bytes { _bytes }
 
   byteAt(i) {
@@ -196,8 +196,7 @@ class Buffer {
   }
 
   /// UTF-8 decode. Invalid sequences become U+FFFD replacement
-  /// characters. If you need strict decoding, validate yourself
-  /// first.
+  /// characters. For strict decoding, validate the bytes first.
   toString { IoCore.bytesToString(_bytes) }
 
   /// Copy the bytes into a fresh List<Num>.
@@ -280,9 +279,9 @@ class Reader {
   }
 
   /// Alternate constructor for callers outside this module. Cross-
-  /// module field inheritance isn't fully supported today, so
-  /// `Reader.withFn { ... }` is the portable way to build a
-  /// Reader backed by your own producer without subclassing.
+  /// module field inheritance is not fully supported today, so
+  /// `Reader.withFn { ... }` is the portable way to build a Reader
+  /// backed by your own producer without subclassing.
   static withFn(readFn) {
     var r = Reader.new()
     r.setReadFn_(readFn)
@@ -291,9 +290,9 @@ class Reader {
 
   /// Fiber-cooperative constructor. `tryReadFn` returns one of:
   ///
-  /// - `null` — EOF; no more bytes ever.
-  /// - `[]` — "nothing right now, try again."
-  /// - `List<Num>` (non-empty) — bytes.
+  /// - `null`: EOF, no more bytes ever.
+  /// - `[]`: nothing right now, try again.
+  /// - `List<Num>` (non-empty): bytes.
   ///
   /// The wrapper spins on the try-read and calls `Fiber.yield()`
   /// on every "would block" result, so other fibers in the same
@@ -316,7 +315,7 @@ class Reader {
           out = result
           done = true
         } else {
-          // WouldBlock — let other fibers run.
+          // WouldBlock. Let other fibers run.
           Fiber.yield()
         }
       }
@@ -325,12 +324,12 @@ class Reader {
     return r
   }
 
-  // Internal — used by `withFn` and subclasses that prefer a
+  // Internal. Used by `withFn` and subclasses that prefer a
   // callback over overriding `readRaw_`.
   setReadFn_(fn)  { _readFn = fn }
   setCloseFn_(fn) { _closeFn = fn }
 
-  // Subclass override OR the callback set by `withFn`. Returns a
+  // Subclass override or the callback set by `withFn`. Returns a
   // `List<Num>` of up to `max` bytes, or null at EOF.
   readRaw_(max) {
     if (_readFn == null) Fiber.abort("Reader: subclass must implement readRaw_ or use Reader.withFn")
@@ -349,8 +348,8 @@ class Reader {
   }
 
   /// Read up to `n` bytes. Returns a Buffer (possibly empty at
-  /// EOF). Shorter than `n` is fine — you get what's currently
-  /// available.
+  /// EOF). Shorter than `n` is fine; the result reflects what is
+  /// currently available.
   read(n) {
     if (_closed) return Buffer.new()
     if (!(n is Num) || n < 0 || !n.isInteger) {
@@ -402,7 +401,7 @@ class Reader {
 
   /// Read a single line (up to and including `\n`, whichever
   /// comes first). Returns a String with the trailing `\n` and
-  /// any preceding `\r` stripped. Returns null at EOF — distinct
+  /// any preceding `\r` stripped. Returns null at EOF, distinct
   /// from an empty line (`""` from a bare `\n`).
   readLine {
     if (_closed && _lineBuf.count == 0) return null
@@ -432,7 +431,7 @@ class Reader {
         }
         return IoCore.bytesToString(out)
       }
-      // No newline yet — pull more bytes.
+      // No newline yet. Pull more bytes.
       var chunk = readRaw_(4096)
       if (chunk == null) {
         // EOF. If we have a partial line, emit it; otherwise
@@ -480,7 +479,7 @@ class Writer {
   setCloseFn_(fn) { _closeFn = fn }
   setFlushFn_(fn) { _flushFn = fn }
 
-  // Subclass override OR the callback set by `withFn`. Consumes a
+  // Subclass override or the callback set by `withFn`. Consumes a
   // `List<Num>` of bytes.
   writeRaw_(bytes) {
     if (_writeFn == null) Fiber.abort("Writer: subclass must implement writeRaw_ or use Writer.withFn")

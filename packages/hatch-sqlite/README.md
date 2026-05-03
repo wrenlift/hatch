@@ -1,4 +1,4 @@
-Embedded SQLite for Wren. `Database.open(path)` (or `Database.openMemory()`) returns a connection; statements bind parameters positionally or by name; `query` iterates rows as `Map`s keyed by column. Backed by `rusqlite` with bundled SQLite — no external system dependency on the runtime host.
+Embedded SQLite for Wren. `Database.open(path)` (or `Database.openMemory()`) returns a connection. Statements bind parameters positionally or by name. `query` iterates rows as `Map`s keyed by column. Backed by `rusqlite` with bundled SQLite, so the runtime host needs no external system dependency.
 
 ## Overview
 
@@ -13,7 +13,7 @@ db.execute("INSERT INTO users (name, age) VALUES (?, ?)", ["alice", 30])
 db.execute("INSERT INTO users (name, age) VALUES (?, ?)", ["bob",   25])
 
 for (row in db.query("SELECT * FROM users WHERE age > ? ORDER BY id", [20])) {
-  System.print("%(row["id"]) — %(row["name"]) (%(row["age"]))")
+  System.print("%(row["id"]): %(row["name"]) (%(row["age"]))")
 }
 
 db.execute("UPDATE users SET age = :age WHERE name = :name", {
@@ -44,14 +44,14 @@ If the second insert aborts (constraint violation, etc.), the first one rolls ba
 | SQL       | Wren        | Notes |
 |-----------|-------------|-------|
 | `NULL`    | `Null`      |       |
-| `INTEGER` | `Num`       | Values above 2^53 lose precision — they round to the nearest representable double. |
+| `INTEGER` | `Num`       | Values above 2^53 lose precision and round to the nearest representable double. |
 | `REAL`    | `Num`       |       |
 | `TEXT`    | `String`    |       |
 | `BLOB`    | `ByteArray` | Returned as `ByteArray` on read (`row["b"][0]`, `row["b"].count`). On bind, accepts `ByteArray` or a backwards-compatible `List<Num>` with bytes in `0..=255`. |
 
-> **Warning — large integers lose precision**
-> Wren's `Num` is an IEEE 754 double, so SQLite `INTEGER` values above 2^53 round on the way through. If you store unsigned 64-bit ids, encode them as `TEXT` (or as `BLOB` for binary fixed-width keys) to keep the bits intact.
+> **Warning: large integers lose precision**
+> Wren's `Num` is an IEEE 754 double, so SQLite `INTEGER` values above 2^53 round on the way through. To store unsigned 64-bit ids, encode them as `TEXT` (or as `BLOB` for binary fixed-width keys) to keep the bits intact.
 
 ## Compatibility
 
-Wren 0.4 + WrenLift runtime 0.1 or newer. Native only — `#!wasm` builds need a separate WASM-compiled SQLite that hasn't shipped yet. The dylib is bundled into the package's `.hatch` artifact, so the runtime host never needs SQLite installed.
+Wren 0.4 with WrenLift runtime 0.1 or newer. Native only. `#!wasm` builds need a separate WASM-compiled SQLite that has not shipped yet. The dylib is bundled into the package's `.hatch` artifact, so the runtime host never needs SQLite installed.

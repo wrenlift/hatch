@@ -1,4 +1,4 @@
-/// `@hatch:test` — tiny test runner for `*.spec.wren` files.
+/// `@hatch:test`: a small test runner for `*.spec.wren` files.
 ///
 /// ```wren
 /// import "@hatch:test"   for Test
@@ -24,8 +24,8 @@
 /// both propagate the result.
 ///
 /// Deliberately small surface: no before / after hooks, no
-/// async, no skip markers. First-wave packages just need "did
-/// this work?" — the heavier runner features land if / when they
+/// async, no skip markers. First-wave packages need only "did
+/// this work?". Heavier runner features land if and when they
 /// earn their keep.
 
 class Test {
@@ -85,8 +85,8 @@ class Test {
       System.print("FAILED: %(passed)/%(total) passed, %(failed) failed")
     }
 
-    // Reset so repeat calls in the same process start fresh —
-    // matters when specs are re-imported (e.g. hot reload).
+    // Reset so repeat calls in the same process start fresh.
+    // Matters when specs are re-imported (e.g. hot reload).
     __cases = null
     __currentGroup = null
 

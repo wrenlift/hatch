@@ -1,4 +1,4 @@
-// `@hatch:sqlite` — embedded SQLite.
+// `@hatch:sqlite`: embedded SQLite.
 //
 // ```wren
 // import "@hatch:sqlite" for Database
@@ -9,7 +9,7 @@
 // db.execute("INSERT INTO users (name, age) VALUES (?, ?)", ["bob",   25])
 //
 // for (row in db.query("SELECT * FROM users WHERE age > ? ORDER BY id", [20])) {
-//   System.print("%(row["id"]) — %(row["name"]) (%(row["age"]))")
+//   System.print("%(row["id"]): %(row["name"]) (%(row["age"]))")
 // }
 //
 // // Named parameters:
@@ -18,7 +18,7 @@
 //   "name": "alice"
 // })
 //
-// // Transaction helper — commits on success, rolls back on abort.
+// // Transaction helper. Commits on success, rolls back on abort.
 // db.transaction {
 //   db.execute("INSERT INTO users (name) VALUES (?)", ["carol"])
 //   db.execute("INSERT INTO users (name) VALUES (?)", ["dan"])
@@ -39,16 +39,16 @@
 //
 // Backed by the `rusqlite` crate with bundled SQLite. The plugin
 // ships as a platform-specific dylib inside this package's
-// `.hatch` artifact — no external SQLite dependency on the
-// runtime host.
+// `.hatch` artifact, so the runtime host needs no external
+// SQLite dependency.
 //
 // Error handling: all methods abort the fiber on failure. Wrap
 // in `Fiber.new { ... }.try()` for fallible variants.
 
 // The native plugin lives in a sibling cdylib (`wlift_sqlite`)
 // that `hatch publish` bundles into this package. Each foreign
-// method binds to a `#[no_mangle] extern "C" fn` in that dylib
-// — the symbol naming convention is `wlift_sqlite_<action>`.
+// method binds to a `#[no_mangle] extern "C" fn` in that dylib.
+// The symbol naming convention is `wlift_sqlite_<action>`.
 #!native = "wlift_sqlite"
 foreign class SqliteCore {
   #!symbol = "wlift_sqlite_open"
@@ -78,7 +78,7 @@ foreign class SqliteCore {
 /// back Wren-shaped data.
 class Database {
   // Open a database at `path`. Creates the file if missing.
-  // `:memory:` gives an in-memory database — useful for tests.
+  // `:memory:` gives an in-memory database, useful for tests.
   construct new_(id) {
     _id = id
   }
@@ -104,8 +104,8 @@ class Database {
     return SqliteCore.execute(_id, sql, params)
   }
 
-  /// Run a SELECT. Returns a List<Map> — each map has lower-case
-  /// column-name keys and Wren-typed values.
+  /// Runs a SELECT. Returns a `List<Map>`. Each map has
+  /// lower-case column-name keys and Wren-typed values.
   query(sql) { query(sql, null) }
   query(sql, params) {
     if (!(sql is String)) Fiber.abort("Database.query: sql must be a string")
