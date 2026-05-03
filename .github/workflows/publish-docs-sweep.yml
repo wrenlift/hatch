@@ -139,22 +139,30 @@ jobs:
             if [ "$stripped" = "[]" ] || [ -z "$stripped" ]; then
               echo "  no docs payload (empty / no \`///\` comments), skipping docs upload"
             else
-              body=$(jq -n \
+              # Write body to a tempfile and curl with `--data @file`.
+              # Inline `-d "$body"` blows past `ARG_MAX` for packages
+              # with large doc payloads (e.g. hatch-gpu emits ~150KB
+              # of JSON, exceeding Linux's 128KB single-arg cap).
+              body_file=$(mktemp)
+              jq -n \
                 --arg n "$name" \
                 --arg v "$version" \
                 --argjson d "$docs_json" \
-                '{name:$n, version:$v, docs:$d}')
+                '{name:$n, version:$v, docs:$d}' > "$body_file"
 
               if [ "$DRY_RUN" = "true" ]; then
-                echo "  [dry] would POST /docs-upload ($(echo "$body" | wc -c) bytes)"
+                echo "  [dry] would POST /docs-upload ($(wc -c < "$body_file") bytes)"
+                rm -f "$body_file"
               else
                 if resp=$(curl -fsSL -X POST "$base/docs-upload" \
                   -H "Authorization: Bearer $HATCH_BOT_SECRET" \
                   -H "Content-Type: application/json" \
-                  -d "$body"); then
+                  --data-binary "@$body_file"); then
+                  rm -f "$body_file"
                   url=$(echo "$resp" | jq -r '.url // "?"')
                   echo "  docs uploaded → $url"
                 else
+                  rm -f "$body_file"
                   echo "::error::$pkg: /docs-upload POST failed"
                   failed=$((failed+1))
                   failed_pkgs="$failed_pkgs $pkg"
@@ -173,23 +181,26 @@ jobs:
               echo "  readme is an external URL, skipping upload"
               readme_url="$readme_path"
             elif [ -f "$pkg_dir/$readme_path" ]; then
-              readme_content=$(cat "$pkg_dir/$readme_path")
-              body=$(jq -n \
+              body_file=$(mktemp)
+              jq -n \
                 --arg n "$name" \
                 --arg v "$version" \
-                --arg r "$readme_content" \
-                '{name:$n, version:$v, readme:$r}')
+                --rawfile r "$pkg_dir/$readme_path" \
+                '{name:$n, version:$v, readme:$r}' > "$body_file"
 
               if [ "$DRY_RUN" = "true" ]; then
-                echo "  [dry] would POST /readme-upload ($(echo "$readme_content" | wc -c) bytes)"
+                echo "  [dry] would POST /readme-upload ($(wc -c < "$pkg_dir/$readme_path") bytes)"
+                rm -f "$body_file"
               else
                 if resp=$(curl -fsSL -X POST "$base/readme-upload" \
                   -H "Authorization: Bearer $HATCH_BOT_SECRET" \
                   -H "Content-Type: application/json" \
-                  -d "$body"); then
+                  --data-binary "@$body_file"); then
+                  rm -f "$body_file"
                   readme_url=$(echo "$resp" | jq -r '.url // ""')
                   echo "  readme uploaded → $readme_url"
                 else
+                  rm -f "$body_file"
                   # README upload failure is logged as a warning,
                   # not an error — docs already uploaded
                   # successfully and a missing README isn't fatal
