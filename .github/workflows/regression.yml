@@ -107,9 +107,9 @@ jobs:
           key: wlift-bin-${{ steps.clone.outputs.rev }}
           restore-keys: wlift-bin-
 
-      - name: Build wlift
+      - name: Build wlift + hatch
         working-directory: source
-        run: cargo build --release --bin wlift
+        run: cargo build --release --bin wlift --bin hatch
 
       # Each `[plugin_source]` package in this catalog points at one
       # of the cdylib crates under `wren_lift/plugins/`. We build
@@ -128,6 +128,7 @@ jobs:
         run: |
           mkdir -p out/libs
           cp source/target/release/wlift out/wlift
+          cp source/target/release/hatch out/hatch
           # On `ubuntu-latest` cdylibs end up named `lib<crate>.so`.
           # Stage them flat — the spec job knows the package → crate
           # mapping from the hatchfile and copies into each package's
@@ -165,14 +166,19 @@ jobs:
           name: wlift
           path: bin
 
-      - name: Make wlift executable
-        run: chmod +x bin/wlift
+      - name: Make wlift + hatch executable
+        run: chmod +x bin/wlift bin/hatch
 
       # Stage each plugin-backed package's matching `lib<crate>.so`
-      # into its own `libs/` directory. The hatchfile's
-      # `[plugin_source].crate = "<name>"` field is the source of
-      # truth for which dylib to copy — same lookup the runtime
-      # uses when resolving a `#!native = "name"` annotation.
+      # into its own `libs/<os>-<arch>/` directory. The hatchfile's
+      # `[native_libs.<lib>]` table maps the runner's host triple
+      # (`linux-x86_64` here) to a path like
+      # `libs/linux-x86_64/libwlift_<crate>.so`; staging anywhere
+      # else trips the `name_overrides` lookup with "library not
+      # found" even though the dylib exists. The bare-OS keys
+      # (`linux = libs/lib<crate>.so`) are a local-dev fallback —
+      # CI uses the more specific path so regression matches the
+      # published package layout.
       - name: Stage plugin dylibs into packages
         shell: bash
         run: |
@@ -192,13 +198,125 @@ jobs:
               if not crate:
                   continue
               src = f"bin/libs/lib{crate}.so"
-              dst_dir = os.path.join("packages", hf, "libs")
+              dst_dir = os.path.join("packages", hf, "libs", "linux-x86_64")
               os.makedirs(dst_dir, exist_ok=True)
               if os.path.isfile(src):
                   shutil.copy(src, os.path.join(dst_dir, f"lib{crate}.so"))
                   print(f"staged {crate} → {dst_dir}")
               else:
                   print(f"::warning::missing plugin {crate} (expected {src})")
+          PY
+
+      # Pre-build every package into a workspace-local hatch cache
+      # so `*.spec.wren` runs (which set `HATCH_OFFLINE=1`) can
+      # resolve runtime `[dependencies]` without hitting the
+      # registry. Topo-sort by `[dependencies]` so each package
+      # builds against already-cached deps; spec-deps don't enter
+      # the build graph (they're for the spec runner only).
+      #
+      # Each consumer pins a specific version (e.g.
+      # `@hatch:fs = "0.1.0"`). The current package source might
+      # be at 0.1.1; in this monorepo every package is API-compatible
+      # with the versions its siblings pin (those pins drift with
+      # publish cadence, not API churn). We build at the current
+      # version and *also* mirror the artifact under every version
+      # any sibling pins, so the cache filename matches whatever
+      # the resolver looks up.
+      - name: Pre-build packages into local hatch cache
+        shell: bash
+        env:
+          HATCH_CACHE_DIR: ${{ github.workspace }}/.hatch-cache
+        run: |
+          set -eu
+          mkdir -p "$HATCH_CACHE_DIR"
+          python3 <<'PY'
+          import os, shutil, subprocess, sys, tomllib
+
+          PACKAGES_DIR = "packages"
+          CACHE_DIR = os.environ["HATCH_CACHE_DIR"]
+          HATCH_BIN = os.path.abspath("bin/hatch")
+
+          def scoped_to_dir(name):
+              return name[1:].replace(":", "-").replace("/", "-") if name.startswith("@") else name.replace(":", "-").replace("/", "-")
+
+          # Load every manifest.
+          pkgs = {}
+          for d in sorted(os.listdir(PACKAGES_DIR)):
+              hf = os.path.join(PACKAGES_DIR, d, "hatchfile")
+              if not os.path.isfile(hf):
+                  continue
+              with open(hf, "rb") as f:
+                  m = tomllib.load(f)
+              pkgs[m["name"]] = {
+                  "dir": os.path.join(PACKAGES_DIR, d),
+                  "version": m["version"],
+                  "deps": list((m.get("dependencies") or {}).keys()),
+                  "manifest": m,
+              }
+
+          # Topological sort by [dependencies] (spec-deps are not
+          # part of the build graph). Kahn's algorithm; keep it
+          # alphabetical inside a level for deterministic logs.
+          remaining = dict(pkgs)
+          ordered = []
+          while remaining:
+              ready = sorted(
+                  name for name, info in remaining.items()
+                  if all(d not in remaining for d in info["deps"])
+              )
+              if not ready:
+                  print(f"::error::dependency cycle among: {sorted(remaining)}")
+                  sys.exit(1)
+              for name in ready:
+                  ordered.append(name)
+                  del remaining[name]
+
+          # Track all (name, version) pairs any consumer pins — we'll
+          # mirror each package's bytes under those filenames too.
+          required_versions = {}  # name -> set[version]
+          for info in pkgs.values():
+              for dep_name in info["deps"]:
+                  dep_decl = (info["manifest"].get("dependencies") or {}).get(dep_name)
+                  if isinstance(dep_decl, str):
+                      required_versions.setdefault(dep_name, set()).add(dep_decl)
+
+          for name in ordered:
+              info = pkgs[name]
+              dir_ = info["dir"]
+              version = info["version"]
+              flat = scoped_to_dir(name)
+              out_path = os.path.join(dir_, f"{name}.hatch")  # built-from-source default
+              # `hatch build` writes `<name>.hatch` next to the
+              # hatchfile; the literal `:` in the filename is fine
+              # on Linux. Run with the cache env var so transitive
+              # deps resolve from prior iterations.
+              try:
+                  subprocess.run(
+                      [HATCH_BIN, "build", dir_],
+                      check=True,
+                      env={**os.environ, "HATCH_CACHE_DIR": CACHE_DIR},
+                  )
+              except subprocess.CalledProcessError as e:
+                  print(f"::error::hatch build failed for {name}: {e}")
+                  sys.exit(1)
+
+              if not os.path.isfile(out_path):
+                  print(f"::error::expected {out_path} after `hatch build`")
+                  sys.exit(1)
+
+              cache_name = f"{flat}-{version}.hatch"
+              shutil.copy(out_path, os.path.join(CACHE_DIR, cache_name))
+              print(f"cached {name}@{version} → {cache_name}")
+
+              # Mirror under every pinned version a sibling asks
+              # for, so version-pinned lookups land on the same
+              # bytes. Skip the current version (already written).
+              for pinned in required_versions.get(name, set()):
+                  if pinned == version:
+                      continue
+                  alias = f"{flat}-{pinned}.hatch"
+                  shutil.copy(out_path, os.path.join(CACHE_DIR, alias))
+                  print(f"  ↳ aliased to {alias} (consumer pin)")
           PY
 
       - name: Run every package's spec
@@ -209,6 +327,11 @@ jobs:
           # HATCH_OFFLINE to skip network tests. Keeps CI
           # deterministic and free of external dependencies.
           HATCH_OFFLINE: "1"
+          # Resolve runtime [dependencies] from the workspace
+          # cache populated by the pre-build step above. With
+          # HATCH_OFFLINE set, version pins must be cache-resident
+          # or the resolver aborts before the spec ever runs.
+          HATCH_CACHE_DIR: ${{ github.workspace }}/.hatch-cache
           # Packages whose specs need real hardware (audio device,
           # GPU context, window server) and therefore can't run
           # on a vanilla GitHub runner. The build-plugins step
@@ -260,7 +383,11 @@ jobs:
             # tracked in `libs/`) used to make `ls -A` non-empty
             # and trip the package as "ready" when nothing was.
             if grep -q '^\[plugin_source\]' "$hf"; then
-              if ! ls "$dir"libs/*.so >/dev/null 2>&1; then
+              # `libs/` may be flat (local-dev `cargo build` drop) or
+              # nested under `<os>-<arch>/` (CI staging matches the
+              # hatchfile's per-triple `[native_libs]` mapping). Both
+              # layouts are valid; detect either with `find -name`.
+              if ! find "$dir"libs -maxdepth 2 -name '*.so' -print -quit 2>/dev/null | grep -q .; then
                 echo "::warning title=$pkg::skipped (plugin-backed, no .so staged)"
                 skipped=$((skipped + 1))
                 skipped_pkgs+=("$pkg (plugin-backed, no .so staged)")
