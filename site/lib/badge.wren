@@ -160,6 +160,56 @@ class Badge {
     return "unknown"
   }
 
+  /// Read the deployed site's `version` from its own `hatchfile`
+  /// at boot, so the README's version badge tracks what's
+  /// actually live without anyone hand-editing the literal each
+  /// release. Cached after the first call. Falls back to a
+  /// `dev` placeholder if the file isn't readable, same shape
+  /// as `logoFragment`'s defensive default.
+  static siteVersion {
+    if (__siteVersion != null) return __siteVersion
+    var path = "./hatchfile"
+    if (!Fs.exists(path)) {
+      __siteVersion = "dev"
+      return __siteVersion
+    }
+    var text = Fs.readText(path)
+    if (text == null) {
+      __siteVersion = "dev"
+      return __siteVersion
+    }
+    // Hatchfile is TOML; we only need one field. A line-scan
+    // beats pulling in @hatch:toml just for `version = "..."`,
+    // and matches `bin/hatch`'s `awk -F'"'` shape used in the
+    // publish workflows.
+    for (line in text.split("\n")) {
+      var trimmed = line.trim()
+      if (trimmed.startsWith("version") && trimmed.contains("=")) {
+        var first = trimmed.indexOf("\"")
+        if (first >= 0) {
+          var second = trimmed.indexOf("\"", first + 1)
+          if (second > first) {
+            __siteVersion = trimmed[(first + 1)...second]
+            return __siteVersion
+          }
+        }
+      }
+    }
+    __siteVersion = "dev"
+    return __siteVersion
+  }
+
+  /// Render a static "version" badge for the site's deployed
+  /// hatchfile version. Sage-green like a passing CI build —
+  /// the site shipping at all is a positive signal worth
+  /// matching the visual idiom. Re-rendered per request but
+  /// the version itself is read once at boot.
+  static version {
+    if (__versionSvg != null) return __versionSvg
+    __versionSvg = Badge.render("version", siteVersion, "pass")
+    return __versionSvg
+  }
+
   /// Fetch + render the latest GHA run for the given workflow.
   /// Returns the SVG string; caller wraps in a Response with
   /// the right Content-Type / Cache-Control. On any fetch

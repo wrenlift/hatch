@@ -459,6 +459,21 @@ app.get("/packages/:name/readme") {|req|
   return r
 }
 
+// `/badge/version` — static "version: <hatchfile-version>"
+// badge. Reads the deployed site's hatchfile once at boot,
+// so the README's version badge tracks the live deploy
+// without anyone hand-editing the literal each release.
+// Cached aggressively because the version only changes when
+// a new image rolls out (which invalidates the in-memory
+// state anyway).
+app.get("/badge/version") {|req|
+  var r = Response.new(200)
+  r.text(Badge.version)
+  r.header("Content-Type", "image/svg+xml; charset=utf-8")
+  r.header("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400")
+  return r
+}
+
 // `/badge/gha/:owner/:repo/:workflow` — branded GitHub Actions
 // status badge. Replaces shields.io's render so the H favicon
 // + brand palette stay in our hands; consumers (the hatch
