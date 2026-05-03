@@ -10,6 +10,7 @@ Build, run, and ship <a href="https://wren.io">Wren</a> programs as standalone p
 
 <p align="center">
 <a href="https://github.com/wrenlift/hatch/actions/workflows/regression.yml"><img src="https://github.com/wrenlift/hatch/actions/workflows/regression.yml/badge.svg?branch=main" alt="Regression — all hatch packages"/></a>
+<a href="https://hatch.wrenlift.com/packages"><img src="https://img.shields.io/badge/packages-browse-FDD169?logo=data:image/svg%2Bxml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjQgMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTUgNGg0djZoNlY0aDR2MTZoLTR2LTZIOXY2SDV6Ii8+PC9zdmc+&labelColor=462105" alt="Browse packages on hatch.wrenlift.com"/></a>
 <img src="https://img.shields.io/badge/language-Wren-6d2afa?logo=wren" alt="Wren"/>
 <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"/>
 <img src="https://img.shields.io/badge/version-0.1.0-blue" alt="Version 0.1.0"/>
@@ -18,13 +19,13 @@ Build, run, and ship <a href="https://wren.io">Wren</a> programs as standalone p
 
 ---
 
-[Wren](https://wren.io) shines as an embedded scripting language —
+[Wren](https://wren.io) shines as an embedded scripting language:
 small, fast to integrate, designed to slot into games, editors,
 and tools written in C or C++. That's the use case Wren is
 built for, and it's a good one.
 
 **Hatch** offers a complementary path. When your project *is*
-Wren — a CLI, a service, a library shared between Wren programs —
+Wren (a CLI, a service, a library shared between Wren programs),
 Hatch plus [WrenLift](https://github.com/wrenlift/WrenLift) is the
 toolchain that lets you write it, package it, and run it on its
 own. Same language, same idioms, different deployment story.
@@ -34,7 +35,7 @@ is a place to put your code and a way to ship it.
 
 ## Install
 
-The `hatch` binary ships alongside the WrenLift runtime — one install
+The `hatch` binary ships alongside the WrenLift runtime: one install
 gives you both `wlift` (the runtime) and `hatch` (this CLI) on your
 `$PATH`.
 
@@ -92,7 +93,7 @@ $ hatch run
 hello from hello-wren
 ```
 
-That's your full local loop — write Wren, run Wren.
+That's your full local loop: write Wren, run Wren.
 
 ## Add more Wren to the project
 
@@ -211,12 +212,12 @@ modules = ["counter", "main"]         # install order; auto-filled if empty
 - `hatch inspect PACKAGE` — print manifest + section listing.
 
 `add` / `remove` / `tidy` / `get` / `publish` are stubbed and
-print a roadmap message — the resolver and registry client are
+print a roadmap message; the resolver and registry client are
 where they live.
 
 ## What lives in this repo
 
-This is the ecosystem repo — not a Rust project. The `hatch` CLI
+This is the ecosystem repo, not a Rust project. The `hatch` CLI
 source lives in [WrenLift](https://github.com/wrenlift/WrenLift)
 so one install gets you both binaries. What you'll find here:
 
