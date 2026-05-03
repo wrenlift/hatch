@@ -1,9 +1,12 @@
 name        = "@hatch:test"
-version     = "0.1.1"
+version     = "0.2.0"
 entry       = "test"
 description = "Tiny test runner for *.spec.wren files."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:test"
 readme   = "README.md"
+
+[dependencies]
+"@hatch:fmt" = "0.1.1"
 
 [spec-dependencies]
 "@hatch:assert" = { path = "../hatch-assert" }

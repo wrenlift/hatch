@@ -58,6 +58,49 @@ var failErr = Fiber.new { Test.run() }.try()
 Expect.that(failErr).not.toBeNull()
 Expect.that(failErr).toContain("test failure")
 
+// --- Filter ------------------------------------------------------
+//
+// Test.filter set to a non-empty substring skips cases whose
+// `<group> > <name>` label doesn't contain it. Empty string
+// (the default) disables filtering.
+
+Test.cases_.clear()
+Test.describe("filter") {
+  Test.it("alpha") { Expect.that(1).toBe(1) }
+  Test.it("beta")  { Expect.that(2).toBe(2) }
+  Test.it("alpha-extended") { Expect.that(3).toBe(3) }
+}
+// Filter "alpha" should leave only the two alpha-named cases.
+// Both pass, so run() returns clean.
+Test.filter = "alpha"
+var filterErr = Fiber.new { Test.run() }.try()
+Expect.that(filterErr).toBeNull()
+Test.filter = ""
+
+// Setting filter to null also clears it (the setter normalises
+// null to ""). Passes the all-clear path again.
+Test.cases_.clear()
+Test.describe("clear-filter") {
+  Test.it("only case") { Expect.that(1).toBe(1) }
+}
+Test.filter = null
+Expect.that(Test.filter).toBe("")
+var clearErr = Fiber.new { Test.run() }.try()
+Expect.that(clearErr).toBeNull()
+
+// --- Reporter ----------------------------------------------------
+//
+// Reporter validates input and stays sticky. Default is "text".
+
+Expect.that(Test.reporter).toBe("text")
+Test.reporter = "json"
+Expect.that(Test.reporter).toBe("json")
+Test.reporter = "text"  // reset so the trailing pass uses the default
+
+var badReporter = Fiber.new { Test.reporter = "yaml" }.try()
+Expect.that(badReporter).not.toBeNull()
+Expect.that(badReporter).toContain("Test.reporter accepts")
+
 // --- Final sanity pass: run the runner on a tiny suite and make
 // sure exit is clean. These cases don't mutate `Test.cases_`
 // during the run — that was already covered by the bootstrap
