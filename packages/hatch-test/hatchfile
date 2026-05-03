@@ -6,7 +6,7 @@ homepage    = "https://hatch.wrenlift.com/packages/@hatch:test"
 readme   = "README.md"
 
 [dependencies]
-"@hatch:fmt" = "0.1.1"
+"@hatch:fmt" = { path = "../hatch-fmt" }
 
 [spec-dependencies]
 "@hatch:assert" = { path = "../hatch-assert" }
