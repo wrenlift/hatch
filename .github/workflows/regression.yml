@@ -403,8 +403,15 @@ jobs:
             # (`import "./foo"`) resolve.
             pushd "$dir" >/dev/null
             if output=$("$wlift" --mode "$mode" "$specname" 2>&1); then
-              if echo "$output" | grep -q "^ok:"; then
-                echo "$output" | grep "^ok:"
+              # `@hatch:test` 0.2.0+ wraps the summary `ok:`
+              # prefix in ANSI colour escapes (e.g.
+              # `\x1b[32mok:\x1b[0m 5/5 passed`); strip them
+              # before grep so the existing pass-detection bar
+              # still fires. Same shape `hatch test`'s internal
+              # parser uses to read the runner's output.
+              clean=$(echo "$output" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g')
+              if echo "$clean" | grep -q "^ok:"; then
+                echo "$clean" | grep "^ok:"
                 passed=$((passed + 1))
               else
                 echo "::error title=$pkg ($mode)::no 'ok:' summary line"
