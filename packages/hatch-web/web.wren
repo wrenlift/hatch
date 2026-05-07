@@ -592,8 +592,25 @@ class App {
       }
       if (!sched.isEmpty) {
         sched.tick
-      } else if (conn == null) {
-        Clock.sleepMs(10)
+      }
+      if (conn == null) {
+        // Back off the poll rate when no new connections are
+        // pending. A tight `tryAccept`+`tick` loop can hit
+        // ~700K iterations/sec on a macOS host, and at that
+        // rate the kernel's accept queue starts handing back
+        // phantom file descriptors — fds for connections that
+        // are already torn down (read EOF immediately) while
+        // the actual pending client connection stays queued.
+        // Each phantom serve completes in <20μs but consumes
+        // the queue slot that would have gone to the real
+        // client conn, which then sits unaccepted until the
+        // client times out (`curl -m 2` shows every other
+        // sequential request hanging at the 2-second mark).
+        // A 1ms backoff caps polling at ~1000 Hz; well within
+        // human-perceptible response time for a request that
+        // races with this idle cycle, and far below the
+        // threshold where the kernel quirk surfaces.
+        Clock.sleepMs(1)
       }
     }
   }
