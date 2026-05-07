@@ -84,11 +84,25 @@ class Catalog {
   /// the last good snapshot stays live until the next attempt.
   static refreshLoop() { Catalog.refreshLoop(300) }
   static refreshLoop(intervalSec) {
+    // Stash the interval into a class-level static rather than
+    // passing it through the loop body. The AOT SM transform
+    // currently misses a tail-duplication remap on the
+    // refresh-success loop-back terminator (bb6 in this
+    // function's MIR) — the `Branch(bb1, [v_intervalSec, v_this])`
+    // args keep the original `BlockParam(1)` ValueId, so on
+    // resume the dispatcher hits bb1's block param 0 with no
+    // dominating definition and the parameter decays to a
+    // denormal-zero. Reading from a static (`__refreshInterval`)
+    // sidesteps the broken save/load path. Remove this hop once
+    // the SM transform's selective-clone walker recurses
+    // through non-cloned post-yield-only blocks (see
+    // memory/project_aot_yield_architecture.md).
+    __refreshInterval = intervalSec
     while (true) {
       // Wait first so the boot-time hydration owns the initial
       // table population; the loop kicks in for subsequent
       // refreshes only.
-      Catalog.sleepYielding_(intervalSec)
+      Catalog.sleepYielding_(__refreshInterval)
       var f = Fiber.new { Catalog.refresh() }
       Catalog.driveFiber_(f)
       if (f.error != null) {
