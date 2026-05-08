@@ -49,6 +49,9 @@ foreign class GpuCore {
   #!symbol = "wlift_gpu_buffer_write_floats"
   foreign static bufferWriteFloats(id, offset, data)
 
+  #!symbol = "wlift_gpu_buffer_write_floats_n"
+  foreign static bufferWriteFloatsN(id, offset, data, count)
+
   #!symbol = "wlift_gpu_buffer_write_uints"
   foreign static bufferWriteUints(id, offset, data)
 
@@ -502,11 +505,29 @@ class Buffer {
   size { _size }
 
   /// Pack a list of f32 values starting at `offset` bytes. One
-  /// FFI call regardless of list length.
+  /// FFI call regardless of list length. Accepts either a
+  /// `List<Num>` (each entry is converted f64 → f32) or a
+  /// `Float32Array` (the full backing bytes are written verbatim
+  /// — one `queue.write_buffer` call, zero per-element walking).
   ///
   /// @param {Num} offset
-  /// @param {List} data
+  /// @param {List|Float32Array} data
   writeFloats(offset, data) { GpuCore.bufferWriteFloats(_id, offset, data) }
+
+  /// Like [Buffer.writeFloats] but for a partial upload of a
+  /// pre-allocated `Float32Array` — only the first `count`
+  /// floats are sent. Lets `Renderer2D` flush its variable per-
+  /// frame vertex stream without paying the bandwidth cost of
+  /// the whole `MAX_SPRITES`-sized backing array. The plugin
+  /// emits a single `queue.write_buffer` of `count * 4` bytes;
+  /// no per-element walking either way.
+  ///
+  /// @param {Num} offset
+  /// @param {Float32Array} data
+  /// @param {Num} count    number of f32 lanes to upload
+  writeFloatsN(offset, data, count) {
+    GpuCore.bufferWriteFloatsN(_id, offset, data, count)
+  }
 
   /// Pack a list of u32 values starting at `offset` bytes. One
   /// FFI call regardless of list length.
@@ -1223,19 +1244,33 @@ class Renderer2D {
       "addressModeU": "clamp-to-edge", "addressModeV": "clamp-to-edge"
     })
 
-    // Per-frame state
-    _floats     = []
-    // Reusable scratch List for the camera matrix upload. 16
-    // floats every beginFrame. Pre-allocated to its final size so
-    // `beginFrame` writes via index assignment (no `clear` /
-    // `add` per call). Keeps the per-frame allocation rate at
-    // zero on this path and sidesteps a tiered-mode miscompile
-    // where the inner `add` calls inside two nested while-loops
-    // were dropping elements (the user's first frame ended up
-    // with `_cameraScratch[0] == null`, which surfaced as
-    // `Buffer.writeFloats: every element must be a number
-    // (index 0)`).
-    _cameraScratch = List.filled(16, 0)
+    // Per-frame vertex stream. `_floats` is a Float32Array
+    // pre-allocated to the worst case — one big buffer that the
+    // plugin uploads via a single `queue.write_buffer` of the
+    // bytes used so far. Replaces an earlier `_floats = []`
+    // (Wren List) where every `pushVertex_` did 8 List.add
+    // calls — each one a method dispatch + Num boxing + Vec
+    // grow. At 1000 sprites that was 48k method dispatches per
+    // frame just for the vertex emit. The Float32Array path
+    // does an indexed `_floats[off+k] = v` instead — no method
+    // dispatch, no allocation, no boxing.
+    //
+    // `_floatHead` tracks the running write position; `flush`
+    // sends `_floats[0..head]` via `writeFloatsN`, then resets
+    // head to 0. No `clear` needed — unused tail is just
+    // ignored.
+    _floats     = Float32Array.new(
+      Renderer2D.MAX_SPRITES_ *
+      Renderer2D.VERTS_PER_SPRITE_ *
+      Renderer2D.FLOATS_PER_VERTEX_)
+    _floatHead  = 0
+    // Camera matrix scratch — 16 floats every beginFrame.
+    // Float32Array for the same reason as `_floats`: indexed
+    // writes are inline, no boxing or method dispatch. Sized
+    // exactly to the final upload (16 floats) so the existing
+    // `writeFloats` path's typed-array memcpy fast path uploads
+    // the whole array without a count parameter.
+    _cameraScratch = Float32Array.new(16)
     _spriteCount = 0
     _curTexture  = null
     _curBindGroup = null
@@ -1274,7 +1309,7 @@ class Renderer2D {
     _cameraScratch[14] = d[11]
     _cameraScratch[15] = d[15]
     _ubo.writeFloats(0, _cameraScratch)
-    _floats.clear()
+    _floatHead   = 0
     _spriteCount = 0
     _curTexture = null
     _curBindGroup = null
@@ -1341,29 +1376,39 @@ class Renderer2D {
     }
     var x1 = x + w
     var y1 = y + h
-    var f = _floats
+    var head = _floatHead
 
     // Triangle 1: top-left, bottom-left, bottom-right.
-    pushVertex_(f, x,  y,  u0, v0, r, g, b, a)
-    pushVertex_(f, x,  y1, u0, v1, r, g, b, a)
-    pushVertex_(f, x1, y1, u1, v1, r, g, b, a)
+    head = pushVertex_(head, x,  y,  u0, v0, r, g, b, a)
+    head = pushVertex_(head, x,  y1, u0, v1, r, g, b, a)
+    head = pushVertex_(head, x1, y1, u1, v1, r, g, b, a)
     // Triangle 2: top-left, bottom-right, top-right.
-    pushVertex_(f, x,  y,  u0, v0, r, g, b, a)
-    pushVertex_(f, x1, y1, u1, v1, r, g, b, a)
-    pushVertex_(f, x1, y,  u1, v0, r, g, b, a)
+    head = pushVertex_(head, x,  y,  u0, v0, r, g, b, a)
+    head = pushVertex_(head, x1, y1, u1, v1, r, g, b, a)
+    head = pushVertex_(head, x1, y,  u1, v0, r, g, b, a)
+    _floatHead   = head
     _spriteCount = _spriteCount + 1
   }
 
-  // Tight scalar push so drawSprite_ stays linear and readable.
-  pushVertex_(f, px, py, u, v, r, g, b, a) {
-    f.add(px)
-    f.add(py)
-    f.add(u)
-    f.add(v)
-    f.add(r)
-    f.add(g)
-    f.add(b)
-    f.add(a)
+  // Indexed-write vertex push. Writes 8 floats starting at
+  // `head`, returns the new head. Each write is a Float32Array
+  // subscript-set: no method dispatch, no boxing, no Vec grow.
+  // Earlier shape called `f.add(num)` 8 times against a Wren
+  // `List`; that was 8 method dispatches + 8 Num→f64 box→f32
+  // conversions per vertex × 6 vertices per sprite = 48
+  // dispatches per sprite. The new shape is the same number of
+  // arithmetic ops but no dispatch / no allocation.
+  pushVertex_(head, px, py, u, v, r, g, b, a) {
+    var f = _floats
+    f[head]     = px
+    f[head + 1] = py
+    f[head + 2] = u
+    f[head + 3] = v
+    f[head + 4] = r
+    f[head + 5] = g
+    f[head + 6] = b
+    f[head + 7] = a
+    return head + 8
   }
 
   // Lazily cache one BindGroup per (texture id). Sampler and UBO
@@ -1391,13 +1436,17 @@ class Renderer2D {
   /// @param {RenderPass} pass
   flush(pass) {
     if (_spriteCount == 0) return
-    _vbo.writeFloats(0, _floats)
+    // Partial upload: only the floats actually written this
+    // frame. Sends `_floatHead * 4` bytes; the plugin path is
+    // a single `queue.write_buffer` of that slice — no per-
+    // element walk.
+    _vbo.writeFloatsN(0, _floats, _floatHead)
     var bg = bindGroupFor_(_curTexture)
     pass.setPipeline(_pipeline)
     pass.setBindGroup(0, bg)
     pass.setVertexBuffer(0, _vbo)
     pass.draw(_spriteCount * Renderer2D.VERTS_PER_SPRITE_)
-    _floats.clear()
+    _floatHead   = 0
     _spriteCount = 0
     _curTexture = null
   }
