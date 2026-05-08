@@ -889,3 +889,222 @@ class Quat {
   !=(o) { !(this == o) }
   toString { "Quat(%(_w), %(_x), %(_y), %(_z))" }
 }
+
+/// Struct-of-arrays batch of 4-component vectors backed by a
+/// single `Float32Array`. Designed for the case the per-instance
+/// `Vec4` doesn't hit well: tight loops touching many vectors
+/// with the same op (uniform colour blends, vertex transforms,
+/// keyframe interpolation, particle updates).
+///
+/// ## Why a separate type
+///
+/// `Vec4`'s `+` / `*` / `lerp` could go through `Simd4f`
+/// internally, but on the wasm tier-up each call would
+/// allocate a fresh `Simd4f` for the inputs and result, and
+/// reading individual lanes back out (`v.x`) goes through
+/// `Simd[_]` subscript dispatch. Per call that's *more*
+/// allocation than the scalar field-based `Vec4` already does,
+/// and the lane-extraction tax wipes out the kernel-side
+/// savings. The configuration where SIMD actually wins is
+/// **batched, no per-element extract**: load four lanes from a
+/// `Float32Array`, run the kernel, store four lanes back. That's
+/// what `Vec4Batch` does.
+///
+/// ## Layout
+///
+/// `n` vectors live in a flat `Float32Array(n * 4)`. Vector `i`
+/// occupies floats `[i*4, i*4+1, i*4+2, i*4+3]`. The underlying
+/// buffer is exposed via [Vec4Batch.data] for direct GPU upload
+/// (it's the same byte shape any `vec4` vertex attribute
+/// expects).
+///
+/// ## Quick sketch
+///
+/// ```wren
+/// // Lerp 1024 keyframe colours from `start` to `end` at `t`.
+/// var n   = 1024
+/// var dst = Vec4Batch.new(n)
+/// var a   = Vec4Batch.new(n)
+/// var b   = Vec4Batch.new(n)
+/// // ... fill a + b ...
+/// dst.lerpFrom(a, b, t)        // SIMD'd, zero per-element alloc
+/// // upload dst.data straight into a uniform buffer
+/// ```
+class Vec4Batch {
+  /// Allocate a fresh batch of `n` 4-component vectors. All
+  /// lanes start zero-initialised.
+  construct new(n) {
+    if (n < 0) Fiber.abort("Vec4Batch.new: count must be non-negative.")
+    _count = n
+    _data  = Float32Array.new(n * 4)
+  }
+
+  /// Wrap an existing `Float32Array` whose length is a multiple
+  /// of 4. The batch shares storage with the wrapped array — no
+  /// copy. Useful when the byte buffer comes from somewhere else
+  /// (a `.fromList`, a foreign load, a slice of a larger uniform).
+  construct wrap(buf) {
+    if (!(buf is Float32Array)) {
+      Fiber.abort("Vec4Batch.wrap: expected a Float32Array.")
+    }
+    if (buf.count % 4 != 0) {
+      Fiber.abort("Vec4Batch.wrap: backing array length must be a multiple of 4.")
+    }
+    _count = buf.count / 4
+    _data  = buf
+  }
+
+  /// Number of 4-component vectors stored in this batch.
+  count { _count }
+
+  /// Underlying `Float32Array`. Exposed for foreign-method
+  /// uploads (`Buffer.writeFloats(0, batch.data)`); mutations
+  /// to the returned array are visible through `get` / lane
+  /// queries.
+  data { _data }
+
+  /// Read vector `i` out as a fresh `Vec4`. Allocates — use the
+  /// per-lane `getX` / `getY` etc. when you only need a scalar
+  /// component, or operate on the batch in place to avoid the
+  /// allocation entirely.
+  get(i) {
+    if (i < 0 || i >= _count) {
+      Fiber.abort("Vec4Batch.get: index %(i) out of bounds (count=%(_count)).")
+    }
+    var off = i * 4
+    return Vec4.new(_data[off], _data[off + 1], _data[off + 2], _data[off + 3])
+  }
+
+  /// Per-lane scalar getters. Cheap — just a `Float32Array`
+  /// subscript, no allocation.
+  getX(i) { _data[i * 4]     }
+  getY(i) { _data[i * 4 + 1] }
+  getZ(i) { _data[i * 4 + 2] }
+  getW(i) { _data[i * 4 + 3] }
+
+  /// Overwrite vector `i` with the four scalar components.
+  set(i, x, y, z, w) {
+    if (i < 0 || i >= _count) {
+      Fiber.abort("Vec4Batch.set: index %(i) out of bounds (count=%(_count)).")
+    }
+    var off = i * 4
+    _data[off]     = x
+    _data[off + 1] = y
+    _data[off + 2] = z
+    _data[off + 3] = w
+  }
+
+  /// Copy a `Vec4` into vector slot `i`.
+  setVec(i, v) { set(i, v.x, v.y, v.z, v.w) }
+
+  /// In-place element-wise add: `this[i] += other[i]` for every
+  /// `i`. Both batches must have the same length. Returns
+  /// `this` for chaining.
+  ///
+  /// SIMD path: load four lanes from each side, `Simd4f.+`,
+  /// store four lanes back — no per-element allocation. The
+  /// `wren_simd4f_add` helper hits its inline class-guard fast
+  /// path on every iteration.
+  addBatch(other) {
+    if (!(other is Vec4Batch)) Fiber.abort("Vec4Batch.addBatch: expected Vec4Batch.")
+    if (other.count != _count) Fiber.abort("Vec4Batch.addBatch: length mismatch.")
+    var od = other.data
+    var i = 0
+    while (i < _count) {
+      var off = i * 4
+      var sum = Simd4f.load(_data, off) + Simd4f.load(od, off)
+      sum.store(_data, off)
+      i = i + 1
+    }
+    return this
+  }
+
+  /// In-place element-wise subtract.
+  subBatch(other) {
+    if (!(other is Vec4Batch)) Fiber.abort("Vec4Batch.subBatch: expected Vec4Batch.")
+    if (other.count != _count) Fiber.abort("Vec4Batch.subBatch: length mismatch.")
+    var od = other.data
+    var i = 0
+    while (i < _count) {
+      var off = i * 4
+      var diff = Simd4f.load(_data, off) - Simd4f.load(od, off)
+      diff.store(_data, off)
+      i = i + 1
+    }
+    return this
+  }
+
+  /// In-place element-wise multiply (Hadamard product).
+  mulBatch(other) {
+    if (!(other is Vec4Batch)) Fiber.abort("Vec4Batch.mulBatch: expected Vec4Batch.")
+    if (other.count != _count) Fiber.abort("Vec4Batch.mulBatch: length mismatch.")
+    var od = other.data
+    var i = 0
+    while (i < _count) {
+      var off = i * 4
+      var prod = Simd4f.load(_data, off) * Simd4f.load(od, off)
+      prod.store(_data, off)
+      i = i + 1
+    }
+    return this
+  }
+
+  /// In-place scalar broadcast multiply: every component of
+  /// every vector multiplied by `s`.
+  scale(s) {
+    var sv = Simd4f.splat(s)
+    var i = 0
+    while (i < _count) {
+      var off = i * 4
+      (Simd4f.load(_data, off) * sv).store(_data, off)
+      i = i + 1
+    }
+    return this
+  }
+
+  /// Linear interpolation: `this[i] = a[i] * (1 - t) + b[i] * t`
+  /// for every `i`. The classic colour / keyframe blend done
+  /// over a whole batch in one pass. Both inputs must have the
+  /// same length as `this`.
+  ///
+  /// SIMD path emits two loads, two splat-multiplies, and one
+  /// add per iteration — versus the scalar `Vec4.lerp`'s four
+  /// `Math.lerp` calls (each is a method dispatch the wasm
+  /// tier-up can't inline).
+  lerpFrom(a, b, t) {
+    if (!(a is Vec4Batch) || !(b is Vec4Batch)) {
+      Fiber.abort("Vec4Batch.lerpFrom: expected Vec4Batch operands.")
+    }
+    if (a.count != _count || b.count != _count) {
+      Fiber.abort("Vec4Batch.lerpFrom: length mismatch.")
+    }
+    var omt = Simd4f.splat(1.0 - t)
+    var tv  = Simd4f.splat(t)
+    var ad = a.data
+    var bd = b.data
+    var i = 0
+    while (i < _count) {
+      var off = i * 4
+      var av = Simd4f.load(ad, off)
+      var bv = Simd4f.load(bd, off)
+      (av * omt + bv * tv).store(_data, off)
+      i = i + 1
+    }
+    return this
+  }
+
+  /// Set every vector to `(x, y, z, w)`. Convenient for
+  /// initialising a batch to a uniform colour or zero before
+  /// accumulating.
+  fill(x, y, z, w) {
+    var sv = Simd4f.new(x, y, z, w)
+    var i = 0
+    while (i < _count) {
+      sv.store(_data, i * 4)
+      i = i + 1
+    }
+    return this
+  }
+
+  toString { "Vec4Batch(count=%(_count))" }
+}

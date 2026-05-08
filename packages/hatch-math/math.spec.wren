@@ -1,4 +1,4 @@
-import "./math"       for Vec2, Vec3, Vec4, Mat4, Quat, Math, Ease
+import "./math"       for Vec2, Vec3, Vec4, Vec4Batch, Mat4, Quat, Math, Ease
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -222,6 +222,83 @@ Test.describe("Vec4") {
   Test.it("length / dot") {
     Expect.that(Vec4.new(1, 2, 2, 0).length).toBe(3)
     Expect.that(Vec4.new(1, 0, 0, 0).dot(Vec4.new(0, 1, 0, 0))).toBe(0)
+  }
+}
+
+// --- Vec4Batch -----------------------------------------------
+
+Test.describe("Vec4Batch") {
+  Test.it("set / get round-trips through Vec4") {
+    var b = Vec4Batch.new(2)
+    b.set(0, 1, 2, 3, 4)
+    b.set(1, 5, 6, 7, 8)
+    Expect.that(b.count).toBe(2)
+    var v0 = b.get(0)
+    Expect.that(v0.toList).toEqual([1, 2, 3, 4])
+    Expect.that(b.getX(1)).toBe(5)
+    Expect.that(b.getW(1)).toBe(8)
+  }
+  Test.it("setVec writes a Vec4 in") {
+    var b = Vec4Batch.new(1)
+    b.setVec(0, Vec4.new(11, 12, 13, 14))
+    Expect.that(b.get(0).toList).toEqual([11, 12, 13, 14])
+  }
+  Test.it("addBatch / subBatch / mulBatch") {
+    var a = Vec4Batch.new(2)
+    var b = Vec4Batch.new(2)
+    a.set(0, 1, 2, 3, 4)
+    a.set(1, 5, 6, 7, 8)
+    b.fill(2, 2, 2, 2)
+    a.addBatch(b)
+    Expect.that(a.get(0).toList).toEqual([3, 4, 5, 6])
+    Expect.that(a.get(1).toList).toEqual([7, 8, 9, 10])
+    a.subBatch(b)
+    Expect.that(a.get(0).toList).toEqual([1, 2, 3, 4])
+    a.mulBatch(b)
+    Expect.that(a.get(1).toList).toEqual([10, 12, 14, 16])
+  }
+  Test.it("scale broadcasts a scalar across all lanes") {
+    var b = Vec4Batch.new(2)
+    b.set(0, 1, 2, 3, 4)
+    b.set(1, 5, 6, 7, 8)
+    b.scale(0.5)
+    Expect.that(b.get(0).toList).toEqual([0.5, 1, 1.5, 2])
+    Expect.that(b.get(1).toList).toEqual([2.5, 3, 3.5, 4])
+  }
+  Test.it("lerpFrom interpolates two batches") {
+    var a = Vec4Batch.new(2)
+    var b = Vec4Batch.new(2)
+    var out = Vec4Batch.new(2)
+    a.fill(0, 0, 0, 0)
+    b.set(0, 100, 100, 100, 100)
+    b.set(1, 50, 50, 50, 50)
+    out.lerpFrom(a, b, 0.25)
+    Expect.that(out.get(0).toList).toEqual([25, 25, 25, 25])
+    Expect.that(out.get(1).toList).toEqual([12.5, 12.5, 12.5, 12.5])
+  }
+  Test.it("wrap shares storage with an existing Float32Array") {
+    var raw = Float32Array.new(8)
+    raw[0] = 1
+    raw[3] = 4
+    raw[7] = 99
+    var b = Vec4Batch.wrap(raw)
+    Expect.that(b.count).toBe(2)
+    Expect.that(b.getX(0)).toBe(1)
+    Expect.that(b.getW(0)).toBe(4)
+    Expect.that(b.getW(1)).toBe(99)
+    // Mutating via Vec4Batch is visible through the underlying
+    // Float32Array — they're the same buffer.
+    b.set(0, 0, 0, 0, 0)
+    Expect.that(raw[0]).toBe(0)
+    Expect.that(raw[3]).toBe(0)
+  }
+  Test.it("data returns the backing Float32Array verbatim") {
+    var b = Vec4Batch.new(1)
+    b.set(0, 1, 2, 3, 4)
+    var d = b.data
+    Expect.that(d is Float32Array).toBe(true)
+    Expect.that(d.count).toBe(4)
+    Expect.that(d[2]).toBe(3)
   }
 }
 
