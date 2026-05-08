@@ -97,6 +97,52 @@ Test.describe("Buffer.writeFloats / writeUints") {
     buf.destroy
     device.destroy
   }
+
+  Test.it("writeFloats accepts a Float32Array (memcpy fast path)") {
+    var device = Gpu.requestDevice()
+    var buf = device.createBuffer({
+      "size":  32,
+      "usage": ["uniform", "copy-dst"]
+    })
+    var data = Float32Array.fromList([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+    buf.writeFloats(0, data)
+    buf.destroy
+    device.destroy
+  }
+
+  Test.it("writeFloatsN uploads only the first count floats") {
+    var device = Gpu.requestDevice()
+    var buf = device.createBuffer({
+      "size":  64,
+      "usage": ["uniform", "copy-dst"]
+    })
+    var data = Float32Array.new(16)
+    var i = 0
+    while (i < 8) {
+      data[i] = i + 1
+      i = i + 1
+    }
+    // Only the first 8 lanes should be uploaded; the trailing
+    // zeros stay out of the buffer entirely.
+    buf.writeFloatsN(0, data, 8)
+    buf.destroy
+    device.destroy
+  }
+
+  Test.it("writeFloatsN rejects out-of-range count") {
+    var device = Gpu.requestDevice()
+    var buf = device.createBuffer({
+      "size":  16,
+      "usage": ["uniform", "copy-dst"]
+    })
+    var data = Float32Array.new(4)
+    var e = Fiber.new {
+      buf.writeFloatsN(0, data, 8)
+    }.try()
+    Expect.that(e).toContain("exceeds Float32Array length")
+    buf.destroy
+    device.destroy
+  }
 }
 
 Test.describe("Buffer batched math writes") {
