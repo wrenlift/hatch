@@ -474,7 +474,7 @@ class Catalog {
 
   /// Cache cap matching `Api.cacheCap_`. See `Api.store_` for
   /// the rationale; same FIFO bound applies here.
-  static readmeCacheCap_ { 64 }
+  static readmeCacheCap_ { 16 }
 
   /// FIFO-bounded insert into `__readmeCache`. Mirror of
   /// `Api.store_` — see comment there for why FIFO is fine vs
