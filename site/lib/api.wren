@@ -56,7 +56,7 @@ class Api {
   /// today and FIFO eviction at 64 leaves comfortable
   /// headroom for repeat-publish churn before the oldest
   /// entries roll out.
-  static cacheCap_ { 64 }
+  static cacheCap_ { 16 }
 
   /// FIFO-bounded insert into `__cache`. Tracks insertion
   /// order in the side list `__cacheKeys` so eviction picks
