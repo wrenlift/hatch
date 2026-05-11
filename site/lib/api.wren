@@ -125,9 +125,12 @@ class Api {
     // template parser downstream sees a truncated docs JSON
     // and aborts mid-`{% if %}` block ("unterminated {% if %}"
     // in fly logs).
-    var fib = Fiber.new {
+    // 1 MiB stack — `Http.get` pulls in `flate2::GzDecoder` whose
+    // `InflateState` stages on the stack before boxing; the default
+    // 256 KiB krio stack SIGBUSes on macOS arm64 during that alloc.
+    var fib = Fiber.new(Fn.new {
       Http.get(url, { "timeoutMs": 5000, "followRedirects": true })
-    }
+    }, 1024)
     var resp = null
     while (!fib.isDone) {
       resp = fib.try()
