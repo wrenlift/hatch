@@ -89,7 +89,9 @@ class Catalog {
       // table population; the loop kicks in for subsequent
       // refreshes only.
       Catalog.sleepYielding_(intervalSec)
-      var f = Fiber.new { Catalog.refresh() }
+      // `refresh` calls into `Http.get` → `flate2::GzDecoder`.
+      // Same 1 MiB rationale as `fetchAndParse_` below.
+      var f = Fiber.new(Fn.new { Catalog.refresh() }, 1024)
       Catalog.driveFiber_(f)
       if (f.error != null) {
         System.print("[catalog] refresh failed: %(f.error)")
@@ -261,9 +263,13 @@ class Catalog {
   /// `@hatch:http@0.3.2` moved to json@0.1.2 so the diamond
   /// resolves.
   static fetchAndParse_() {
-    var fib = Fiber.new {
+    // 1 MiB stack — `Http.get` pulls in `flate2::GzDecoder` which
+    // stages a ~256 KiB `InflateState` on the stack before boxing.
+    // The default 256 KiB krio stack SIGBUSes on macOS arm64 during
+    // that allocation.
+    var fib = Fiber.new(Fn.new {
       Http.get(Catalog.INDEX_URL_, { "timeoutMs": 10000, "followRedirects": true })
-    }
+    }, 1024)
     // Drive the fiber to completion — `Http.get` yields
     // cooperatively while waiting for the network and
     // `fib.try()` would otherwise return at the first yield with
@@ -449,9 +455,10 @@ class Catalog {
     // `@hatch:http@0.3.0` shipped incompatible `@hatch:json`
     // versions; that diamond resolves now that
     // `@hatch:http@0.3.2` is on `@hatch:json@0.1.2`.
-    var fib = Fiber.new {
+    // 1 MiB stack — see `fetchAndParse_` for the GzDecoder rationale.
+    var fib = Fiber.new(Fn.new {
       Http.get(url, { "timeoutMs": 10000, "followRedirects": true })
-    }
+    }, 1024)
     // Pump the fiber to completion — see `driveFiberValue_`
     // for why a single `fib.try()` returns a partial value.
     var resp = Catalog.driveFiberValue_(fib)
