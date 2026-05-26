@@ -46,11 +46,12 @@ WORKDIR /src
 RUN git clone --depth 1 --branch ${WLIFT_VERSION} ${WLIFT_REPO} .
 
 # `--features aot` pulls in the Cranelift object-emitter + the
-# AOT bootstrap shim. Building both the `wlift` and `hatch` bins
-# also produces `libwren_lift.a` (the lib crate's `staticlib`
-# crate-type) — `wlift --aot` looks for it next to its own
-# binary, so the bundle stage copies all three side by side.
-RUN cargo build --release --features aot --bin wlift --bin hatch
+# AOT bootstrap shim. `--lib` is needed alongside the bins so
+# the lib crate's `staticlib` crate-type produces
+# `libwren_lift.a` — `wlift --aot` looks for it next to its own
+# binary, and a plain `--bin` build only emits the rlib the
+# bins need to link against. The bundle stage copies all three.
+RUN cargo build --release --features aot --bin wlift --bin hatch --lib
 
 # ---------------------------------------------------------------
 FROM debian:trixie-slim AS bundle
