@@ -15,7 +15,7 @@ description = "hatch.wrenlift.com — landing page for Hatch. Server-rendered wi
 # that wren_lift v0.1.17 fixed the JIT GC-rooting class that the
 # original bandaid was avoiding.
 "@hatch:web"    = "0.1.6"
-"@hatch:sqlite" = "0.1.5"
+"@hatch:sqlite" = "0.1.7"
 "@hatch:http"   = "0.3.2"
 "@hatch:toml"   = "0.1.0"
 "@hatch:os"     = "0.1.1"
