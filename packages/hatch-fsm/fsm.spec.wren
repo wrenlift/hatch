@@ -754,6 +754,35 @@ Test.describe("StateChart: history") {
     // can target world.desert directly.
   }
 
+  Test.it("$history target resolves sibling-relative inside a compound") {
+    // The pause/resume pair lives inside `session`, so the history
+    // target `playing.$history` is sibling-relative to `paused` —
+    // it should resolve to `session.playing.$history`.
+    var fsm = StateChart.build {|c|
+      c.state("session") {|sess|
+        sess.initial("playing")
+        sess.state("playing") {|s|
+          s.initial("level1")
+          s.state("level1") {|l|
+            l.on("next",  "level2")
+            l.on("pause", "paused")
+          }
+          s.state("level2") {|l| l.on("pause", "paused") }
+        }
+        sess.state("paused") {|p|
+          p.on("resume", "playing.$history")
+        }
+      }
+    }
+    fsm.start()
+    fsm.send("next")
+    Expect.that(fsm.activePath).toBe("session.playing.level2")
+    fsm.send("pause")
+    Expect.that(fsm.activePath).toBe("session.paused")
+    fsm.send("resume")
+    Expect.that(fsm.activePath).toBe("session.playing.level2")
+  }
+
   Test.it("$history target on non-compound state aborts at finish") {
     var f = Fiber.new {
       StateChart.build {|c|

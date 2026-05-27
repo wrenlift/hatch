@@ -464,16 +464,44 @@ class ChartBuilder_ {
   }
 
   static resolveTarget_(target, sourceNode, ids) {
-    // History pseudo-targets: validate the compound prefix exists
-    // and is actually a compound state, but keep the original
-    // string. The runtime resolves to the recorded substate at
-    // step time via `resolveHistoryTarget_`.
+    // History pseudo-targets: validate the compound prefix and
+    // keep the resolved string. The runtime walks the cache at
+    // step time via `resolveHistoryTarget_`. We support both
+    // fully-qualified prefixes ("game.playing.$history") and
+    // sibling-relative ones ("playing.$history" from a sibling
+    // of `playing`); the latter follows the same ancestor walk
+    // as a plain target.
     if (target.endsWith(".$history") || target.endsWith(".$historyDeep")) {
       var suffix = target.endsWith(".$historyDeep") ? ".$historyDeep" : ".$history"
-      var compoundPath = target[0...(target.count - suffix.count)]
-      if (!ids.containsKey(compoundPath)) return null
-      if (ids[compoundPath].kind != "compound") return null
-      return target
+      var compoundRaw = target[0...(target.count - suffix.count)]
+      var resolvedCompound = null
+      if (compoundRaw.contains(".")) {
+        if (ids.containsKey(compoundRaw)) resolvedCompound = compoundRaw
+      } else {
+        // Bare name: walk source's ancestors for a sibling with
+        // this name (same as the regular sibling-relative rule).
+        var ancestor = sourceNode.parent
+        while (ancestor != null) {
+          if (ancestor.states.containsKey(compoundRaw)) {
+            resolvedCompound = ancestor.states[compoundRaw].path
+            break
+          }
+          ancestor = ancestor.parent
+        }
+        // Fall back to a top-level node by that name.
+        if (resolvedCompound == null) {
+          for (entry in ids) {
+            var n = entry.value
+            if (n.parent == null && n.name == compoundRaw) {
+              resolvedCompound = n.path
+              break
+            }
+          }
+        }
+      }
+      if (resolvedCompound == null) return null
+      if (ids[resolvedCompound].kind != "compound") return null
+      return resolvedCompound + suffix
     }
     // Fully-qualified path: must be a known id.
     if (target.contains(".")) {

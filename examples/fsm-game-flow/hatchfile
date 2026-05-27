@@ -1,0 +1,9 @@
+name        = "fsm-game-flow"
+version     = "0.1.0"
+entry       = "main"
+description = "Game flow controller built with @hatch:fsm. Demonstrates compound states, parallel regions, history (pause/resume), guards, entry/exit/transition actions, signal-based observation, and the tree pretty-printer. Pure-Wren example with no rendering — runs as a CLI through `hatch run`."
+
+# @hatch:events comes transitively via @hatch:fsm; declaring
+# it again would trip the resolver's diamond-as-cycle detector.
+[dependencies]
+"@hatch:fsm" = { path = "../../packages/hatch-fsm" }
