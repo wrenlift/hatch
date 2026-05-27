@@ -74,17 +74,26 @@ class StateNode_ {
   }
 
   /// Find the first matching transition for `event` walking from
-  /// this node up through ancestors. Returns `[branch, sourceNode]`,
-  /// or null if no handler matches.
-  findTransition_(event) {
+  /// this node up through ancestors. `guardEval` is called with
+  /// each branch's guard Fn (or null); it should return true
+  /// when the branch is eligible. Returns `[branch, sourceNode]`
+  /// of the first match, or null.
+  ///
+  /// SCXML semantics: at each ancestor that defines handlers
+  /// for the event, evaluate every branch in declaration order,
+  /// taking the first eligible one. Branches without guards are
+  /// always eligible. If none match at this level, ascend.
+  findTransition_(event, guardEval) {
     var key = event is String ? event : event["type"]
     var node = this
     while (node != null) {
       var branches = node.transitions[key]
-      if (branches != null && branches.count > 0) {
-        // Day 1: no guards — first branch wins.
-        // Day 4 will evaluate guards in order.
-        return [branches[0], node]
+      if (branches != null) {
+        for (branch in branches) {
+          if (guardEval.call(branch)) {
+            return [branch, node]
+          }
+        }
       }
       node = node.parent
     }
@@ -111,6 +120,61 @@ class TransitionBranch_ {
   /// Called by the resolver in ChartBuilder_._resolveTargets_
   /// to rewrite the user-written target to a fully-qualified path.
   resolveTo_(path) { _target = path }
+}
+
+/// Builder yielded inside `s.on(event) {|t| ... }`. Lets the
+/// user attach a guard, transition action(s), target, or mark
+/// the transition internal.
+class TransitionBuilder_ {
+  construct new_(sourceName, event) {
+    _sourceName = sourceName
+    _event = event
+    _target = null
+    _guard = null
+    _actions = []
+    _internal = false
+  }
+
+  /// Conditional fire. `fn` is called with `(ctx, event)` and
+  /// must return a Bool. First branch whose guard returns true
+  /// wins, in declaration order; branches with no guard are
+  /// always eligible and act as the fallback if listed last.
+  when(fn) {
+    if (!(fn is Fn)) {
+      Fiber.abort("state(%(_sourceName)).on(%(_event)).when: expected Fn, got %(fn.type)")
+    }
+    _guard = fn
+  }
+
+  /// Transition action. Runs after exit actions, before entry
+  /// actions. May be called multiple times to attach a list.
+  does(fn) {
+    if (!(fn is Fn)) {
+      Fiber.abort("state(%(_sourceName)).on(%(_event)).does: expected Fn, got %(fn.type)")
+    }
+    _actions.add(fn)
+  }
+
+  /// Set the transition's target state. Sibling-relative or
+  /// fully-qualified. Omitting `go(...)` makes this a self-
+  /// transition (exit + re-enter the source).
+  go(target) {
+    if (!(target is String)) {
+      Fiber.abort("state(%(_sourceName)).on(%(_event)).go: target must be String, got %(target.type)")
+    }
+    _target = target
+  }
+
+  /// Mark this transition internal. Internal transitions don't
+  /// exit/re-enter the source state — actions run, but
+  /// entry/exit do not fire. Useful for "tick" handlers that
+  /// shouldn't reset substate progress.
+  internal() { _internal = true }
+
+  /// Internal: produce a `TransitionBranch_` for this builder.
+  finish_() {
+    return TransitionBranch_.new_(_event, _target, _guard, _actions, _internal)
+  }
 }
 
 // --- Builders -----------------------------------------------------------------
@@ -161,7 +225,7 @@ class StateBuilder_ {
 
   /// Declare a transition. Two shapes:
   ///   s.on("event", "target")     — shorthand: no guard, no action
-  ///   s.on("event") {|t| ... }    — full form (day 4)
+  ///   s.on("event") {|t| ... }    — full form: configure via TransitionBuilder_
   on(event, target) {
     if (!(event is String)) {
       Fiber.abort("state(%(_name)).on: event must be String, got %(event.type)")
@@ -169,15 +233,38 @@ class StateBuilder_ {
     if (_kind == "final") {
       Fiber.abort("state(%(_name)).on(%(event)): final states cannot have outgoing transitions")
     }
+    if (!_transitions.containsKey(event)) _transitions[event] = []
+
     if (target is String) {
-      if (!_transitions.containsKey(event)) _transitions[event] = []
       _transitions[event].add(TransitionBranch_.new_(event, target, null, [], false))
       return
     }
     if (target is Fn) {
-      Fiber.abort("state(%(_name)).on(%(event)): full-form transitions (guards/actions) land in day 4 — pass a String target for now")
+      var tb = TransitionBuilder_.new_(_name, event)
+      target.call(tb)
+      _transitions[event].add(tb.finish_())
+      return
     }
     Fiber.abort("state(%(_name)).on(%(event)): 2nd arg must be String or Fn, got %(target.type)")
+  }
+
+  /// Register an entry action. Fires when the state is entered,
+  /// shallowest-first relative to other entries in the same step.
+  /// May be called multiple times to attach a list of actions.
+  entry(fn) {
+    if (!(fn is Fn)) {
+      Fiber.abort("state(%(_name)).entry: expected Fn, got %(fn.type)")
+    }
+    _entry.add(fn)
+  }
+
+  /// Register an exit action. Fires when the state is exited,
+  /// deepest-first relative to other exits in the same step.
+  exit(fn) {
+    if (!(fn is Fn)) {
+      Fiber.abort("state(%(_name)).exit: expected Fn, got %(fn.type)")
+    }
+    _exit.add(fn)
   }
 
   /// Mark this state as a terminal state.
@@ -425,6 +512,144 @@ class StateChart {
     return b.finish()
   }
 
+  /// Build a chart from a data spec (Map). Same shape XState
+  /// uses. Drives the same builder internally so all validation,
+  /// error messages, and behavior are identical to `build`. Use
+  /// this when the chart definition arrives as data — hot-
+  /// reloadable JSON, save-loaded snapshots, asset-driven AI
+  /// configs.
+  ///
+  /// Spec keys:
+  ///   id        String — chart name (optional)
+  ///   initial   String — top-level initial state (optional;
+  ///                       defaults to first declared)
+  ///   context   Map    — initial context
+  ///   states    Map<name, stateSpec>
+  ///
+  /// stateSpec keys:
+  ///   type      "atomic" | "compound" | "parallel" | "final"
+  ///             (default: "atomic", or "compound" when `states`
+  ///              present, or "parallel" if explicitly set)
+  ///   initial   String — for compound states
+  ///   states    Map<name, stateSpec>
+  ///   entry     Fn | List<Fn>
+  ///   exit      Fn | List<Fn>
+  ///   on        Map<event, transitionSpec>
+  ///
+  /// transitionSpec:
+  ///   String              — shorthand: target name
+  ///   Map { target, guard, actions, internal }
+  ///   List<transitionSpec> — multiple branches, evaluated in
+  ///                          order (first matching guard wins)
+  static fromMap(spec) {
+    if (!(spec is Map)) {
+      Fiber.abort("StateChart.fromMap: expected Map, got %(spec.type)")
+    }
+    return StateChart.build {|chart|
+      if (spec.containsKey("id"))      chart.id(spec["id"])
+      if (spec.containsKey("initial")) chart.initial(spec["initial"])
+      if (spec.containsKey("context")) chart.context(spec["context"])
+      if (spec.containsKey("states")) {
+        for (entry in spec["states"]) {
+          StateChart.buildStateFromMap_(chart, entry.key, entry.value)
+        }
+      }
+    }
+  }
+
+  static buildStateFromMap_(parentBuilder, name, spec) {
+    if (!(spec is Map)) {
+      Fiber.abort("StateChart.fromMap: spec for state '%(name)' must be a Map, got %(spec.type)")
+    }
+    var type = spec.containsKey("type") ? spec["type"] : null
+
+    if (type == "parallel") {
+      parentBuilder.parallel(name) {|p|
+        if (spec.containsKey("states")) {
+          for (entry in spec["states"]) {
+            StateChart.buildStateFromMap_(p, entry.key, entry.value)
+          }
+        }
+        StateChart.applyStateConfig_(p, spec)
+      }
+    } else {
+      parentBuilder.state(name) {|s|
+        if (type == "final") s.final()
+        if (spec.containsKey("initial")) s.initial(spec["initial"])
+        if (spec.containsKey("states")) {
+          for (entry in spec["states"]) {
+            StateChart.buildStateFromMap_(s, entry.key, entry.value)
+          }
+        }
+        StateChart.applyStateConfig_(s, spec)
+      }
+    }
+  }
+
+  static applyStateConfig_(builder, spec) {
+    if (spec.containsKey("entry")) {
+      var e = spec["entry"]
+      if (e is Fn) {
+        builder.entry(e)
+      } else if (e is List) {
+        for (f in e) builder.entry(f)
+      } else {
+        Fiber.abort("StateChart.fromMap: 'entry' must be Fn or List<Fn>")
+      }
+    }
+    if (spec.containsKey("exit")) {
+      var e = spec["exit"]
+      if (e is Fn) {
+        builder.exit(e)
+      } else if (e is List) {
+        for (f in e) builder.exit(f)
+      } else {
+        Fiber.abort("StateChart.fromMap: 'exit' must be Fn or List<Fn>")
+      }
+    }
+    if (spec.containsKey("on")) {
+      var onMap = spec["on"]
+      if (!(onMap is Map)) Fiber.abort("StateChart.fromMap: 'on' must be a Map")
+      for (transEntry in onMap) {
+        StateChart.applyTransitionFromMap_(builder, transEntry.key, transEntry.value)
+      }
+    }
+  }
+
+  static applyTransitionFromMap_(builder, event, def) {
+    if (def is String) {
+      builder.on(event, def)
+      return
+    }
+    if (def is Map) {
+      builder.on(event) {|t|
+        if (def.containsKey("target")) t.go(def["target"])
+        if (def.containsKey("guard"))  t.when(def["guard"])
+        if (def.containsKey("actions")) {
+          var a = def["actions"]
+          if (a is Fn) {
+            t.does(a)
+          } else if (a is List) {
+            for (f in a) t.does(f)
+          } else {
+            Fiber.abort("StateChart.fromMap: 'actions' must be Fn or List<Fn>")
+          }
+        }
+        if (def.containsKey("internal") && def["internal"] == true) {
+          t.internal()
+        }
+      }
+      return
+    }
+    if (def is List) {
+      for (branch in def) {
+        StateChart.applyTransitionFromMap_(builder, event, branch)
+      }
+      return
+    }
+    Fiber.abort("StateChart.fromMap: transition for event '%(event)' must be String, Map, or List")
+  }
+
   // Internal constructor used by `ChartBuilder_.finish`.
   construct fromCompiled_(id, rootStates, rootInitial, ids, context) {
     _id = id
@@ -668,17 +893,26 @@ class StateChart {
     // Process each active leaf independently. A parallel chart has
     // multiple leaves; each region may fire its own transition.
     // Transitions are applied in leaf order; after each, the active
-    // config is refreshed before the next leaf is checked (so a
-    // transition that exits a parallel ancestor invalidates its
-    // siblings' leaf eligibility automatically).
+    // config is refreshed before the next leaf is checked.
     var leaves = activeLeaves_
     var fired = false
+    var self = this
+    // Guard evaluator passed to findTransition_. Captures `event`
+    // and `self`'s _context so guard fns receive the right args.
+    var guardEval = Fn.new {|branch|
+      if (branch.guard == null) return true
+      var result = branch.guard.call(self.context, event)
+      if (!(result is Bool)) {
+        Fiber.abort("StateChart: guard for transition on '%(branch.event)' returned %(result.type), expected Bool")
+      }
+      return result
+    }
     for (leafPath in leaves) {
       // Refresh — earlier transitions in this step may have exited
       // this leaf already.
       if (!_active.contains(leafPath)) continue
       var leaf = _ids[leafPath]
-      var hit = leaf.findTransition_(event)
+      var hit = leaf.findTransition_(event, guardEval)
       if (hit == null) continue
       fired = true
       stepOne_(hit[0], hit[1], event)
@@ -957,14 +1191,23 @@ class StateChart {
     }
   }
 
+  /// Lowest common ancestor of two nodes for transition-scope
+  /// computation. SCXML semantics: an external transition's
+  /// scope is the lowest PROPER ancestor — even when source ==
+  /// target (self-transition) or source ancestors target, the
+  /// scope must be strictly above the source so the source
+  /// itself gets exited and re-entered. The internal-transition
+  /// path in stepOne_ short-circuits before calling this, so
+  /// we don't need to handle internal here.
   lca_(a, b) {
+    if (a == b) return a.parent
     var aAncestors = {}
-    var x = a
+    var x = a.parent
     while (x != null) {
       aAncestors[x.path] = x
       x = x.parent
     }
-    var y = b
+    var y = b.parent
     while (y != null) {
       if (aAncestors.containsKey(y.path)) return y
       y = y.parent
