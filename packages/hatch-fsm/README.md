@@ -38,31 +38,28 @@ fsm.send("land")             // ["ground", "ground.idle"]
 fsm.matches("ground")        // true while any ground.* is active
 ```
 
-## What's here today (v0.1.0 / day-3)
+## What's here today (v0.1.0 / day-4)
 
-- Atomic + compound states
-- **Parallel regions** (`chart.parallel(name) {|p| p.state(...) }`) —
-  each region ticks independently; transitions out of any region exit the
-  whole parallel
-- **History pseudo-targets** — `playing.$history` (shallow, last immediate
-  substate) and `playing.$historyDeep` (deep, last full leaf), falling back
-  to the compound's `initial` when no history has been recorded
-- **Final states** — `s.final()` marks a leaf; entering one emits `done`
-  with the compound parent's path; for parallel ancestors, `done` fires
-  only when EVERY region's leaf is final
-- Sibling-relative + fully-qualified transition targets
-- `start` / `stop` / `send` / `matches` / `activeStates` / `activePath`
-- Mutable `context` map carried by the chart
+- Atomic + compound + **parallel** states
+- **Entry / exit / transition actions** — `s.entry {|ctx, evt| ...}`,
+  `s.exit {|ctx, evt| ...}`, `t.does {|ctx, evt| ...}`; mutate context
+  freely
+- **Guards** — `s.on("evt") {|t| t.when {|ctx, evt| ...}.go("target") }`;
+  multiple branches per event, first matching guard wins
+- **Internal transitions** — `t.internal()` runs the action without
+  exit/re-entry
+- **History pseudo-targets** — `playing.$history` and
+  `playing.$historyDeep`
+- **Final states** + `done` emission
+- **`fromMap(spec)`** — data-driven adapter that drives the same builder
+  internally
 - Construction-time validation with path-tagged error messages
 - Re-entrant `send` queues into microsteps
 - **Signal channels** via `@hatch:events`:
-  `fsm.on("transition")`, `fsm.on("enter:<path>")`, `fsm.on("exit:<path>")`,
-  `fsm.on("unhandled")`, `fsm.on("done")`, `fsm.on("*")` wildcard;
-  `once` / `off` / `offAll` inherited
-- **`bindEvents(emitter, [names])`** to forward selected events from any
-  `EventEmitter` (input handlers, ECS world events, network bus) into `send`
-- **`fsm.tree`** ASCII pretty-printer with active-state markers + transition
-  annotations; `toString` getter delegates
+  `transition` / `enter:<path>` / `exit:<path>` / `unhandled` / `done` /
+  `*` wildcard
+- **`bindEvents(emitter, [names])`** to forward external events into `send`
+- **`fsm.tree`** ASCII pretty-printer; `toString` getter delegates
 
 Observation example:
 ```wren
@@ -85,8 +82,38 @@ chart.state("paused") {|p|
 }
 ```
 
-Coming in later versions: guards on transitions, entry/exit/transition
-actions, `fromMap(spec)` adapter.
+Guards + actions:
+```wren
+chart.state("idle") {|s|
+  s.on("attack") {|t|
+    t.when {|ctx, evt| ctx["stamina"] >= 10 }
+    t.does {|ctx, evt| ctx["stamina"] = ctx["stamina"] - 10 }
+    t.go("attacking")
+  }
+  s.on("attack") {|t| t.go("tooTired") }   // fallback if guard fails
+}
+```
+
+Data-driven (`fromMap`):
+```wren
+var fsm = StateChart.fromMap({
+  "id": "player",
+  "initial": "ground",
+  "context": { "hp": 100 },
+  "states": {
+    "ground": {
+      "initial": "idle",
+      "states": {
+        "idle":    { "on": { "walk": "walking" } },
+        "walking": { "on": { "stop": "idle" } }
+      },
+      "on": { "jump": "air" }
+    },
+    "air":  { "on": { "land": "ground" } },
+    "dead": { "type": "final" }
+  }
+})
+```
 
 Design rationale, semantics, and roadmap: see
 [`docs/hatch-fsm-design.md`](../../docs/hatch-fsm-design.md).

@@ -830,4 +830,406 @@ Test.describe("StateChart: final state + done signal") {
   }
 }
 
+// --- Day 4: guards + actions + fromMap --------------------------------------
+
+Test.describe("StateChart: entry / exit actions") {
+  Test.it("entry action fires when state is entered, with (ctx, event)") {
+    var seen = []
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s|
+        s.entry {|ctx, evt| seen.add("entry-a:%(evt)") }
+        s.on("go", "b")
+      }
+      c.state("b") {|s|
+        s.entry {|ctx, evt| seen.add("entry-b:%(evt)") }
+      }
+    }
+    fsm.start()                  // entry-a with no event
+    fsm.send("go")               // exit (none), entry-b
+    Expect.that(seen[0]).toBe("entry-a:null")
+    Expect.that(seen[1]).toBe("entry-b:go")
+  }
+
+  Test.it("exit action fires before entry of the next state") {
+    var seen = []
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s|
+        s.exit {|ctx, evt| seen.add("exit-a") }
+        s.on("go", "b")
+      }
+      c.state("b") {|s|
+        s.entry {|ctx, evt| seen.add("entry-b") }
+      }
+    }
+    fsm.start()
+    fsm.send("go")
+    Expect.that(seen[0]).toBe("exit-a")
+    Expect.that(seen[1]).toBe("entry-b")
+  }
+
+  Test.it("entry actions can mutate context") {
+    var fsm = StateChart.build {|c|
+      c.context({ "hp": 100 })
+      c.state("a") {|s|
+        s.entry {|ctx, evt| ctx["hp"] = ctx["hp"] - 10 }
+        s.on("hit", "a")  // self-transition re-enters
+      }
+    }
+    fsm.start()
+    Expect.that(fsm.context["hp"]).toBe(90)
+    fsm.send("hit")
+    Expect.that(fsm.context["hp"]).toBe(80)
+  }
+
+  Test.it("compound entry runs shallowest-first") {
+    var seen = []
+    var fsm = StateChart.build {|c|
+      c.state("outer") {|o|
+        o.initial("inner")
+        o.entry {|ctx, evt| seen.add("outer") }
+        o.state("inner") {|i|
+          i.entry {|ctx, evt| seen.add("inner") }
+        }
+      }
+    }
+    fsm.start()
+    Expect.that(seen[0]).toBe("outer")
+    Expect.that(seen[1]).toBe("inner")
+  }
+
+  Test.it("compound exit runs deepest-first") {
+    var seen = []
+    var fsm = StateChart.build {|c|
+      c.state("outer") {|o|
+        o.initial("inner")
+        o.exit {|ctx, evt| seen.add("outer") }
+        o.state("inner") {|i|
+          i.exit {|ctx, evt| seen.add("inner") }
+        }
+        o.on("leave", "other")
+      }
+      c.state("other") {|x| }
+    }
+    fsm.start()
+    fsm.send("leave")
+    Expect.that(seen[0]).toBe("inner")
+    Expect.that(seen[1]).toBe("outer")
+  }
+
+  Test.it("multiple entry actions run in declaration order") {
+    var seen = []
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s|
+        s.entry {|ctx, evt| seen.add("first") }
+        s.entry {|ctx, evt| seen.add("second") }
+        s.entry {|ctx, evt| seen.add("third") }
+      }
+    }
+    fsm.start()
+    Expect.that(seen[0]).toBe("first")
+    Expect.that(seen[1]).toBe("second")
+    Expect.that(seen[2]).toBe("third")
+  }
+
+  Test.it("non-Fn entry aborts at the builder call") {
+    var f = Fiber.new {
+      StateChart.build {|c| c.state("a") {|s| s.entry(42) } }
+    }
+    f.try()
+    Expect.that(f.error.contains("state(a).entry: expected Fn")).toBe(true)
+  }
+}
+
+Test.describe("StateChart: transition guards") {
+  Test.it("guard true fires the transition") {
+    var fsm = StateChart.build {|c|
+      c.context({ "ok": true })
+      c.state("a") {|s|
+        s.on("go") {|t|
+          t.when {|ctx, evt| ctx["ok"] }
+          t.go("b")
+        }
+      }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    fsm.send("go")
+    Expect.that(fsm.activePath).toBe("b")
+  }
+
+  Test.it("guard false skips the transition") {
+    var fsm = StateChart.build {|c|
+      c.context({ "ok": false })
+      c.state("a") {|s|
+        s.on("go") {|t|
+          t.when {|ctx, evt| ctx["ok"] }
+          t.go("b")
+        }
+      }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    fsm.send("go")
+    Expect.that(fsm.activePath).toBe("a")
+  }
+
+  Test.it("multiple branches: first matching guard wins") {
+    var fsm = StateChart.build {|c|
+      c.context({ "stamina": 5 })
+      c.state("idle") {|s|
+        s.on("attack") {|t|
+          t.when {|ctx, evt| ctx["stamina"] >= 10 }
+          t.go("attacking")
+        }
+        s.on("attack") {|t|
+          t.when {|ctx, evt| ctx["stamina"] >= 3 }
+          t.go("light_attack")
+        }
+        s.on("attack") {|t| t.go("tooTired") }   // fallback
+      }
+      c.state("attacking")    {|x| }
+      c.state("light_attack") {|x| }
+      c.state("tooTired")     {|x| }
+    }
+    fsm.start()
+    fsm.send("attack")
+    Expect.that(fsm.activePath).toBe("light_attack")
+  }
+
+  Test.it("guard returning non-Bool aborts") {
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s|
+        s.on("go") {|t|
+          t.when {|ctx, evt| "yes" }   // String, not Bool
+          t.go("b")
+        }
+      }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    var f = Fiber.new { fsm.send("go") }
+    f.try()
+    Expect.that(f.error.contains("returned String, expected Bool")).toBe(true)
+  }
+}
+
+Test.describe("StateChart: transition actions") {
+  Test.it("transition action fires between exit and entry") {
+    var seen = []
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s|
+        s.exit {|ctx, evt| seen.add("exit-a") }
+        s.on("go") {|t|
+          t.does {|ctx, evt| seen.add("transition") }
+          t.go("b")
+        }
+      }
+      c.state("b") {|s|
+        s.entry {|ctx, evt| seen.add("entry-b") }
+      }
+    }
+    fsm.start()
+    fsm.send("go")
+    Expect.that(seen[0]).toBe("exit-a")
+    Expect.that(seen[1]).toBe("transition")
+    Expect.that(seen[2]).toBe("entry-b")
+  }
+
+  Test.it("transition action sees mutated context in subsequent guards") {
+    var fsm = StateChart.build {|c|
+      c.context({ "hp": 100 })
+      c.state("a") {|s|
+        s.on("hit") {|t|
+          t.does {|ctx, evt| ctx["hp"] = ctx["hp"] - 30 }
+          t.go("a")  // self-transition
+        }
+        s.on("check") {|t|
+          t.when {|ctx, evt| ctx["hp"] < 50 }
+          t.go("dying")
+        }
+        s.on("check") {|t| t.go("a") }
+      }
+      c.state("dying") {|x| }
+    }
+    fsm.start()
+    fsm.send("hit")
+    fsm.send("hit")
+    Expect.that(fsm.context["hp"]).toBe(40)
+    fsm.send("check")
+    Expect.that(fsm.activePath).toBe("dying")
+  }
+
+  Test.it("internal transition runs actions without exit/entry") {
+    var seen = []
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s|
+        s.entry {|ctx, evt| seen.add("entry") }
+        s.exit  {|ctx, evt| seen.add("exit")  }
+        s.on("tick") {|t|
+          t.internal()
+          t.does {|ctx, evt| seen.add("action") }
+        }
+      }
+    }
+    fsm.start()                 // seen = [entry]
+    fsm.send("tick")            // seen += [action]; no exit / entry
+    Expect.that(seen.count).toBe(2)
+    Expect.that(seen[0]).toBe("entry")
+    Expect.that(seen[1]).toBe("action")
+  }
+}
+
+Test.describe("StateChart: fromMap adapter") {
+  Test.it("builds the same chart as the builder API") {
+    var fsm = StateChart.fromMap({
+      "id": "door",
+      "states": {
+        "closed": { "on": { "open":  "open"   } },
+        "open":   { "on": { "close": "closed" } }
+      }
+    })
+    fsm.start()
+    Expect.that(fsm.activePath).toBe("closed")
+    fsm.send("open")
+    Expect.that(fsm.activePath).toBe("open")
+    fsm.send("close")
+    Expect.that(fsm.activePath).toBe("closed")
+  }
+
+  Test.it("compound + initial via map") {
+    var fsm = StateChart.fromMap({
+      "states": {
+        "ground": {
+          "initial": "idle",
+          "states": {
+            "idle":    { "on": { "walk": "walking" } },
+            "walking": {}
+          }
+        }
+      }
+    })
+    fsm.start()
+    Expect.that(fsm.activePath).toBe("ground.idle")
+    fsm.send("walk")
+    Expect.that(fsm.activePath).toBe("ground.walking")
+  }
+
+  Test.it("parallel via map with type: parallel") {
+    var fsm = StateChart.fromMap({
+      "states": {
+        "p": {
+          "type": "parallel",
+          "states": {
+            "a": { "states": { "x": {} }, "initial": "x" },
+            "b": { "states": { "y": {} }, "initial": "y" }
+          }
+        }
+      }
+    })
+    fsm.start()
+    Expect.that(fsm.matches("p.a.x")).toBe(true)
+    Expect.that(fsm.matches("p.b.y")).toBe(true)
+  }
+
+  Test.it("final via map with type: final + done emits") {
+    var fsm = StateChart.fromMap({
+      "states": {
+        "game": {
+          "initial": "playing",
+          "states": {
+            "playing": { "on": { "die": "dead" } },
+            "dead":    { "type": "final" }
+          }
+        }
+      }
+    })
+    fsm.start()
+    var done = []
+    fsm.on("done") {|path| done.add(path) }
+    fsm.send("die")
+    Expect.that(done[0]).toBe("game")
+  }
+
+  Test.it("entry / exit / transition actions via map") {
+    var hits = []
+    var fsm = StateChart.fromMap({
+      "states": {
+        "a": {
+          "entry": Fn.new {|ctx, evt| hits.add("enter-a") },
+          "exit":  Fn.new {|ctx, evt| hits.add("exit-a") },
+          "on": {
+            "go": {
+              "target":  "b",
+              "actions": Fn.new {|ctx, evt| hits.add("transition") }
+            }
+          }
+        },
+        "b": {
+          "entry": [
+            Fn.new {|ctx, evt| hits.add("enter-b-1") },
+            Fn.new {|ctx, evt| hits.add("enter-b-2") }
+          ]
+        }
+      }
+    })
+    fsm.start()
+    fsm.send("go")
+    Expect.that(hits[0]).toBe("enter-a")
+    Expect.that(hits[1]).toBe("exit-a")
+    Expect.that(hits[2]).toBe("transition")
+    Expect.that(hits[3]).toBe("enter-b-1")
+    Expect.that(hits[4]).toBe("enter-b-2")
+  }
+
+  Test.it("guards via map + multi-branch transitions") {
+    var fsm = StateChart.fromMap({
+      "context": { "stamina": 5 },
+      "states": {
+        "idle": {
+          "on": {
+            "attack": [
+              { "target": "strong", "guard": Fn.new {|ctx, evt| ctx["stamina"] >= 10 } },
+              { "target": "weak",   "guard": Fn.new {|ctx, evt| ctx["stamina"] >= 3  } },
+              { "target": "tired" }
+            ]
+          }
+        },
+        "strong": {}, "weak": {}, "tired": {}
+      }
+    })
+    fsm.start()
+    fsm.send("attack")
+    Expect.that(fsm.activePath).toBe("weak")
+  }
+
+  Test.it("internal transition via map") {
+    var seen = []
+    var fsm = StateChart.fromMap({
+      "states": {
+        "a": {
+          "entry": Fn.new {|ctx, evt| seen.add("enter") },
+          "exit":  Fn.new {|ctx, evt| seen.add("exit") },
+          "on": {
+            "tick": {
+              "internal": true,
+              "actions":  Fn.new {|ctx, evt| seen.add("action") }
+            }
+          }
+        }
+      }
+    })
+    fsm.start()
+    fsm.send("tick")
+    // entry, then action only — no exit/entry pair
+    Expect.that(seen.count).toBe(2)
+    Expect.that(seen[1]).toBe("action")
+  }
+
+  Test.it("non-Map spec aborts") {
+    var f = Fiber.new { StateChart.fromMap("not a map") }
+    f.try()
+    Expect.that(f.error.contains("expected Map")).toBe(true)
+  }
+}
+
 Test.run()
