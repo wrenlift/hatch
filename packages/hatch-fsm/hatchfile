@@ -5,6 +5,9 @@ description = "Harel statecharts for Wren. Hierarchical and parallel states, his
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:fsm"
 readme      = "README.md"
 
+[dependencies]
+"@hatch:events" = { path = "../hatch-events" }
+
 [spec-dependencies]
 "@hatch:test"   = { path = "../hatch-test" }
 "@hatch:assert" = { path = "../hatch-assert" }
