@@ -1,0 +1,10 @@
+name        = "@hatch:fsm"
+version     = "0.1.0"
+entry       = "fsm"
+description = "Harel statecharts for Wren. Hierarchical and parallel states, history, guards, entry/exit/transition actions, context, signal-based observation. Pure Wren."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:fsm"
+readme      = "README.md"
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }

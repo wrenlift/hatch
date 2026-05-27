@@ -6,3 +6,6 @@
 examples/**/*.hatch
 packages/**/*.hatch
 .DS_Store
+
+# Private planning notes — design docs are tracked, plan docs are not.
+docs/*-plan.md
