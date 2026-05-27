@@ -48,8 +48,12 @@ FROM rust:1-trixie AS wlift-builder
 #     new_string; site peak RSS 768 → 349 MB under the 200-req
 #     burst, memory now shrinks between batches instead of
 #     climbing monotonically to the OOM cap
+#   - 3326d00 — AOT picks up host CPU features via
+#     cranelift_native::builder (AVX2 + BMI1/2 on fly's
+#     Skylake Xeons instead of base SSE2); perf-only, no
+#     functional change
 # Flip to a `v…` tag once a release ships these.
-ARG WLIFT_VERSION=73975460e2b5b55b0a3cec6bddcce60fc68ca2b2
+ARG WLIFT_VERSION=3326d00e13bc631f55b8a3a86b119eade471f3f2
 ARG WLIFT_REPO=https://github.com/wrenlift/WrenLift.git
 
 RUN apt-get update \
