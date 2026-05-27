@@ -49,7 +49,7 @@ FROM rust:1-trixie AS wlift-builder
 #     burst, memory now shrinks between batches instead of
 #     climbing monotonically to the OOM cap
 # Flip to a `v…` tag once a release ships these.
-ARG WLIFT_VERSION=7397546
+ARG WLIFT_VERSION=73975460e2b5b55b0a3cec6bddcce60fc68ca2b2
 ARG WLIFT_REPO=https://github.com/wrenlift/WrenLift.git
 
 RUN apt-get update \
