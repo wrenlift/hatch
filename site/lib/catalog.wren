@@ -22,6 +22,18 @@ import "@hatch:sqlite" for Database
 import "@hatch:http"   for Http
 import "@hatch:time"   for Clock
 
+// Fiber.yield round-trips into the scheduler and back; when the
+// scheduler has no other runnable fiber it returns control to
+// us immediately. A pure-yield "sleep" is therefore a hot spin
+// burning CPU + allocating fiber-action state every iteration —
+// on Linux at production rates it pushed the site into OOM in
+// ~40s of boot work even after the per-request memory wins
+// landed. We block the thread for short chunks instead so the
+// process actually rests between scheduler ticks; the chunk is
+// small enough that request fibers see ≤50ms of added latency
+// when one is mid-spawn during a refresh's idle period.
+var SLEEP_CHUNK_MS_ = 50
+
 /// Public API:
 ///
 ///   Catalog.boot()                    // open db + initial fetch
@@ -106,13 +118,32 @@ class Catalog {
     }
   }
 
-  /// Cooperative sleep — yields to the scheduler each tick until
-  /// `seconds` of wall-clock time have elapsed. Doesn't block the
-  /// thread, so other fibers (request handlers, SSE writers) run
-  /// freely while we wait.
+  /// Cooperative sleep — block the thread in short chunks until
+  /// `seconds` of wall-clock time have elapsed, yielding once per
+  /// chunk so the scheduler can tick other fibers between sleeps.
+  ///
+  /// The previous shape (`while (Clock.mono < deadline)
+  /// Fiber.yield()`) was a hot spin: Fiber.yield returns control
+  /// to the scheduler and the scheduler immediately reschedules
+  /// us (no other fiber is runnable when the warmers have
+  /// finished), so a single 2-hour wait expanded into millions
+  /// of yields per second. Each yield allocates fiber-action
+  /// state; over ~40 seconds of boot that was enough to push
+  /// the process from a clean ~36 MB local boot RSS to fly's
+  /// 636 MB OOM threshold.
+  ///
+  /// Blocking the thread for the chunk (50 ms by default) pauses
+  /// every other fiber for that window, but at low traffic that's
+  /// invisible and the alternative is dying under boot pressure
+  /// before the first request even arrives.
   static sleepYielding_(seconds) {
     var deadline = Clock.mono + seconds
-    while (Clock.mono < deadline) Fiber.yield()
+    while (Clock.mono < deadline) {
+      var remainingMs = (deadline - Clock.mono) * 1000
+      var chunk = remainingMs < SLEEP_CHUNK_MS_ ? remainingMs : SLEEP_CHUNK_MS_
+      if (chunk > 0) Clock.sleepMs(chunk)
+      Fiber.yield()
+    }
   }
 
   /// Drive a child fiber to completion, yielding to the scheduler
