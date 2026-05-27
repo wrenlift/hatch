@@ -18,11 +18,24 @@ import "@hatch:json" for JSON
 import "@hatch:http" for Http
 
 class Api {
-  /// Per-process cache keyed by `name@version` → parsed-and-
-  /// decorated module list. Cleared every time the catalog
-  /// refreshes (see `Catalog.refresh`). Bounded only by the
-  /// number of distinct package versions the site sees in a
-  /// given refresh window; small enough to leave unbounded.
+  /// Per-process cache keyed by `name@version` → raw docs JSON
+  /// string. Cleared every time the catalog refreshes (see
+  /// `Catalog.refresh`). Bounded by `cacheCap_`.
+  ///
+  /// Storing the raw string (vs the parsed+decorated tree)
+  /// trades per-request parse cost for a much smaller in-memory
+  /// floor: a typical 100 KB docs.json inflates to ~35 MB after
+  /// `JSON.parse + decorate_` (Wren Map / List overhead per
+  /// node, plus the per-member view-helper fields the template
+  /// needs). On Fly's 768 MB machine the cap=16 cache of
+  /// decorated trees was the dominant OOM source — 16 × 35 MB
+  /// = 560 MB held forever once the boot-time warmer finished
+  /// pre-populating it. The raw-string variant of the same
+  /// cache takes ~1.6 MB total. The per-request parse + decorate
+  /// adds tens of milliseconds (well under the network-fetch
+  /// cost we were already paying), keeps response times under
+  /// Fly's 15 s edge timeout with headroom, and lets the
+  /// machine survive sustained traffic without OOM-looping.
   static cache_ { __cache }
 
   /// Public entry point. Returns the parsed `Vec<ModuleDoc>` so
@@ -33,21 +46,22 @@ class Api {
     var name = pkg["name"]
     var version = pkg.containsKey("version") ? pkg["version"] : ""
     var key = "%(name)@%(version)"
-    if (__cache.containsKey(key)) return __cache[key]
 
-    var json = Api.fetchJson_(pkg)
-    if (json == null) {
-      Api.store_(key, null)
-      return null
+    var json
+    if (__cache.containsKey(key)) {
+      json = __cache[key]
+      // Sentinel for "we tried and there's nothing to fetch" so
+      // a repeat-miss for the same package doesn't pay the
+      // network round-trip twice.
+      if (json == null) return null
+    } else {
+      json = Api.fetchJson_(pkg)
+      Api.store_(key, json)
+      if (json == null) return null
     }
     var modules = JSON.parse(json)
-    if (!(modules is List) || modules.count == 0) {
-      Api.store_(key, null)
-      return null
-    }
-    var decorated = Api.decorate_(modules, null)
-    Api.store_(key, decorated)
-    return decorated
+    if (!(modules is List) || modules.count == 0) return null
+    return Api.decorate_(modules, null)
   }
 
   /// Cache cap. Bounded so a runaway publish loop (or just
