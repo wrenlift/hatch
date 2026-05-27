@@ -1,5 +1,5 @@
 name        = "@hatch:json"
-version     = "0.1.2"
+version     = "0.1.3"
 entry       = "json"
 description = "JSON parser and serializer. Pure Wren, no native deps."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:json"
