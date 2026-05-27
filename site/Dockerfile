@@ -26,15 +26,22 @@
 # ---------------------------------------------------------------
 FROM rust:1-trixie AS wlift-builder
 
-# wren_lift source revision. Accepts either a tag (`v0.1.17`) or
-# a branch (`main`). Defaulting to `main` until the AOT-stability
-# fixes land in a tagged release — `wlift_aot_invoke_sm_method`
-# fiber-rooting (commit d9f22fc), Phase 7 default flip (c2a9f96),
-# Pass-1 covered_fps (d8739d9), and the named-closure stack-trace
-# plumbing (7ad5c2e) all post-date v0.1.17 and the site needs
-# them to run AOT without crashing. Flip back to a `v…` tag once
-# v0.1.18 ships.
-ARG WLIFT_VERSION=main
+# wren_lift source revision. Accepts a tag (`v0.1.17`), a branch
+# (`main`), or a commit SHA. Pinned to a SHA here so the Docker
+# layer cache invalidates deterministically when we move to a
+# newer wren_lift — `git clone --branch main` would reuse a
+# stale cached clone even after upstream advanced.
+#
+# Required floor for AOT stability on Linux:
+#   - 8979286 — drop USER_VA_LIMIT writeback guard (closes the
+#     Linux-aarch64 stack-slot stale-pointer class)
+#   - 8f4267c — declare SM-transform fresh ValueIds as stack-map
+#     roots (closes the Mac-and-Linux SM-load gap)
+#   - ecb8345 — fmt/clippy/doc cleanups + cranelift patch
+#     retargeted at upstream wasmtime main
+#   - c4f8327 — CI clippy fix for wasm32 no-default-features build
+# Flip to a `v…` tag once a release ships these.
+ARG WLIFT_VERSION=c4f8327a275229e6081ee459a495a8e63dff77c0
 ARG WLIFT_REPO=https://github.com/wrenlift/WrenLift.git
 
 RUN apt-get update \
@@ -42,8 +49,16 @@ RUN apt-get update \
         git ca-certificates pkg-config cmake build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# Shallow fetch by ref — works for tags, branches, and SHAs.
+# GitHub allows `git fetch --depth=1 origin <sha>` by default
+# (uploadpack.allowReachableSHA1InWant = true server-side), so
+# we don't have to clone the full history just to checkout a
+# pinned commit.
 WORKDIR /src
-RUN git clone --depth 1 --branch ${WLIFT_VERSION} ${WLIFT_REPO} .
+RUN git init . \
+    && git remote add origin ${WLIFT_REPO} \
+    && git fetch --depth 1 origin ${WLIFT_VERSION} \
+    && git checkout FETCH_HEAD
 
 # `--features aot` pulls in the Cranelift object-emitter + the
 # AOT bootstrap shim. `--lib` is needed alongside the bins so
