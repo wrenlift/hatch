@@ -78,11 +78,16 @@ class Catalog {
   /// without a server restart. Registered via `app.spawn`.
   ///
   /// `intervalSec` is the wall-clock interval between refreshes
-  /// (5 minutes by default). The yielding sleep cooperates with
-  /// the scheduler so request fibers keep running between refresh
-  /// ticks. A failed refresh logs and keeps the previous table —
-  /// the last good snapshot stays live until the next attempt.
-  static refreshLoop() { Catalog.refreshLoop(300) }
+  /// (2 hours by default). Upstream rebuilds `index.toml` every
+  /// 6 hours via `sync-index.yml`, so a 2-hour poll catches
+  /// every upstream change within one cycle and removes per-
+  /// refresh allocation churn (toml parse + 40 inserts + 4
+  /// aggregate queries + api/readme cache clears) from the OOM
+  /// diagnosis path. The yielding sleep cooperates with the
+  /// scheduler so request fibers keep running between refresh
+  /// ticks. A failed refresh logs and keeps the previous table
+  /// — the last good snapshot stays live until the next attempt.
+  static refreshLoop() { Catalog.refreshLoop(7200) }
   static refreshLoop(intervalSec) {
     while (true) {
       // Wait first so the boot-time hydration owns the initial
