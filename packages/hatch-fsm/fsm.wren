@@ -187,6 +187,42 @@ class StateBuilder_ {
     _kind = "final"
   }
 
+  /// Declare a substate as a parallel region container. Inside
+  /// the closure, declare ≥2 substates with `.state(...)`; each
+  /// becomes an independently-active region. Entering a parallel
+  /// state enters every region simultaneously; exiting exits all.
+  ///
+  /// Mutually exclusive with `final()`. Can be mixed with regular
+  /// `.state(...)` siblings at the same level — a parent can have
+  /// some compound children and some parallel children.
+  parallel(name, fn) {
+    if (!(name is String)) Fiber.abort("state(%(_name)).parallel: name must be String, got %(name.type)")
+    if (!(fn is Fn))       Fiber.abort("state(%(_name)).parallel(%(name)): expected Fn, got %(fn.type)")
+    if (_kind == "final") {
+      Fiber.abort("state(%(_name)).parallel(%(name)): final state cannot contain substates")
+    }
+    if (_kind == null) _kind = "compound"
+    if (_kind != "compound") {
+      Fiber.abort("state(%(_name)).parallel(%(name)): cannot mix substates into a '%(_kind)' state")
+    }
+    if (_states.containsKey(name)) {
+      Fiber.abort("state(%(_name)).parallel(%(name)): substate already defined")
+    }
+    var sub = StateBuilder_.new_(name)
+    fn.call(sub)
+    if (sub.statesAccessor_.count < 2) {
+      Fiber.abort("state(%(_name)).parallel(%(name)): parallel state needs ≥2 regions, got %(sub.statesAccessor_.count)")
+    }
+    sub.markParallel_()
+    _states[name] = sub
+  }
+
+  /// Internal: flip kind to "parallel" after substates are
+  /// declared. Called by ChartBuilder_.parallel / StateBuilder_.parallel.
+  markParallel_() {
+    _kind = "parallel"
+  }
+
   // Internal accessors used by ChartBuilder_.compileState_.
   // Trailing underscore marks them as internal-only.
   kindAccessor_     { _kind }
@@ -234,6 +270,23 @@ class ChartBuilder_ {
     }
     var sub = StateBuilder_.new_(name)
     fn.call(sub)
+    _states[name] = sub
+  }
+
+  /// Declare a top-level parallel state. See StateBuilder_.parallel
+  /// for semantics — same shape, scoped at the chart root.
+  parallel(name, fn) {
+    if (!(name is String)) Fiber.abort("chart.parallel: name must be String, got %(name.type)")
+    if (!(fn is Fn))       Fiber.abort("chart.parallel(%(name)): expected Fn, got %(fn.type)")
+    if (_states.containsKey(name)) {
+      Fiber.abort("chart.parallel(%(name)): state already defined")
+    }
+    var sub = StateBuilder_.new_(name)
+    fn.call(sub)
+    if (sub.statesAccessor_.count < 2) {
+      Fiber.abort("chart.parallel(%(name)): parallel state needs ≥2 regions, got %(sub.statesAccessor_.count)")
+    }
+    sub.markParallel_()
     _states[name] = sub
   }
 
@@ -324,6 +377,17 @@ class ChartBuilder_ {
   }
 
   static resolveTarget_(target, sourceNode, ids) {
+    // History pseudo-targets: validate the compound prefix exists
+    // and is actually a compound state, but keep the original
+    // string. The runtime resolves to the recorded substate at
+    // step time via `resolveHistoryTarget_`.
+    if (target.endsWith(".$history") || target.endsWith(".$historyDeep")) {
+      var suffix = target.endsWith(".$historyDeep") ? ".$historyDeep" : ".$history"
+      var compoundPath = target[0...(target.count - suffix.count)]
+      if (!ids.containsKey(compoundPath)) return null
+      if (ids[compoundPath].kind != "compound") return null
+      return target
+    }
     // Fully-qualified path: must be a known id.
     if (target.contains(".")) {
       return ids.containsKey(target) ? target : null
@@ -374,6 +438,12 @@ class StateChart {
     _pending = null
     _emitter = EventEmitter.new()   // observers attach via on/once/off
     _bindings = []              // List of [emitter, eventName, disconnectFn]
+    // Per-compound-state history caches. Shallow records the
+    // immediate-substate-last-active; deep records the leaf-last-
+    // active. Populated on exit by `recordHistory_`; consumed by
+    // target resolution for `$history` / `$historyDeep`.
+    _historyShallow = {}        // Map<compoundPath, substateName>
+    _historyDeep = {}           // Map<compoundPath, leafPath>
   }
 
   id { _id }
@@ -595,15 +665,29 @@ class StateChart {
   // --- internal step engine ----
 
   step_(event) {
-    var leaf = _ids[activePath]
-    var hit = leaf.findTransition_(event)
-    if (hit == null) {
-      fire_("unhandled", [event])
-      return
+    // Process each active leaf independently. A parallel chart has
+    // multiple leaves; each region may fire its own transition.
+    // Transitions are applied in leaf order; after each, the active
+    // config is refreshed before the next leaf is checked (so a
+    // transition that exits a parallel ancestor invalidates its
+    // siblings' leaf eligibility automatically).
+    var leaves = activeLeaves_
+    var fired = false
+    for (leafPath in leaves) {
+      // Refresh — earlier transitions in this step may have exited
+      // this leaf already.
+      if (!_active.contains(leafPath)) continue
+      var leaf = _ids[leafPath]
+      var hit = leaf.findTransition_(event)
+      if (hit == null) continue
+      fired = true
+      stepOne_(hit[0], hit[1], event)
     }
-    var branch = hit[0]
-    var source = hit[1]
-    var target = branch.target == null ? null : _ids[branch.target]
+    if (!fired) fire_("unhandled", [event])
+  }
+
+  stepOne_(branch, source, event) {
+    var target = resolveTargetForStep_(branch.target)
 
     // Self / internal: no exit/entry, just run actions + emit.
     if (target == null || (branch.internal && target == source)) {
@@ -614,15 +698,14 @@ class StateChart {
 
     var lca = lca_(source, target)
 
-    // Exit set: active leaf up to (but not including) lca.
-    var exitSet = []
-    var n = leaf
-    while (n != null && n != lca) {
-      exitSet.add(n)
-      n = n.parent
-    }
-    // Inline exit actions first (deepest first), then exit:<path>
-    // signals so subscribers observe after-action state.
+    // Exit set: every currently-active state that's a strict
+    // descendant of LCA. For non-parallel charts this is the
+    // single active branch; for parallel charts this naturally
+    // includes leaves from sibling regions too.
+    var exitSet = activeDescendantsOf_(lca)
+    // Record history for any compound parent being exited, then
+    // run inline exit (deepest first), then emit signals.
+    for (node in exitSet) recordHistory_(node)
     for (node in exitSet) runActions_(node.exit, event)
     for (node in exitSet) fire_("exit:%(node.path)", [_context, event])
     for (node in exitSet) removeActive_(node.path)
@@ -631,8 +714,9 @@ class StateChart {
     runActions_(branch.actions, event)
     fire_("transition", [source.path, target.path, event])
 
-    // Entry set: lca (exclusive) down to target. Inline entry first
-    // (shallowest first), then enter:<path> signals per state.
+    // Entry set: from LCA (exclusive) down to target. Inline entry
+    // first (shallowest first), then enter:<path> signal per state,
+    // then descend via initial / parallel regions.
     var entrySet = pathFromLcaToTarget_(lca, target)
     for (node in entrySet) {
       _active.add(node.path)
@@ -640,6 +724,11 @@ class StateChart {
       fire_("enter:%(node.path)", [_context, event])
     }
     descendIntoInitial_(target, event)
+
+    // After entering: if any of the now-active leaves is a final
+    // state, emit `done` for its parent. For parallel parents,
+    // emit `done` only when ALL regions have hit final.
+    emitDoneIfApplicable_(target, event)
   }
 
   enterPath_(node, event) {
@@ -649,10 +738,197 @@ class StateChart {
     descendIntoInitial_(node, event)
   }
 
+  /// Compound → enter the initial substate (or recorded history).
+  /// Parallel → enter every region simultaneously.
+  /// Atomic / final → no further descent.
   descendIntoInitial_(node, event) {
-    if (node.kind != "compound") return
-    var child = node.states[node.initial]
-    enterPath_(child, event)
+    if (node.kind == "compound") {
+      var childName = node.initial
+      var child = node.states[childName]
+      enterPath_(child, event)
+    } else if (node.kind == "parallel") {
+      // Enter every region; each region descends into its own
+      // initial. Iteration order = declaration order (Wren Maps).
+      for (entry in node.states) {
+        enterPath_(entry.value, event)
+      }
+    }
+  }
+
+  /// All currently-active state paths whose `path` is a strict
+  /// descendant of `ancestor`. Returns StateNode_s sorted
+  /// deepest-first so exit actions/signals fire in the right order.
+  activeDescendantsOf_(ancestor) {
+    var paths = []
+    if (ancestor == null) {
+      // No common ancestor — exit everything currently active.
+      for (p in _active) paths.add(p)
+    } else {
+      var prefix = ancestor.path + "."
+      for (p in _active) {
+        if (p.startsWith(prefix)) paths.add(p)
+      }
+    }
+    // Sort by depth descending: count '.' in each path.
+    // Wren's List.sort isn't stable across versions; use a manual
+    // insertion sort, O(n²) but fine for typical small active sets.
+    var depths = []
+    for (p in paths) depths.add(p.split(".").count)
+    var i = 1
+    while (i < paths.count) {
+      var j = i
+      while (j > 0 && depths[j] > depths[j - 1]) {
+        var tp = paths[j]
+        paths[j] = paths[j - 1]
+        paths[j - 1] = tp
+        var td = depths[j]
+        depths[j] = depths[j - 1]
+        depths[j - 1] = td
+        j = j - 1
+      }
+      i = i + 1
+    }
+    var nodes = []
+    for (p in paths) nodes.add(_ids[p])
+    return nodes
+  }
+
+  /// All "leaf" active states — those with no active descendant.
+  /// For non-parallel charts this is exactly one path; for
+  /// parallel, it's one per region.
+  activeLeaves_ {
+    var leaves = []
+    for (p in _active) {
+      var hasChild = false
+      var prefix = p + "."
+      for (other in _active) {
+        if (other != p && other.startsWith(prefix)) {
+          hasChild = true
+          break
+        }
+      }
+      if (!hasChild) leaves.add(p)
+    }
+    return leaves
+  }
+
+  /// Resolve a transition's `target` field to a runtime node.
+  /// Most targets were resolved to fully-qualified paths at
+  /// finish-time, so this is just a Map lookup. `$history` /
+  /// `$historyDeep` targets were left as-is by the resolver and
+  /// translate to a real state here, falling back to the
+  /// compound's initial if no history is yet recorded.
+  resolveTargetForStep_(targetStr) {
+    if (targetStr == null) return null
+    if (targetStr.endsWith(".$history") || targetStr.endsWith(".$historyDeep")) {
+      return resolveHistoryTarget_(targetStr)
+    }
+    return _ids[targetStr]
+  }
+
+  /// Called for each node being exited (deepest-first). Records
+  /// the exited path into history caches for each compound
+  /// ancestor — shallow remembers the immediate substate,
+  /// deep remembers the leaf. Future `$history` / `$historyDeep`
+  /// transitions targeting that compound resolve to these values.
+  recordHistory_(node) {
+    // Shallow: if this node's parent is a compound, the parent now
+    // forgets its previous active substate and records THIS one.
+    if (node.parent != null && node.parent.kind == "compound") {
+      _historyShallow[node.parent.path] = node.path
+    }
+    // Deep: walk every compound ancestor and record the leaf path
+    // (this node, which is the deepest exiter we see thanks to
+    // deepest-first sort in `activeDescendantsOf_`).
+    var ancestor = node.parent
+    while (ancestor != null) {
+      if (ancestor.kind == "compound") {
+        _historyDeep[ancestor.path] = node.path
+      }
+      ancestor = ancestor.parent
+    }
+  }
+
+  /// Resolve a `<path>.$history` or `<path>.$historyDeep` target
+  /// to a real StateNode_. If history was recorded, use it; else
+  /// fall back to the compound's initial substate.
+  resolveHistoryTarget_(targetStr) {
+    var deep = targetStr.endsWith(".$historyDeep")
+    var suffixLen = deep ? ".$historyDeep".count : ".$history".count
+    var compoundPath = targetStr[0...(targetStr.count - suffixLen)]
+    var compound = _ids[compoundPath]
+
+    var cache = deep ? _historyDeep : _historyShallow
+    if (cache.containsKey(compoundPath)) {
+      var recorded = cache[compoundPath]
+      if (_ids.containsKey(recorded)) return _ids[recorded]
+    }
+    // No history yet: fall back to the compound's initial substate.
+    if (compound.initial != null && compound.states.containsKey(compound.initial)) {
+      return compound.states[compound.initial]
+    }
+    return compound
+  }
+
+  /// After a transition enters `target` (and descends), emit
+  /// `done` for any final state that was just entered. Walks up
+  /// from each entered final's compound parent looking for
+  /// parallel ancestors — fires `done` for them too when every
+  /// region has reached a final. Dedups within a step so a
+  /// single final isn't reported twice across nested levels.
+  emitDoneIfApplicable_(target, event) {
+    if (target == null) return
+    var emittedThisStep = {}
+    // States entered as part of this transition = target +
+    // anything in the active set under target's path.
+    var prefix = target.path + "."
+    var entered = [target.path]
+    for (p in _active) {
+      if (p.startsWith(prefix)) entered.add(p)
+    }
+
+    for (path in entered) {
+      var node = _ids[path]
+      if (node == null || node.kind != "final") continue
+      var parent = node.parent
+      if (parent == null) continue
+      if (!emittedThisStep.containsKey(parent.path)) {
+        fire_("done", [parent.path])
+        emittedThisStep[parent.path] = true
+      }
+      // Walk up: every parallel ancestor whose regions are all
+      // at final emits done too.
+      var ancestor = parent.parent
+      while (ancestor != null) {
+        if (ancestor.kind == "parallel" && !emittedThisStep.containsKey(ancestor.path)) {
+          if (allRegionsFinal_(ancestor)) {
+            fire_("done", [ancestor.path])
+            emittedThisStep[ancestor.path] = true
+          }
+        }
+        ancestor = ancestor.parent
+      }
+    }
+  }
+
+  /// True iff every region of `parallelNode` has its deepest
+  /// active leaf in a `final` state. Used for parallel-done
+  /// emission.
+  allRegionsFinal_(parallelNode) {
+    var leaves = activeLeaves_
+    for (entry in parallelNode.states) {
+      var regionRoot = entry.value
+      var found = false
+      for (lp in leaves) {
+        if (lp == regionRoot.path || lp.startsWith(regionRoot.path + ".")) {
+          found = true
+          if (_ids[lp].kind != "final") return false
+          break
+        }
+      }
+      if (!found) return false
+    }
+    return true
   }
 
   /// Emit on a specific channel and also on the wildcard `*`
