@@ -40,8 +40,16 @@ FROM rust:1-trixie AS wlift-builder
 #   - ecb8345 — fmt/clippy/doc cleanups + cranelift patch
 #     retargeted at upstream wasmtime main
 #   - c4f8327 — CI clippy fix for wasm32 no-default-features build
+#   - 068ef3a — explicit System global_allocator + krio u64 fast
+#     path (kills the tight-yield-loop leak on Linux glibc)
+#   - c4dac8f — malloc_trim(0) at end of minor GC on Linux
+#   - d2db30f — String.intern foreign method
+#   - 7397546 — auto-intern short strings (≤32 bytes) in
+#     new_string; site peak RSS 768 → 349 MB under the 200-req
+#     burst, memory now shrinks between batches instead of
+#     climbing monotonically to the OOM cap
 # Flip to a `v…` tag once a release ships these.
-ARG WLIFT_VERSION=c4f8327a275229e6081ee459a495a8e63dff77c0
+ARG WLIFT_VERSION=7397546
 ARG WLIFT_REPO=https://github.com/wrenlift/WrenLift.git
 
 RUN apt-get update \
