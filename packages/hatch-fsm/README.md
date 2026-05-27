@@ -118,6 +118,14 @@ var fsm = StateChart.fromMap({
 Design rationale, semantics, and roadmap: see
 [`docs/hatch-fsm-design.md`](../../docs/hatch-fsm-design.md).
 
+End-to-end example showing compound states, history-based pause/resume,
+guards, internal transitions, finals + `done`, and signal observers:
+[`examples/fsm-game-flow/`](../../examples/fsm-game-flow/).
+
+```sh
+hatch run examples/fsm-game-flow
+```
+
 ## Build + run tests
 
 ```sh
