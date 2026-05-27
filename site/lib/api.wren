@@ -97,22 +97,33 @@ class Api {
     __cache = {}
   }
 
-  /// Walk a list of catalog rows and pre-populate the cache for
-  /// each. Called from a background fiber spawned at boot (see
-  /// `main.wren`) so the first user visit to a `/packages/:name/api`
-  /// route doesn't pay the curl + JSON parse + decorate cost on the
-  /// request fiber. `@hatch:gpu` in particular has a multi-hundred-
-  /// member docs JSON that takes ~20s to walk on a cold interpreter
-  /// — we'd rather amortise that into one boot-time pass per machine
-  /// than make every cold visitor wait.
+  /// Walk a list of catalog rows and pre-fetch the raw docs JSON
+  /// for each into `__cache`. Called from a background fiber
+  /// spawned at boot (see `main.wren`) so the first user visit
+  /// to a `/packages/:name/api` route doesn't pay the network
+  /// round-trip on the request fiber.
   ///
-  /// Yields between packages so request fibers keep handling traffic
-  /// while the warm-up runs. Cache misses still work normally during
-  /// warm-up (the request fiber populates the same cache the warmer
-  /// is filling).
+  /// Pre-fetch only — does NOT call `Api.fetch` (which would
+  /// also parse + decorate). With the raw-string cache model,
+  /// parsing every package at boot would allocate ~35 MB of
+  /// throwaway decorated tree per package (40 packages = ~1.4
+  /// GB peak transient pressure under glibc page retention on
+  /// Fly's 768 MB machine, even though every parse becomes
+  /// garbage immediately). The request path parses on first hit
+  /// and the result is a normal per-request alloc bounded by
+  /// the response's own lifecycle.
+  ///
+  /// Yields between packages so request fibers keep handling
+  /// traffic while the warm-up runs.
   static warmAll(packages) {
+    if (__cache == null) __cache = {}
     for (pkg in packages) {
-      Api.fetch(pkg)
+      var name = pkg["name"]
+      var version = pkg.containsKey("version") ? pkg["version"] : ""
+      var key = "%(name)@%(version)"
+      if (!__cache.containsKey(key)) {
+        Api.store_(key, Api.fetchJson_(pkg))
+      }
       Fiber.yield()
     }
   }
