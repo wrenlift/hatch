@@ -185,7 +185,7 @@ class Parser_ {
       if (atEnd_ || _s[_i] != "\"") {
         Fiber.abort("JSON: expected string key at offset %(_i)")
       }
-      var key = parseString_
+      var key = parseString_.intern
       skipWs_
       if (atEnd_ || _s[_i] != ":") {
         Fiber.abort("JSON: expected ':' at offset %(_i)")
