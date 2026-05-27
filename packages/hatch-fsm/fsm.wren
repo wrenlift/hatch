@@ -6,10 +6,14 @@
 // structural rules (final has no substates, parallel needs ≥2
 // regions, compound needs initial) are enforced as builder mode.
 //
-// Day-1 scope: atomic + compound states, sibling-relative and
+// Day-2 scope: atomic + compound states, sibling-relative and
 // fully-qualified transition targets, start/stop/send/matches,
-// context map. Parallel, history, final-with-done, guards,
-// entry/exit actions, EventEmitter signals, fromMap come in
+// context map, plus `@hatch:events`-style observation —
+// `fsm.on("transition")`, `fsm.on("enter:<path>")`,
+// `fsm.on("exit:<path>")`, `fsm.on("unhandled")`, wildcard `*`,
+// and `bindEvents(emitter, eventNames)` to route an external
+// emitter's events into the chart. Parallel, history,
+// final-with-done, guards, entry/exit actions, fromMap come in
 // later days (see `docs/hatch-fsm-design.md`).
 //
 // ```wren
@@ -26,7 +30,13 @@
 // fsm.send("open")           // "closed" → "open"
 // fsm.activeStates           // ["open"]
 // fsm.matches("open")        // true
+//
+// fsm.on("transition") {|from, to, evt| log.info("%(from)→%(to)") }
+// fsm.on("enter:open")  {|ctx, evt|     sfx.play("creak") }
+// fsm.on("exit:closed") {|ctx, evt|     particles.dust() }
 // ```
+
+import "@hatch:events" for EventEmitter
 
 // --- Compiled tree (immutable shape after finish) -----------------------------
 
@@ -362,12 +372,162 @@ class StateChart {
     _started = false
     _processing = false
     _pending = null
+    _emitter = EventEmitter.new()   // observers attach via on/once/off
+    _bindings = []              // List of [emitter, eventName, disconnectFn]
   }
 
   id { _id }
   context { _context }
   activeStates { _active }
   started { _started }
+
+  // --- @hatch:events delegation ------------------------------------------
+  //
+  // `StateChart` composes an EventEmitter so subscribers can use the
+  // standard on/once/off vocabulary. Channels the chart publishes:
+  //
+  //   transition         (fromPath, toPath, event)
+  //   enter:<full.path>  (context,  event)
+  //   exit:<full.path>   (context,  event)
+  //   unhandled          (event)
+  //   *                  (channelName, ...same args as the specific channel)
+  //
+  // Wildcard `*` fires after every specific-channel emit so a single
+  // listener can observe everything the chart does — useful for FSM
+  // inspector overlays and replay capture.
+
+  /// Subscribe to a channel. Returns a disconnect Fn from `@hatch:events`.
+  on(event, fn)    { _emitter.on(event, fn) }
+  once(event, fn)  { _emitter.once(event, fn) }
+  off(event, fn)   { _emitter.off(event, fn) }
+  offAll(event)    { _emitter.offAll(event) }
+  offAll           { _emitter.offAll }
+  listenerCount(event) { _emitter.listenerCount(event) }
+  eventNames       { _emitter.eventNames }
+
+  /// Forward selected events from `emitter` into this chart's
+  /// `send`. `eventNames` is a List of strings. The chart
+  /// subscribes a zero-arity listener for each name on the
+  /// source emitter; when fired, the event name is sent into
+  /// the chart as if `send(name)` had been called.
+  ///
+  /// Day-2 limitation: forwards only the event NAME, not any
+  /// payload args from the emit call. `@hatch:events` dispatches
+  /// listeners by exact arity (`emit("x")` calls 0-arity Fns;
+  /// `emit("x", a)` calls 1-arity Fns; etc.), and there's no
+  /// single Fn shape that matches every arity. Day-4 will accept
+  /// payload-carrying transitions and document a `bindMapped`
+  /// helper for non-bare events.
+  ///
+  /// Returns a single Fn that, when called, unsubscribes every
+  /// binding installed by this call.
+  bindEvents(emitter, eventNames) {
+    if (!(eventNames is List)) {
+      Fiber.abort("StateChart.bindEvents: eventNames must be a List<String>, got %(eventNames.type)")
+    }
+    var self = this
+    var disconnects = []
+    for (name in eventNames) {
+      if (!(name is String)) {
+        Fiber.abort("StateChart.bindEvents: event names must be Strings, got %(name.type)")
+      }
+      // Capture `name` in a local so the closure picks up the
+      // right value each iteration (Wren closures over loop
+      // variables otherwise see the last-iteration value).
+      var captured = name
+      var disc = emitter.on(captured, Fn.new { self.send(captured) })
+      disconnects.add(disc)
+      _bindings.add([emitter, captured, disc])
+    }
+    return Fn.new {
+      for (d in disconnects) d.call()
+    }
+  }
+
+  /// Shorthand: bind a single event name.
+  bindEvent(emitter, eventName) { bindEvents(emitter, [eventName]) }
+
+  // --- Pretty printer ----------------------------------------------------
+
+  /// A human-readable rendering of the chart's structure. Shows the
+  /// state hierarchy with ASCII box-drawing characters, each state's
+  /// kind (atomic implied, compound / parallel / final shown), the
+  /// initial substate of each compound, every declared transition,
+  /// and which states are currently active.
+  ///
+  /// ```
+  ///   player
+  ///   |-- ground (initial: idle) [active]
+  ///   |   |   on jump -> air
+  ///   |   |-- idle [active]
+  ///   |   |       on walk -> ground.walking
+  ///   |   |-- walking
+  ///   |   |       on stop -> ground.idle
+  ///   |   `-- running
+  ///   |           on stop -> ground.walking
+  ///   |-- air
+  ///   |       on land -> ground
+  ///   `-- dead (final)
+  /// ```
+  tree {
+    var sb = _id == null ? "<chart>\n" : "%(_id)\n"
+    var keys = []
+    for (entry in _rootStates) keys.add(entry.key)
+    var i = 0
+    while (i < keys.count) {
+      var isLast = i == keys.count - 1
+      sb = sb + treeNode_(_rootStates[keys[i]], "", isLast)
+      i = i + 1
+    }
+    return sb
+  }
+
+  /// `System.print(fsm)` and `"%(fsm)"` both render the tree.
+  toString { tree }
+
+  treeNode_(node, prefix, isLast) {
+    // Connector for this line; continuation prefix for our descendants.
+    var connector = isLast ? "`-- " : "|-- "
+    var childPrefix = prefix + (isLast ? "    " : "|   ")
+
+    // Annotations on the state line: kind ("atomic" implied; compound's
+    // initial-substate is more useful than the bare "compound" label;
+    // active marker if any active path equals this node).
+    var kindTag = node.kind == "atomic" ? "" : " (%(node.kind))"
+    if (node.kind == "compound" && node.initial != null) {
+      kindTag = " (initial: %(node.initial))"
+    }
+    var activeTag = ""
+    for (path in _active) {
+      if (path == node.path) {
+        activeTag = " [active]"
+        break
+      }
+    }
+    var sb = "%(prefix)%(connector)%(node.name)%(kindTag)%(activeTag)\n"
+
+    // Transitions: rendered as indented attribute lines under the
+    // state, distinct from tree branches so a reader can tell them
+    // apart from substates at a glance.
+    for (entry in node.transitions) {
+      var event = entry.key
+      for (branch in entry.value) {
+        var arrow = branch.target == null ? "(self)" : branch.target
+        sb = sb + "%(childPrefix)    on %(event) -> %(arrow)\n"
+      }
+    }
+
+    // Recurse into substates in declaration order (Map iteration).
+    var keys = []
+    for (entry in node.states) keys.add(entry.key)
+    var i = 0
+    while (i < keys.count) {
+      var subIsLast = i == keys.count - 1
+      sb = sb + treeNode_(node.states[keys[i]], childPrefix, subIsLast)
+      i = i + 1
+    }
+    return sb
+  }
 
   /// True if any active state's path equals `pattern` or is one
   /// of its descendants. So `matches("ground")` is true while
@@ -437,14 +597,18 @@ class StateChart {
   step_(event) {
     var leaf = _ids[activePath]
     var hit = leaf.findTransition_(event)
-    if (hit == null) return        // day 2: emit "unhandled" signal
+    if (hit == null) {
+      fire_("unhandled", [event])
+      return
+    }
     var branch = hit[0]
     var source = hit[1]
     var target = branch.target == null ? null : _ids[branch.target]
 
-    // Self / internal: no exit/entry, just run actions.
+    // Self / internal: no exit/entry, just run actions + emit.
     if (target == null || (branch.internal && target == source)) {
       runActions_(branch.actions, event)
+      fire_("transition", [source.path, source.path, event])
       return
     }
 
@@ -457,17 +621,23 @@ class StateChart {
       exitSet.add(n)
       n = n.parent
     }
+    // Inline exit actions first (deepest first), then exit:<path>
+    // signals so subscribers observe after-action state.
     for (node in exitSet) runActions_(node.exit, event)
+    for (node in exitSet) fire_("exit:%(node.path)", [_context, event])
     for (node in exitSet) removeActive_(node.path)
 
-    // Transition action.
+    // Inline transition action, then the transition signal.
     runActions_(branch.actions, event)
+    fire_("transition", [source.path, target.path, event])
 
-    // Entry set: lca (exclusive) down to target.
+    // Entry set: lca (exclusive) down to target. Inline entry first
+    // (shallowest first), then enter:<path> signals per state.
     var entrySet = pathFromLcaToTarget_(lca, target)
     for (node in entrySet) {
       _active.add(node.path)
       runActions_(node.entry, event)
+      fire_("enter:%(node.path)", [_context, event])
     }
     descendIntoInitial_(target, event)
   }
@@ -475,6 +645,7 @@ class StateChart {
   enterPath_(node, event) {
     _active.add(node.path)
     runActions_(node.entry, event)
+    fire_("enter:%(node.path)", [_context, event])
     descendIntoInitial_(node, event)
   }
 
@@ -482,6 +653,22 @@ class StateChart {
     if (node.kind != "compound") return
     var child = node.states[node.initial]
     enterPath_(child, event)
+  }
+
+  /// Emit on a specific channel and also on the wildcard `*`
+  /// channel so a single observer can introspect every signal
+  /// the chart raises. `*` receives `(channelName, ...originalArgs)`,
+  /// arity-capped at 3 to match `@hatch:events` emit overloads —
+  /// wildcard listeners that need more should subscribe to the
+  /// specific channel directly.
+  fire_(channel, args) {
+    _emitter.emitMany(channel, args)
+    var wildArgs = [channel]
+    for (a in args) wildArgs.add(a)
+    if (wildArgs.count > 3) {
+      wildArgs = [wildArgs[0], wildArgs[1], wildArgs[2]]
+    }
+    _emitter.emitMany("*", wildArgs)
   }
 
   runActions_(actions, event) {

@@ -1,4 +1,5 @@
 import "./fsm"         for StateChart
+import "@hatch:events" for EventEmitter
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -308,6 +309,288 @@ Test.describe("StateChart: construction validation") {
     }
     f.try()
     Expect.that(f.error.contains("not a declared state")).toBe(true)
+  }
+}
+
+// --- Day 2: signals + bindEvents + tree -------------------------------------
+
+Test.describe("StateChart: signal channels") {
+  Test.it("transition channel fires with (from, to, event)") {
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s| s.on("go", "b") }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    var hits = []
+    fsm.on("transition") {|from, to, evt| hits.add([from, to, evt]) }
+    fsm.send("go")
+    Expect.that(hits.count).toBe(1)
+    Expect.that(hits[0][0]).toBe("a")
+    Expect.that(hits[0][1]).toBe("b")
+    Expect.that(hits[0][2]).toBe("go")
+  }
+
+  Test.it("enter:<path> fires when state entered") {
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s| s.on("go", "b") }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    var hits = []
+    fsm.on("enter:b") {|ctx, evt| hits.add(evt) }
+    fsm.send("go")
+    Expect.that(hits.count).toBe(1)
+    Expect.that(hits[0]).toBe("go")
+  }
+
+  Test.it("exit:<path> fires when state exited") {
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s| s.on("go", "b") }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    var hits = []
+    fsm.on("exit:a") {|ctx, evt| hits.add(evt) }
+    fsm.send("go")
+    Expect.that(hits.count).toBe(1)
+    Expect.that(hits[0]).toBe("go")
+  }
+
+  Test.it("compound entry fires for each level deepest-last") {
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s|
+        s.on("go", "b")
+      }
+      c.state("b") {|s|
+        s.initial("inner")
+        s.state("inner") {|i| }
+      }
+    }
+    fsm.start()
+    var order = []
+    fsm.on("enter:b")       {|ctx, evt| order.add("b") }
+    fsm.on("enter:b.inner") {|ctx, evt| order.add("b.inner") }
+    fsm.send("go")
+    Expect.that(order[0]).toBe("b")
+    Expect.that(order[1]).toBe("b.inner")
+  }
+
+  Test.it("unhandled fires when no transition matches") {
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s| s.on("go", "b") }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    var unhandled = []
+    fsm.on("unhandled") {|evt| unhandled.add(evt) }
+    fsm.send("nope")
+    Expect.that(unhandled.count).toBe(1)
+    Expect.that(unhandled[0]).toBe("nope")
+  }
+
+  Test.it("wildcard * receives channel name + original args") {
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s| s.on("go", "b") }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    var seen = []
+    fsm.on("*") {|name, a, b| seen.add(name) }
+    fsm.send("go")
+    // transition + exit:a + enter:b — three signals, three wildcard hits.
+    Expect.that(seen.contains("exit:a")).toBe(true)
+    Expect.that(seen.contains("transition")).toBe(true)
+    Expect.that(seen.contains("enter:b")).toBe(true)
+  }
+
+  Test.it("subscriber sees post-transition activePath on enter signal") {
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s| s.on("go", "b") }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    var pathOnEntry = null
+    fsm.on("enter:b") {|ctx, evt| pathOnEntry = fsm.activePath }
+    fsm.send("go")
+    Expect.that(pathOnEntry).toBe("b")
+  }
+
+  Test.it("once fires exactly once") {
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s| s.on("go", "b") }
+      c.state("b") {|s| s.on("back", "a") }
+    }
+    fsm.start()
+    var n = 0
+    fsm.once("transition") {|from, to, evt| n = n + 1 }
+    fsm.send("go")
+    fsm.send("back")
+    fsm.send("go")
+    Expect.that(n).toBe(1)
+  }
+
+  Test.it("off removes a specific listener") {
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s| s.on("go", "b") }
+      c.state("b") {|s| s.on("back", "a") }
+    }
+    fsm.start()
+    var hits = []
+    var fn = Fn.new {|from, to, evt| hits.add(evt) }
+    fsm.on("transition", fn)
+    fsm.send("go")
+    fsm.off("transition", fn)
+    fsm.send("back")
+    Expect.that(hits.count).toBe(1)
+    Expect.that(hits[0]).toBe("go")
+  }
+}
+
+Test.describe("StateChart: bindEvents") {
+  Test.it("forwards events from an external emitter into send") {
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s| s.on("jump", "b") }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    var input = EventEmitter.new()
+    fsm.bindEvents(input, ["jump"])
+    input.emit("jump")
+    Expect.that(fsm.activePath).toBe("b")
+  }
+
+  Test.it("ignores events not in the binding list") {
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s| s.on("jump", "b") }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    var input = EventEmitter.new()
+    fsm.bindEvents(input, ["jump"])
+    input.emit("noise")
+    Expect.that(fsm.activePath).toBe("a")
+  }
+
+  Test.it("disconnect Fn unsubscribes the bindings") {
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s| s.on("jump", "b") }
+      c.state("b") {|s| s.on("back", "a") }
+    }
+    fsm.start()
+    var input = EventEmitter.new()
+    var disc = fsm.bindEvents(input, ["jump"])
+    input.emit("jump")
+    Expect.that(fsm.activePath).toBe("b")
+    fsm.send("back")
+    disc.call()
+    input.emit("jump")
+    Expect.that(fsm.activePath).toBe("a")
+  }
+
+  Test.it("bindEvent (singular) forwards a single event") {
+    var fsm = StateChart.build {|c|
+      c.state("a") {|s| s.on("go", "b") }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    var input = EventEmitter.new()
+    fsm.bindEvent(input, "go")
+    input.emit("go")
+    Expect.that(fsm.activePath).toBe("b")
+  }
+
+  Test.it("non-List eventNames aborts") {
+    var fsm = StateChart.build {|c| c.state("a") {|s| } }
+    var f = Fiber.new {
+      fsm.bindEvents(EventEmitter.new(), "jump")  // String, not List
+    }
+    f.try()
+    Expect.that(f.error.contains("must be a List")).toBe(true)
+  }
+}
+
+Test.describe("StateChart: tree pretty-printer") {
+  Test.it("renders the chart id as the root line") {
+    var fsm = StateChart.build {|c|
+      c.id("door")
+      c.state("closed") {|s| }
+    }
+    fsm.start()
+    var t = fsm.tree
+    Expect.that(t.startsWith("door\n")).toBe(true)
+  }
+
+  Test.it("uses ASCII branch markers + final-child marker") {
+    var fsm = StateChart.build {|c|
+      c.id("chart")
+      c.state("a") {|s| }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    var t = fsm.tree
+    Expect.that(t.contains("|-- a")).toBe(true)
+    Expect.that(t.contains("`-- b")).toBe(true)
+  }
+
+  Test.it("shows compound initial substate inline with state") {
+    var fsm = StateChart.build {|c|
+      c.id("chart")
+      c.state("g") {|s|
+        s.initial("idle")
+        s.state("idle") {|i| }
+      }
+    }
+    fsm.start()
+    var t = fsm.tree
+    Expect.that(t.contains("g (initial: idle)")).toBe(true)
+  }
+
+  Test.it("marks final states with (final)") {
+    var fsm = StateChart.build {|c|
+      c.id("chart")
+      c.state("a") {|s| s.on("die", "dead") }
+      c.state("dead") {|d| d.final() }
+    }
+    fsm.start()
+    var t = fsm.tree
+    Expect.that(t.contains("dead (final)")).toBe(true)
+  }
+
+  Test.it("marks currently-active states with [active]") {
+    var fsm = StateChart.build {|c|
+      c.id("chart")
+      c.state("a") {|s| s.on("go", "b") }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    Expect.that(fsm.tree.contains("a [active]")).toBe(true)
+    fsm.send("go")
+    Expect.that(fsm.tree.contains("b [active]")).toBe(true)
+    Expect.that(fsm.tree.contains("a [active]")).toBe(false)
+  }
+
+  Test.it("shows transitions as indented attribute lines") {
+    var fsm = StateChart.build {|c|
+      c.id("chart")
+      c.state("a") {|s| s.on("go", "b") }
+      c.state("b") {|s| }
+    }
+    fsm.start()
+    Expect.that(fsm.tree.contains("on go -> b")).toBe(true)
+  }
+
+  Test.it("toString getter returns the tree") {
+    var fsm = StateChart.build {|c|
+      c.id("door")
+      c.state("a") {|s| }
+    }
+    fsm.start()
+    // `"%(fsm)"` interpolation falls back to "instance of …"
+    // because Wren's string-interpolation path doesn't dispatch
+    // to user-defined toString getters. Direct `.toString` does.
+    var s = fsm.toString
+    Expect.that(s.startsWith("door\n")).toBe(true)
+    Expect.that(s).toBe(fsm.tree)
   }
 }
 

@@ -38,7 +38,7 @@ fsm.send("land")             // ["ground", "ground.idle"]
 fsm.matches("ground")        // true while any ground.* is active
 ```
 
-## What's here today (v0.1.0 / day-1 scope)
+## What's here today (v0.1.0 / day-2)
 
 - Atomic + compound states
 - Sibling-relative + fully-qualified transition targets
@@ -46,11 +46,25 @@ fsm.matches("ground")        // true while any ground.* is active
 - Mutable `context` map carried by the chart
 - Construction-time validation with path-tagged error messages
 - Re-entrant `send` queues into microsteps
+- **Signal channels** via `@hatch:events`:
+  `fsm.on("transition")`, `fsm.on("enter:<path>")`, `fsm.on("exit:<path>")`,
+  `fsm.on("unhandled")`, `fsm.on("*")` wildcard; `once` / `off` / `offAll` inherited
+- **`bindEvents(emitter, [names])`** to forward selected events from any
+  `EventEmitter` (input handlers, ECS world events, network bus) into `send`
+- **`fsm.tree`** ASCII pretty-printer with active-state markers + transition
+  annotations; `toString` getter delegates
+
+Observation example:
+```wren
+fsm.on("transition") {|from, to, evt| log.info("%(from) → %(to) via %(evt)") }
+fsm.on("enter:ground.running") {|ctx, evt| sfx.startLoop("footsteps") }
+fsm.on("exit:ground.running")  {|ctx, evt| sfx.stopLoop("footsteps")  }
+fsm.on("*") {|name, a, b| inspector.record(name, a, b) }
+```
 
 Coming in later versions: parallel regions, history (shallow + deep),
 final states + `done` emission, guards on transitions, entry/exit/transition
-actions, EventEmitter integration (`fsm.on("transition")`, `fsm.on("enter:<path>")`),
-`bindEvents(emitter)`, `fromMap(spec)` adapter.
+actions, `fromMap(spec)` adapter.
 
 Design rationale, semantics, and roadmap: see
 [`docs/hatch-fsm-design.md`](../../docs/hatch-fsm-design.md).
