@@ -1,6 +1,13 @@
 // @hatch:game scene module — Transform + propagation specs.
 
-import "./scene"        for Transform, GlobalTransform, TransformPropagation
+import "./scene"        for
+  Transform,
+  GlobalTransform,
+  DirectionalLight,
+  PointLight,
+  SpotLight,
+  AmbientLight,
+  TransformPropagation
 import "@hatch:math"    for Vec3, Mat4, Quat
 import "@hatch:ecs"     for World
 import "@hatch:test"    for Test
@@ -192,6 +199,58 @@ Test.describe("TransformPropagation") {
     TransformPropagation.run(w)
     var gt2 = w.get(e, GlobalTransform)
     Expect.that(gt1 == gt2).toBe(true)
+  }
+}
+
+Test.describe("Light components") {
+  Test.it("DirectionalLight defaults to white at intensity 1") {
+    var l = DirectionalLight.new()
+    Expect.that(l.color.x).toBe(1)
+    Expect.that(l.color.y).toBe(1)
+    Expect.that(l.color.z).toBe(1)
+    Expect.that(l.intensity).toBe(1.0)
+  }
+
+  Test.it("DirectionalLight accepts explicit color + intensity") {
+    var l = DirectionalLight.new(Vec3.new(1.0, 0.95, 0.85), 3.0)
+    Expect.that(l.color.y).toBe(0.95)
+    Expect.that(l.intensity).toBe(3.0)
+  }
+
+  Test.it("PointLight defaults to unbounded range") {
+    var l = PointLight.new()
+    Expect.that(l.range).toBe(0.0)
+    Expect.that(l.intensity).toBe(1.0)
+  }
+
+  Test.it("PointLight setters mutate") {
+    var l = PointLight.new()
+    l.range = 12.0
+    l.intensity = 4.5
+    Expect.that(l.range).toBe(12.0)
+    Expect.that(l.intensity).toBe(4.5)
+  }
+
+  Test.it("SpotLight stores inner + outer cone half-angles") {
+    var l = SpotLight.new(Vec3.new(1, 1, 1), 5.0, 20.0, 0.4, 0.7)
+    Expect.that(l.innerConeAngle).toBe(0.4)
+    Expect.that(l.outerConeAngle).toBe(0.7)
+    Expect.that(l.range).toBe(20.0)
+  }
+
+  Test.it("AmbientLight defaults to dim white") {
+    var a = AmbientLight.new()
+    Expect.that(a.intensity).toBe(0.1)
+    Expect.that(a.color.x).toBe(1)
+  }
+
+  Test.it("Lights attach as ECS components to plain entities") {
+    var w = World.new()
+    var sun = w.spawn()
+    var sunLight = DirectionalLight.new(Vec3.new(1, 0.95, 0.85), 3.0)
+    w.attach(sun, sunLight)
+    Expect.that(w.get(sun, DirectionalLight)).toBe(sunLight)
+    Expect.that(w.query(DirectionalLight).count).toBe(1)
   }
 }
 
