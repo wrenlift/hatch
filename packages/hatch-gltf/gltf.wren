@@ -59,6 +59,50 @@ class Gltf {
     d.upload(device)
     return d
   }
+
+  /// Load a .glb from an `@hatch:assets` `Asset` (or any object
+  /// that exposes a `bytes` getter returning a `ByteArray` /
+  /// `List<Num>`). Convenience over the common
+  /// `Gltf.load(device, asset.bytes)` pattern, and a clean place
+  /// to hang hot-reload glue:
+  ///
+  /// ```wren
+  /// var db    = Assets.open("assets")
+  /// var model = Gltf.fromAsset(device, db.get("models/player.glb"))
+  /// db.on("models/player.glb") {|asset|
+  ///   model = Gltf.fromAsset(device, asset)
+  /// }
+  /// ```
+  ///
+  /// `@hatch:gltf` doesn't import `@hatch:assets` directly — the
+  /// argument is duck-typed on `.bytes` so test mocks and other
+  /// asset abstractions work too.
+  ///
+  /// @param {Device} device
+  /// @param {Asset} asset. Any object exposing a `bytes` getter
+  ///   that returns a `ByteArray` (or `List<Num>`).
+  /// @returns {GltfDocument}
+  static fromAsset(device, asset) {
+    return load(device, asset.bytes)
+  }
+
+  /// Resolve a relative path against an `@hatch:assets` `Assets`
+  /// database and load the resulting .glb. The database is
+  /// duck-typed on `.bytes(relPath)` so the loader doesn't pull
+  /// `@hatch:assets` as a hard dep.
+  ///
+  /// ```wren
+  /// var db    = Assets.open("assets")
+  /// var model = Gltf.fromAssets(device, db, "models/player.glb")
+  /// ```
+  ///
+  /// @param {Device} device
+  /// @param {Assets} db. Object with a `bytes(relPath)` method.
+  /// @param {String} relPath. Path into the assets database.
+  /// @returns {GltfDocument}
+  static fromAssets(device, db, relPath) {
+    return load(device, db.bytes(relPath))
+  }
 }
 
 // Byte-reader helpers. The .glb format is little-endian; the JSON
@@ -120,6 +164,13 @@ class Bytes_ {
 /// tree, the BIN buffer (`ByteArray`), and the constructed
 /// `GltfNode` / `GltfMesh` / `GltfMaterial` views.
 class GltfDocument {
+  /// Internal — constructed by `Gltf.parse` after the .glb header
+  /// + chunk split has resolved the JSON tree and the BIN buffer.
+  /// User code goes through `Gltf.parse` / `Gltf.load` instead.
+  ///
+  /// @param {Map} json. The decoded glTF JSON tree.
+  /// @param {ByteArray} bin. The BIN chunk; empty buffer if the
+  ///   .glb had no BIN data.
   construct new_(json, bin) {
     _json = json
     _bin  = bin
@@ -524,6 +575,17 @@ class GltfDocument {
 /// child node indices. The `transform` is a `@hatch:game`
 /// `Transform`, ready to attach to an ECS entity.
 class GltfNode {
+  /// Internal — the document builder hands these to the
+  /// `GltfDocument` constructor. User code reads them via
+  /// `doc.nodes`.
+  ///
+  /// @param {String} name. Node's glTF `name` (empty string if
+  ///   absent).
+  /// @param {Transform} transform. Local TRS placement.
+  /// @param {Num|Null} meshIndex. Index into `doc.meshes`, or
+  ///   `null` for nodes without geometry.
+  /// @param {List<Num>} children. Child node indices into
+  ///   `doc.nodes`.
   construct new_(name, transform, meshIndex, children) {
     _name = name
     _transform = transform
@@ -541,6 +603,12 @@ class GltfNode {
 /// its own vertex layout and material reference; `upload_`
 /// converts every primitive into a `@hatch:gpu` `Mesh`.
 class GltfMesh {
+  /// Internal — built by `GltfDocument.buildMeshes_`.
+  ///
+  /// @param {String} name. The mesh's glTF `name` (empty if
+  ///   absent).
+  /// @param {List<GltfPrimitive>} primitives. One per glTF
+  ///   primitive; each has its own vertex layout + material.
   construct new_(name, primitives) {
     _name = name
     _primitives = primitives
@@ -560,6 +628,20 @@ class GltfMesh {
 /// material index. `upload_` populates `mesh` and `material`
 /// once a device is available.
 class GltfPrimitive {
+  /// Internal — built by `GltfDocument.extractPrimitive_`.
+  /// `mesh` and `material` start `null`; both get populated by
+  /// `upload_` once a `Device` is available.
+  ///
+  /// @param {Float32Array} positions. Packed (x, y, z) per
+  ///   vertex; never `null`.
+  /// @param {Float32Array|Null} normals. Packed (x, y, z); `null`
+  ///   when the glTF primitive omits `NORMAL`.
+  /// @param {Float32Array|Null} uvs. Packed (u, v); `null` when
+  ///   the glTF primitive omits `TEXCOORD_0`.
+  /// @param {Int32Array|Null} indices. u8 / u16 / u32 widened to
+  ///   i32; `null` for unindexed primitives.
+  /// @param {Num|Null} materialIndex. Index into the parent
+  ///   document's `materials`, or `null` to pick the default.
   construct new_(positions, normals, uvs, indices, materialIndex) {
     _positions = positions
     _normals = normals
@@ -640,6 +722,16 @@ class GltfPrimitive {
 /// metallic / roughness / textures land when the renderer grows
 /// the textured-PBR path.
 class GltfMaterial {
+  /// Internal — built by `GltfDocument.buildMaterials_`.
+  ///
+  /// @param {String} name. Material's glTF `name` (empty if
+  ///   absent).
+  /// @param {Vec4} baseColor. `pbrMetallicRoughness.baseColorFactor`
+  ///   (defaults to `(1, 1, 1, 1)` when missing).
+  /// @param {Num} metallic. `metallicFactor` (defaults to `1.0`
+  ///   when missing per glTF spec).
+  /// @param {Num} roughness. `roughnessFactor` (defaults to
+  ///   `1.0` when missing per glTF spec).
   construct new_(name, baseColor, metallic, roughness) {
     _name = name
     _baseColor = baseColor
