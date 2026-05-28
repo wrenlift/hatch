@@ -9,6 +9,13 @@
 import "@hatch:math" for Vec3, Mat4, Quat
 import "@hatch:ecs"  for Parent, Children
 
+// Reference forward axis for a directional / spot light entity:
+// rotating this by the entity's Transform.rotation gives the
+// light's "direction it travels in" vector. Right-handed: the
+// camera looks down -Z, so a freshly-built Transform points in
+// the same direction.
+var LIGHT_FORWARD_ = Vec3.new(0, 0, -1)
+
 /// Local-space TRS placement: position (`Vec3`), rotation (`Quat`),
 /// scale (`Vec3`). The local matrix is computed lazily on first
 /// read and re-computed whenever a setter fires; the cached value
@@ -428,6 +435,102 @@ class TransformPropagation {
     while (i < kids.count) {
       walk_(world, kids[i], world_)
       i = i + 1
+    }
+  }
+}
+
+/// ECS-to-`Renderer3D` bridge. Walks an `@hatch:ecs.World` once
+/// per frame, extracting:
+///
+/// - **Lights** — `(Transform | GlobalTransform, AmbientLight |
+///   DirectionalLight | PointLight | SpotLight)` entities. The
+///   spatial light kinds (Point / Spot) pull world-space position
+///   from `GlobalTransform`; the directional kinds (Directional /
+///   Spot) derive their forward axis from the entity's
+///   `Transform.rotation` applied to `(0, 0, -1)`. `AmbientLight`s
+///   sum into a single ambient term.
+/// - **Drawables** — `(GlobalTransform, MeshRenderer)` entities.
+///   Each visible match becomes one `renderer.draw(mesh, material,
+///   worldMatrix)` call.
+///
+/// Caller responsibility:
+/// 1. Run `TransformPropagation.run(world)` first so every entity
+///    has an up-to-date `GlobalTransform`.
+/// 2. Call `SceneRenderer3D.run(world, camera, renderer, pass)`
+///    inside the render pass.
+///
+/// ## Example
+///
+/// ```wren
+/// draw(g) {
+///   TransformPropagation.run(_world)
+///   SceneRenderer3D.run(_world, _camera, _renderer, g.pass)
+/// }
+/// ```
+///
+/// `Game.run` clears the pass when the closure returns; the
+/// bridge itself doesn't `endFrame` on the renderer (the next
+/// frame's `beginFrame` resets state).
+class SceneRenderer3D {
+  /// Drive `renderer` from `world`'s entities for one frame.
+  ///
+  /// @param {World} world. ECS world with propagated
+  ///   `GlobalTransform`s.
+  /// @param {Camera3D} camera. View + projection source.
+  /// @param {Renderer3D} renderer. Target renderer.
+  /// @param {RenderPass} pass. Active render pass.
+  static run(world, camera, renderer, pass) {
+    renderer.beginFrame(pass, camera)
+
+    // -- Lights --------------------------------------------------
+
+    var ambColor = Vec3.zero
+    var ambSum = 0
+    for (e in world.query(AmbientLight)) {
+      var a = world.get(e, AmbientLight)
+      ambColor = Vec3.new(
+        ambColor.x + a.color.x * a.intensity,
+        ambColor.y + a.color.y * a.intensity,
+        ambColor.z + a.color.z * a.intensity)
+      ambSum = ambSum + 1
+    }
+    // Ambient API expects (color, intensity) — fold the
+    // intensity multiplier into the colour and pass 1.0 so
+    // multiple AmbientLights accumulate cleanly.
+    renderer.setAmbient(ambColor, ambSum > 0 ? 1.0 : 0.0)
+
+    for (e in world.query(DirectionalLight)) {
+      var light = world.get(e, DirectionalLight)
+      var t = world.get(e, Transform)
+      var dir = (t == null) ? LIGHT_FORWARD_ : t.rotation.rotateVec3(LIGHT_FORWARD_)
+      renderer.addDirectional(dir, light.color, light.intensity)
+    }
+
+    for (e in world.query(PointLight)) {
+      var light = world.get(e, PointLight)
+      var gt = world.get(e, GlobalTransform)
+      var pos = (gt == null) ? Vec3.zero : gt.matrix.transformPoint(Vec3.zero)
+      renderer.addPoint(pos, light.color, light.intensity, light.range)
+    }
+
+    for (e in world.query(SpotLight)) {
+      var light = world.get(e, SpotLight)
+      var gt = world.get(e, GlobalTransform)
+      var t  = world.get(e, Transform)
+      var pos = (gt == null) ? Vec3.zero : gt.matrix.transformPoint(Vec3.zero)
+      var dir = (t == null) ? LIGHT_FORWARD_ : t.rotation.rotateVec3(LIGHT_FORWARD_)
+      renderer.addSpot(pos, dir, light.color, light.intensity, light.range, light.innerConeAngle, light.outerConeAngle)
+    }
+
+    // -- Drawables -----------------------------------------------
+
+    for (e in world.query(MeshRenderer)) {
+      var mr = world.get(e, MeshRenderer)
+      if (!mr.visible) continue
+      if (mr.mesh == null) continue
+      var gt = world.get(e, GlobalTransform)
+      var model = (gt == null) ? Mat4.identity : gt.matrix
+      renderer.draw(mr.mesh, mr.material, model)
     }
   }
 }

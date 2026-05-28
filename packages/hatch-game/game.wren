@@ -66,7 +66,8 @@ import "./scene" for
   PointLight,
   SpotLight,
   AmbientLight,
-  TransformPropagation
+  TransformPropagation,
+  SceneRenderer3D
 
 // On web, the main fiber holds the JS thread until it parks on
 // an async bridge. The frame loop yields with
