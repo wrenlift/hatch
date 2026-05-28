@@ -4,28 +4,16 @@ entry       = "main"
 description = "hatch.wrenlift.com — landing page for Hatch. Server-rendered with @hatch:web + @hatch:template, fragments swapped via htmx, packages catalog backed by an in-memory SQLite of the GitHub-hosted index.toml."
 
 [dependencies]
-# `@hatch:http@0.3.2` moved onto `@hatch:json@0.1.2` (the same
-# version `@hatch:web@0.1.6` already pins), so the diamond no
-# longer trips the bundler. Catalog refresh + docs/readme fetch
-# now use the fiber-cooperative `Http.get` reads instead of
-# shelling out to `curl` via `@hatch:proc`.
-#
-# `@hatch:web@0.1.6` bumps `@hatch:template` 0.1.2 → 0.1.3, which
-# restores `ExprParse_.parse`'s `pos_ < src.count` validation now
-# that wren_lift v0.1.17 fixed the JIT GC-rooting class that the
-# original bandaid was avoiding.
-#
-# Switched to in-workspace path deps for local dev: the published
-# .hatch bundles on the registry were built against an older
-# wren_lift, and the sqlite plugin SIGSEGVs at first foreign call
-# under v0.1.19+. Re-pin to versioned releases after the next
-# coordinated republish.
-"@hatch:web"    = { path = "../packages/hatch-web" }
-"@hatch:sqlite" = { path = "../packages/hatch-sqlite" }
-"@hatch:http"   = { path = "../packages/hatch-http" }
-"@hatch:toml"   = { path = "../packages/hatch-toml" }
-"@hatch:os"     = { path = "../packages/hatch-os" }
-# Path dep until @hatch:fsm 0.1.0 publishes. Drives the boot
-# lifecycle state machine in `lib/lifecycle.wren` and the
-# `/readyz` readiness probe.
-"@hatch:fsm"    = { path = "../packages/hatch-fsm" }
+# `@hatch:web@0.1.7` + `@hatch:http@0.3.3` track `@hatch:json@0.1.3`.
+# `@hatch:sqlite@0.1.8` rebuilds the plugin dylib against the
+# wren_lift commit (`5051d6f`) that landed the AOT runtime fixes
+# (SM-tainted CallStaticSelf routing, 8-user-arg ctor JIT entry,
+# empty-MIR walker bailout). `@hatch:fsm@0.1.0` is the new
+# Harel-statechart package; `lib/lifecycle.wren` drives the boot
+# chart, `/readyz` reads its `Lifecycle.snapshot`.
+"@hatch:web"    = "0.1.7"
+"@hatch:sqlite" = "0.1.8"
+"@hatch:http"   = "0.3.3"
+"@hatch:toml"   = "0.1.1"
+"@hatch:os"     = "0.1.1"
+"@hatch:fsm"    = "0.1.0"
