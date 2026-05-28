@@ -3,12 +3,20 @@ import "@hatch:events" for EventEmitter
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
-// Day 1 spec coverage:
+// Acceptance coverage:
 //   - flat (atomic) two-state ping-pong
 //   - compound + sibling-relative + cross-tree targets
 //   - matches() prefix semantics
 //   - start/stop idempotency
 //   - construction validation errors
+//   - signal channels (transition / enter / exit / unhandled / done / *)
+//   - bindEvents emitter forwarding
+//   - parallel regions
+//   - history pseudo-targets ($history / $historyDeep)
+//   - final states + done emission
+//   - entry / exit / transition actions
+//   - guards
+//   - fromMap data-driven adapter
 
 Test.describe("StateChart: flat atomic") {
   Test.it("ping-pong between two top-level states") {
@@ -312,7 +320,7 @@ Test.describe("StateChart: construction validation") {
   }
 }
 
-// --- Day 2: signals + bindEvents + tree -------------------------------------
+// --- Signal channels + bindEvents + tree pretty-printer ---------------------
 
 Test.describe("StateChart: signal channels") {
   Test.it("transition channel fires with (from, to, event)") {
@@ -594,7 +602,7 @@ Test.describe("StateChart: tree pretty-printer") {
   }
 }
 
-// --- Day 3: parallel + history + final-with-done ----------------------------
+// --- Parallel regions + history + final / done ------------------------------
 
 Test.describe("StateChart: parallel regions") {
   Test.it("entering a parallel state activates every region") {
@@ -859,7 +867,7 @@ Test.describe("StateChart: final state + done signal") {
   }
 }
 
-// --- Day 4: guards + actions + fromMap --------------------------------------
+// --- Guards + entry / exit / transition actions + fromMap ------------------
 
 Test.describe("StateChart: entry / exit actions") {
   Test.it("entry action fires when state is entered, with (ctx, event)") {

@@ -6,15 +6,16 @@
 // structural rules (final has no substates, parallel needs ≥2
 // regions, compound needs initial) are enforced as builder mode.
 //
-// Day-2 scope: atomic + compound states, sibling-relative and
-// fully-qualified transition targets, start/stop/send/matches,
-// context map, plus `@hatch:events`-style observation —
+// Surface: atomic + compound + parallel states, sibling-relative
+// and fully-qualified transition targets, history pseudo-targets,
+// final states with `done` emission, guards, entry / exit /
+// transition actions, internal transitions, `fromMap` data-driven
+// adapter, and `start` / `stop` / `send` / `matches` runtime ops.
+// Observation via `@hatch:events`-style signal channels:
 // `fsm.on("transition")`, `fsm.on("enter:<path>")`,
-// `fsm.on("exit:<path>")`, `fsm.on("unhandled")`, wildcard `*`,
-// and `bindEvents(emitter, eventNames)` to route an external
-// emitter's events into the chart. Parallel, history,
-// final-with-done, guards, entry/exit actions, fromMap come in
-// later days (see `docs/hatch-fsm-design.md`).
+// `fsm.on("exit:<path>")`, `fsm.on("unhandled")`, `fsm.on("done")`,
+// wildcard `*`, plus `bindEvents(emitter, eventNames)` to forward
+// an external emitter's events into the chart.
 //
 // ```wren
 // import "@hatch:fsm" for StateChart
@@ -102,7 +103,8 @@ class StateNode_ {
 }
 
 /// A single transition branch. Multiple branches per event become
-/// guard-ordered alternatives (day 4).
+/// guard-ordered alternatives — the first branch whose guard
+/// returns `true` (or has no guard) wins.
 class TransitionBranch_ {
   construct new_(event, target, guard, actions, internal) {
     _event = event
@@ -734,13 +736,12 @@ class StateChart {
   /// source emitter; when fired, the event name is sent into
   /// the chart as if `send(name)` had been called.
   ///
-  /// Day-2 limitation: forwards only the event NAME, not any
-  /// payload args from the emit call. `@hatch:events` dispatches
-  /// listeners by exact arity (`emit("x")` calls 0-arity Fns;
-  /// `emit("x", a)` calls 1-arity Fns; etc.), and there's no
-  /// single Fn shape that matches every arity. Day-4 will accept
-  /// payload-carrying transitions and document a `bindMapped`
-  /// helper for non-bare events.
+  /// Forwards only the event NAME, not any payload args from the
+  /// emit call. `@hatch:events` dispatches listeners by exact
+  /// arity (`emit("x")` calls 0-arity Fns; `emit("x", a)` calls
+  /// 1-arity Fns; etc.), and there's no single Fn shape that
+  /// matches every arity. Payload-carrying transitions land when
+  /// the chart grows a `bindMapped` helper for non-bare events.
   ///
   /// Returns a single Fn that, when called, unsubscribes every
   /// binding installed by this call.
@@ -895,9 +896,8 @@ class StateChart {
   }
 
   /// Process an event. Fires at most one transition per active
-  /// leaf in day 1 (only one leaf exists). Events that arrive
-  /// while a step is mid-flight (an action calls `send`) queue
-  /// and drain after the current step.
+  /// leaf. Events that arrive while a step is mid-flight (an
+  /// action calls `send`) queue and drain after the current step.
   send(event) {
     if (!_started) Fiber.abort("StateChart.send: chart not started — call start() first")
     if (_processing) {
@@ -1213,8 +1213,8 @@ class StateChart {
     if (actions == null) return
     for (fn in actions) {
       // Actions throw straight through to the caller's send().
-      // Day-1 has no extra wrapping; day 4 can re-add per-action
-      // fiber.try if richer error context turns out to matter.
+      // No per-action fiber.try wrapping; if richer error context
+      // turns out to matter, add it then.
       fn.call(_context, event)
     }
   }

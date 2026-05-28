@@ -38,7 +38,7 @@ fsm.send("land")             // ["ground", "ground.idle"]
 fsm.matches("ground")        // true while any ground.* is active
 ```
 
-## What's here today (v0.1.0 / day-4)
+## What's here today (v0.1.0)
 
 - Atomic + compound + **parallel** states
 - **Entry / exit / transition actions** — `s.entry {|ctx, evt| ...}`,
