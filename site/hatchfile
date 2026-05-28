@@ -14,11 +14,17 @@ description = "hatch.wrenlift.com — landing page for Hatch. Server-rendered wi
 # restores `ExprParse_.parse`'s `pos_ < src.count` validation now
 # that wren_lift v0.1.17 fixed the JIT GC-rooting class that the
 # original bandaid was avoiding.
-"@hatch:web"    = "0.1.6"
-"@hatch:sqlite" = "0.1.7"
-"@hatch:http"   = "0.3.2"
-"@hatch:toml"   = "0.1.0"
-"@hatch:os"     = "0.1.1"
+#
+# Switched to in-workspace path deps for local dev: the published
+# .hatch bundles on the registry were built against an older
+# wren_lift, and the sqlite plugin SIGSEGVs at first foreign call
+# under v0.1.19+. Re-pin to versioned releases after the next
+# coordinated republish.
+"@hatch:web"    = { path = "../packages/hatch-web" }
+"@hatch:sqlite" = { path = "../packages/hatch-sqlite" }
+"@hatch:http"   = { path = "../packages/hatch-http" }
+"@hatch:toml"   = { path = "../packages/hatch-toml" }
+"@hatch:os"     = { path = "../packages/hatch-os" }
 # Path dep until @hatch:fsm 0.1.0 publishes. Drives the boot
 # lifecycle state machine in `lib/lifecycle.wren` and the
 # `/readyz` readiness probe.
