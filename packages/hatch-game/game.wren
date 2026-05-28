@@ -54,6 +54,11 @@ import "@hatch:window" for Window
 import "@hatch:gpu"    for Gpu
 import "@hatch:time"   for Clock
 
+// Scene-graph types. Re-exported so consumers pull `Transform`,
+// `GlobalTransform`, `TransformPropagation` straight from
+// `@hatch:game` without learning the sibling module name.
+import "./scene" for Transform, GlobalTransform, TransformPropagation
+
 // On web, the main fiber holds the JS thread until it parks on
 // an async bridge. The frame loop yields with
 // `Browser.nextFrame.await` (vsync-paced via requestAnimationFrame
