@@ -29,7 +29,9 @@ repo  = "https://github.com/wrenlift/WrenLift.git"
 # the `StateNode_` constructor hit the 7-arg dispatch cap. The
 # plugin dylib is rebuilt at this rev so its ABI matches any
 # consumer wren_lift binary at or past this commit.
-rev   = "5051d6f"
+# `e074b57` gates the dladdr-based AOT-frame label resolver to
+# unix so the Windows plugin CI matrix builds.
+rev   = "e074b57"
 crate = "wlift_sqlite"
 
 # Per-platform dylib paths. CI populates `libs/` via the
