@@ -27,6 +27,12 @@
 
 import "@hatch:math" for Vec3, Vec4, Mat4
 
+// Target-agnostic classes — same source as `gpu_native`. Re-exported
+// here so the wasm bundle exposes the same `Shader` / `Material`
+// names regardless of which backend bundle is running.
+import "./gpu_shader"   for Shader
+import "./gpu_material" for Material
+
 // ---------------------------------------------------------------
 // Low-level foreign surface. The plugin's actual exports.
 // Users go through `GpuCore` and the wrapper classes; this
@@ -1946,17 +1952,6 @@ class Mesh {
     _vbo.destroy
     _ibo.destroy
   }
-}
-
-class Material {
-  construct new() {
-    _color = Vec4.new(0.8, 0.8, 0.85, 1.0)
-  }
-  construct new(color) {
-    _color = color
-  }
-  color    { _color }
-  color=(c) { _color = c }
 }
 
 class Renderer3D {
