@@ -1,10 +1,10 @@
 name        = "@hatch:math"
-version     = "0.1.4"
+version     = "0.1.5"
 entry       = "math"
 description = "Vector + matrix + quaternion math — Vec2 / Vec3 / Vec4 / Mat4 / Quat, easings, and scalar helpers. Built for interactive apps and games."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:math"
 readme   = "README.md"
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test" = "0.2.1"
+"@hatch:assert" = "0.2.3"

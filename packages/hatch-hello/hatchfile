@@ -1,5 +1,5 @@
 name        = "@hatch:hello"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "hello"
 description = "Reference plugin layout for wasm-only `@hatch:*` packages. A `Hello.greet(name)` foreign method backed by a tiny Rust cdylib — copy this directory as the starting point for your own on-demand plugin and replace the body with the real work."
 

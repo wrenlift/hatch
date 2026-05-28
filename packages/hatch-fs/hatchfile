@@ -1,11 +1,11 @@
 name        = "@hatch:fs"
-version     = "0.1.1"
+version     = "0.1.2"
 entry       = "fs"
 description = "Filesystem I/O — read, write, stat, list, walk."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:fs"
 readme   = "README.md"
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
-"@hatch:path"   = { path = "../hatch-path" }
+"@hatch:test" = "0.2.1"
+"@hatch:assert" = "0.2.3"
+"@hatch:path" = "0.1.2"
