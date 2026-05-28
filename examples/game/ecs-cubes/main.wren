@@ -48,16 +48,29 @@ class EcsCubes is Game {
     var cubeMesh   = Mesh.cube(g.device, 0.5)
     var groundMesh = Mesh.plane(g.device, 40)
 
-    // Lights: one ambient + one sun. The renderer collects them
-    // off the world via SceneRenderer3D's per-frame walk.
+    // Lights: brighter ambient + key sun + fill light. The
+    // renderer collects them off the world via SceneRenderer3D's
+    // per-frame walk. Without the fill light, sides facing away
+    // from the sun went pitch dark — direct-light NoL = 0 plus
+    // a dim ambient floor doesn't survive ACES tonemapping.
     var ambient = _world.spawn()
-    _world.attach(ambient, AmbientLight.new(Vec3.new(0.4, 0.45, 0.55), 0.4))
+    _world.attach(ambient, AmbientLight.new(Vec3.new(0.55, 0.60, 0.70), 1.2))
 
+    // Key light — warm sun coming down + forward.
     var sun = _world.spawn()
     var sunT = Transform.new()
-    sunT.rotation = Quat.fromAxisAngle(Vec3.unitX, -0.7)   // tilt downward
+    sunT.rotation = Quat.fromAxisAngle(Vec3.unitX, -0.7)
     _world.attach(sun, sunT)
-    _world.attach(sun, DirectionalLight.new(Vec3.new(1.0, 0.95, 0.85), 3.5))
+    _world.attach(sun, DirectionalLight.new(Vec3.new(1.0, 0.95, 0.85), 4.0))
+
+    // Fill light — cooler tone from camera-right, almost flat,
+    // so the back/side faces of dynamic cubes register against
+    // the dark backdrop.
+    var fill = _world.spawn()
+    var fillT = Transform.new()
+    fillT.rotation = Quat.fromAxisAngle(Vec3.unitY, 1.2) * Quat.fromAxisAngle(Vec3.unitX, -0.3)
+    _world.attach(fill, fillT)
+    _world.attach(fill, DirectionalLight.new(Vec3.new(0.55, 0.70, 0.95), 1.5))
 
     // Static ground plane — Transform + MeshRenderer for the
     // visual, RigidBody + Collider for collision.

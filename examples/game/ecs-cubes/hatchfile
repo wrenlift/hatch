@@ -3,9 +3,15 @@ version     = "0.1.0"
 entry       = "main"
 description = "100 cubes raining onto a ground plane, simulated by @hatch:physics and rendered through @hatch:game's PBR Renderer3D — driven entirely off ECS components (Transform / MeshRenderer / RigidBody / Collider / DirectionalLight / AmbientLight). Game code never builds a Mat4 by hand; PhysicsSystem3D → TransformPropagation → SceneRenderer3D close the loop."
 
-# @hatch:gpu + @hatch:window come transitively via @hatch:game.
+# Direct imports go here — even though @hatch:gpu / @hatch:window
+# are transitively reachable via @hatch:game, the resolver
+# distinguishes a workspace-path copy from a registry copy by
+# whichever entry is first declared. Listing every directly-
+# imported package as a path dep here forces the resolver onto
+# the workspace tree for all of them.
 [dependencies]
 "@hatch:game"    = { path = "../../../packages/hatch-game" }
+"@hatch:gpu"     = { path = "../../../packages/hatch-gpu" }
 "@hatch:ecs"     = { path = "../../../packages/hatch-ecs" }
 "@hatch:math"    = { path = "../../../packages/hatch-math" }
 "@hatch:physics" = { path = "../../../packages/hatch-physics" }

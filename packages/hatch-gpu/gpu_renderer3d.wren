@@ -298,20 +298,22 @@ class Renderer3D {
       "usage": ["uniform", "copy-dst"],
       "label": "renderer3d-scene-ubo"
     })
-    _drawUbo = device.createBuffer({
-      "size":  Renderer3D.DRAW_UBO_BYTES_,
-      "usage": ["uniform", "copy-dst"],
-      "label": "renderer3d-draw-ubo"
-    })
-
     _sceneBindGroup = device.createBindGroup({
       "layout":  _sceneBgl,
       "entries": [{ "binding": 0, "buffer": _sceneUbo, "size": Renderer3D.SCENE_UBO_BYTES_ }]
     })
-    _drawBindGroup = device.createBindGroup({
-      "layout":  _drawBgl,
-      "entries": [{ "binding": 0, "buffer": _drawUbo, "size": Renderer3D.DRAW_UBO_BYTES_ }]
-    })
+
+    // Per-draw UBO pool. `queue.write_buffer` doesn't sync with
+    // intervening command-buffer records — all writes to a single
+    // UBO collapse to the LAST write when the encoder finally
+    // submits. So we can't share one draw UBO across multiple
+    // draws in a frame; each draw needs its own. The pool grows
+    // lazily (first frame creates as many as the scene needs,
+    // subsequent frames reuse) so steady-state per-frame cost
+    // stays at `writeFloats` calls only.
+    _drawUboPool       = []   // List of Buffer
+    _drawBindGroupPool = []   // List of BindGroup, indexed in lockstep with _drawUboPool
+    _drawIndex         = 0
 
     // Default sampler — linear filtering, repeat addressing.
     // Materials with point-filtered textures (pixel art) build
@@ -328,8 +330,8 @@ class Renderer3D {
     // 1×1 default fallback textures. Sampling these is effectively
     // free (single-texel L1 hits) so the shader can always sample
     // every slot without branching on "is this texture set".
-    _whiteTex  = makeFallback_(device, 255, 255, 255, 255)            // albedo / mr / occlusion / emissive
-    _normalTex = makeFallback_(device, 128, 128, 255, 255)             // tangent-space up: (0.5, 0.5, 1)
+    _whiteTex  = Renderer3D.makeFallback_(device, 255, 255, 255, 255)  // albedo / mr / occlusion / emissive
+    _normalTex = Renderer3D.makeFallback_(device, 128, 128, 255, 255)  // tangent-space up: (0.5, 0.5, 1)
 
     // Per-Material BindGroup cache. Keyed by Material identity
     // (not revision_), so a long-lived material reuses its bind
@@ -394,9 +396,13 @@ class Renderer3D {
     _spotLights.clear()
     _sceneCommitted = false
 
+    // Each frame's draws re-fill the pool from slot 0; the
+    // ring grows when the scene needs more slots than the
+    // previous frame, never shrinks.
+    _drawIndex = 0
+
     pass.setPipeline(_pipeline)
     pass.setBindGroup(0, _sceneBindGroup)
-    pass.setBindGroup(1, _drawBindGroup)
   }
 
   /// Set the scene-wide ambient term. Replaces previous calls
@@ -509,18 +515,47 @@ class Renderer3D {
     _drawUboFloats.clear()
     appendMat4_(_drawUboFloats, model)
     appendMat4_(_drawUboFloats, model)
-    _drawUbo.writeFloats(0, _drawUboFloats)
+
+    // Pull (or grow) the per-draw UBO slot for this index.
+    // Sharing one UBO across draws within a frame collapses
+    // every model matrix to the last `writeFloats` call — see
+    // pool comment in the constructor.
+    var slot = drawSlot_()
+    slot["ubo"].writeFloats(0, _drawUboFloats)
 
     // Resolve material bind group; rebuild on revision change.
     var entry = bindGroupFor_(material)
     var pass = _pass
+    pass.setBindGroup(1, slot["bg"])
     pass.setBindGroup(2, entry["bg"])
     pass.setVertexBuffer(0, mesh.vertexBuffer)
     pass.setIndexBuffer(mesh.indexBuffer, "uint32")
     pass.drawIndexed(mesh.indexCount)
   }
 
-  commitScene_ {
+  // Reserve the next free per-draw UBO + BindGroup slot. Grows
+  // the pool by one when the scene's draw count exceeds previous
+  // frames'; otherwise reuses an existing slot.
+  drawSlot_() {
+    if (_drawIndex >= _drawUboPool.count) {
+      var ubo = _device.createBuffer({
+        "size":  Renderer3D.DRAW_UBO_BYTES_,
+        "usage": ["uniform", "copy-dst"],
+        "label": "renderer3d-draw-ubo"
+      })
+      var bg = _device.createBindGroup({
+        "layout":  _drawBgl,
+        "entries": [{ "binding": 0, "buffer": ubo, "size": Renderer3D.DRAW_UBO_BYTES_ }]
+      })
+      _drawUboPool.add(ubo)
+      _drawBindGroupPool.add(bg)
+    }
+    var i = _drawIndex
+    _drawIndex = _drawIndex + 1
+    return { "ubo": _drawUboPool[i], "bg": _drawBindGroupPool[i] }
+  }
+
+  commitScene_() {
     _sceneUboFloats.clear()
     appendMat4_(_sceneUboFloats, _vp)
     // camera_pos (xyz + 1 pad)
@@ -706,8 +741,11 @@ class Renderer3D {
       entry["bg"].destroy
     }
     _materialCache = {}
+    for (bg in _drawBindGroupPool) bg.destroy
+    for (ubo in _drawUboPool)      ubo.destroy
+    _drawBindGroupPool = []
+    _drawUboPool = []
     _sceneUbo.destroy
-    _drawUbo.destroy
     _sampler.destroy
     _whiteTex.destroy
     _normalTex.destroy
