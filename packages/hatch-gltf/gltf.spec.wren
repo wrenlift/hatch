@@ -1,7 +1,7 @@
 // @hatch:gltf acceptance tests. Builds minimal .glb byte fixtures
 // in-process so the spec is hermetic — no on-disk assets to track.
 
-import "./gltf"         for Gltf, GltfDocument, GltfNode, GltfMesh, GltfPrimitive, GltfMaterial
+import "./gltf"         for Gltf, GltfScene, GltfNode, GltfMesh, GltfPrimitive, GltfMaterial
 import "@hatch:game"    for Transform
 import "@hatch:ecs"     for World, Parent, Children
 import "@hatch:test"    for Test
