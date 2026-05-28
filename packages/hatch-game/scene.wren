@@ -16,6 +16,13 @@ import "@hatch:ecs"  for Parent, Children
 // the same direction.
 var LIGHT_FORWARD_ = Vec3.new(0, 0, -1)
 
+// Per-step scratch buffer for PhysicsSystem3D's writeback.
+// `Float32Array.new(8)` is a foreign-method call so it can't
+// run at class-body parse time; lazy-init to nil here and
+// allocate on first use. 8 slots = 3 position + 1 pad + 4 quat
+// — read by `positionInto(_, _, 0)` + `rotationInto(_, _, 4)`.
+var PHYSICS_SCRATCH_3D_ = Float32Array.new(8)
+
 /// Local-space TRS placement: position (`Vec3`), rotation (`Quat`),
 /// scale (`Vec3`). The local matrix is computed lazily on first
 /// read and re-computed whenever a setter fires; the cached value
@@ -88,17 +95,99 @@ class Transform {
     _dirty = true
   }
 
+  /// Non-allocating position setter — takes raw scalars and
+  /// writes a fresh `Vec3` into the `position` slot. Useful in
+  /// per-frame writeback hot paths where `Vec3.new(...)` shows
+  /// up as a measurable allocation source. (The internal Vec3
+  /// is replaced rather than mutated; `@hatch:math.Vec3` is
+  /// immutable from the outside. But the foreign-call list
+  /// alloc that `position(bodyId)` returns disappears, which is
+  /// the dominant per-body alloc cost.)
+  ///
+  /// @param {Num} x
+  /// @param {Num} y
+  /// @param {Num} z
+  setPosition(x, y, z) {
+    _position = Vec3.new(x, y, z)
+    _dirty = true
+  }
+
+  /// Non-allocating rotation setter — same shape as
+  /// `setPosition`, takes scalar-first quaternion components.
+  ///
+  /// @param {Num} w
+  /// @param {Num} x
+  /// @param {Num} y
+  /// @param {Num} z
+  setRotation(w, x, y, z) {
+    _rotation = Quat.new(w, x, y, z)
+    _dirty = true
+  }
+
   /// Locally-cached `Mat4` for `T * R * S`. Re-computes only when
   /// one of the components has changed since the last read.
+  /// Writes the 16 matrix entries into a single owned Mat4 in
+  /// place — the previous implementation allocated 5 fresh Mat4s
+  /// per recompute (T, R, S, T·R, T·R·S), each carrying a
+  /// 16-element list. In a steady-state physics writeback that
+  /// alone churned ~30k Mat4s/sec for 100 dynamic bodies, which
+  /// overwhelmed the GC.
   localMatrix {
     if (_dirty || _local == null) {
-      var t = Mat4.translation(_position.x, _position.y, _position.z)
-      var r = _rotation.toMat4
-      var s = Mat4.scale(_scale.x, _scale.y, _scale.z)
-      _local = t * r * s
+      if (_local == null) _local = Mat4.identity
+      Transform.buildTrsInto_(_local, _position, _rotation, _scale)
       _dirty = false
     }
     return _local
+  }
+
+  // Compose T·R·S into `m` without allocating any intermediate
+  // Mat4. The rotation block is the standard Quat → 3x3
+  // expansion (mirroring `Quat.toMat4`), with each column then
+  // pre-scaled by the matching scale axis. The 4th column holds
+  // the translation; the bottom row is `(0, 0, 0, 1)`.
+  static buildTrsInto_(m, position, rotation, scale) {
+    var qw = rotation.w
+    var qx = rotation.x
+    var qy = rotation.y
+    var qz = rotation.z
+    var xx = qx * qx
+    var yy = qy * qy
+    var zz = qz * qz
+    var xy = qx * qy
+    var xz = qx * qz
+    var yz = qy * qz
+    var wx = qw * qx
+    var wy = qw * qy
+    var wz = qw * qz
+    var r00 = 1 - 2 * (yy + zz)
+    var r01 = 2 * (xy - wz)
+    var r02 = 2 * (xz + wy)
+    var r10 = 2 * (xy + wz)
+    var r11 = 1 - 2 * (xx + zz)
+    var r12 = 2 * (yz - wx)
+    var r20 = 2 * (xz - wy)
+    var r21 = 2 * (yz + wx)
+    var r22 = 1 - 2 * (xx + yy)
+    var sx = scale.x
+    var sy = scale.y
+    var sz = scale.z
+    m.set(0, 0, r00 * sx)
+    m.set(0, 1, r01 * sy)
+    m.set(0, 2, r02 * sz)
+    m.set(0, 3, position.x)
+    m.set(1, 0, r10 * sx)
+    m.set(1, 1, r11 * sy)
+    m.set(1, 2, r12 * sz)
+    m.set(1, 3, position.y)
+    m.set(2, 0, r20 * sx)
+    m.set(2, 1, r21 * sy)
+    m.set(2, 2, r22 * sz)
+    m.set(2, 3, position.z)
+    m.set(3, 0, 0)
+    m.set(3, 1, 0)
+    m.set(3, 2, 0)
+    m.set(3, 3, 1)
   }
 
   /// Explicit invalidation hook for callers that mutate one of
@@ -347,15 +436,24 @@ class PhysicsSystem3D {
     // 2. Advance simulation.
     physicsWorld.step(dt)
 
-    // 3. Read positions back into Transforms.
+    // 3. Read positions + orientations back into Transforms.
+    //    The hot path drives the physics-side `positionInto` /
+    //    `rotationInto` foreign methods, which write straight
+    //    into a shared 8-element `Float32Array` scratch buffer
+    //    — no per-body `List<Num>` alloc, no `Vec3.new`, no
+    //    `Quat.new`. Static bodies skip the writeback so
+    //    user-set transforms stay authoritative.
+    var scratch = PHYSICS_SCRATCH_3D_
     for (e in world.query(RigidBody)) {
       var rb = world.get(e, RigidBody)
       if (rb.bodyId == null) continue
       if (rb.kind == "static") continue
       var t = world.get(e, Transform)
       if (t == null) continue
-      var pos = physicsWorld.position(rb.bodyId)
-      t.position = Vec3.new(pos[0], pos[1], pos[2])
+      physicsWorld.positionInto(rb.bodyId, scratch, 0)
+      t.setPosition(scratch[0], scratch[1], scratch[2])
+      physicsWorld.rotationInto(rb.bodyId, scratch, 4)
+      t.setRotation(scratch[4], scratch[5], scratch[6], scratch[7])
     }
   }
 
@@ -406,6 +504,10 @@ class PhysicsSystem2D {
       if (t == null) continue
       var pos = physicsWorld.position(rb.bodyId)
       t.position = Vec3.new(pos[0], pos[1], t.position.z)
+      // 2D rotation is a single scalar around Z; lift to a Quat
+      // so the renderer's normal-matrix derivation works.
+      var angle = physicsWorld.rotation(rb.bodyId)
+      t.rotation = Quat.fromAxisAngle(Vec3.new(0, 0, 1), angle)
     }
   }
 

@@ -393,45 +393,98 @@ Test.describe("SceneRenderer3D ECS bridge") {
   }
 }
 
-// Mock physics world for the PhysicsSystem3D / PhysicsSystem2D
-// bridge specs. Doesn't simulate anything — just records every
-// API call the bridge makes and lets the spec drive the
-// reported positions back into the ECS Transforms.
-class MockPhysicsWorld_ {
+// Per-dimension mock physics worlds for the PhysicsSystem3D /
+// PhysicsSystem2D bridge specs. Each mock records every API call
+// + lets the spec drive the reported positions / orientations
+// back into the ECS Transforms. Split per dimension because the
+// bridges read rotation in different shapes (3D: [w,x,y,z]; 2D:
+// scalar angle).
+class MockPhysicsWorld3D_ {
   construct new() {
     _calls   = []
     _nextId  = 1
-    _bodies  = {}    // bodyId → { kind, desc, position }
+    _bodies  = {}    // bodyId → { kind, desc, position, rotation }
   }
   calls  { _calls }
+
+  spawnDynamic(desc)   { spawn_("dynamic",   desc) }
+  spawnStatic(desc)    { spawn_("static",    desc) }
+  spawnKinematic(desc) { spawn_("kinematic", desc) }
+
+  spawn_(kind, desc) {
+    var id = _nextId
+    _nextId = _nextId + 1
+    _bodies[id] = {
+      "kind":     kind,
+      "desc":     desc,
+      "position": desc["position"],
+      "rotation": [1, 0, 0, 0],   // identity quaternion
+    }
+    _calls.add(["spawn" + kind.replace("d", "D").replace("s", "S").replace("k", "K"), id, desc])
+    return id
+  }
+
+  step(dt) { _calls.add(["step", dt]) }
+  position(bodyId) { _bodies[bodyId]["position"] }
+  rotation(bodyId) { _bodies[bodyId]["rotation"] }
+
+  // Non-allocating writeback variants that match the foreign
+  // shape on the physics plugin. Each writes its components into
+  // a caller-provided `Float32Array` at the given element offset.
+  positionInto(bodyId, out, offset) {
+    var p = _bodies[bodyId]["position"]
+    out[offset]     = p[0]
+    out[offset + 1] = p[1]
+    out[offset + 2] = p[2]
+  }
+  rotationInto(bodyId, out, offset) {
+    var r = _bodies[bodyId]["rotation"]
+    out[offset]     = r[0]
+    out[offset + 1] = r[1]
+    out[offset + 2] = r[2]
+    out[offset + 3] = r[3]
+  }
+
+  setPosition_(bodyId, list) { _bodies[bodyId]["position"] = list }
+  setRotation_(bodyId, list) { _bodies[bodyId]["rotation"] = list }
+}
+
+class MockPhysicsWorld2D_ {
+  construct new() {
+    _calls  = []
+    _nextId = 1
+    _bodies = {}
+  }
+  calls { _calls }
 
   spawnDynamic(desc) {
     var id = _nextId
     _nextId = _nextId + 1
-    _bodies[id] = { "kind": "dynamic", "desc": desc, "position": desc["position"] }
+    _bodies[id] = { "kind": "dynamic", "desc": desc, "position": desc["position"], "rotation": 0.0 }
     _calls.add(["spawnDynamic", id, desc])
     return id
   }
   spawnStatic(desc) {
     var id = _nextId
     _nextId = _nextId + 1
-    _bodies[id] = { "kind": "static", "desc": desc, "position": desc["position"] }
+    _bodies[id] = { "kind": "static", "desc": desc, "position": desc["position"], "rotation": 0.0 }
     _calls.add(["spawnStatic", id, desc])
     return id
   }
   spawnKinematic(desc) {
     var id = _nextId
     _nextId = _nextId + 1
-    _bodies[id] = { "kind": "kinematic", "desc": desc, "position": desc["position"] }
+    _bodies[id] = { "kind": "kinematic", "desc": desc, "position": desc["position"], "rotation": 0.0 }
     _calls.add(["spawnKinematic", id, desc])
     return id
   }
+
   step(dt) { _calls.add(["step", dt]) }
   position(bodyId) { _bodies[bodyId]["position"] }
+  rotation(bodyId) { _bodies[bodyId]["rotation"] }
 
-  // Spec convenience — pretend the simulation moved a body so the
-  // bridge's read-back pass has something to copy into Transform.
   setPosition_(bodyId, list) { _bodies[bodyId]["position"] = list }
+  setRotation_(bodyId, angle) { _bodies[bodyId]["rotation"] = angle }
 }
 
 Test.describe("RigidBody + Collider components") {
@@ -464,7 +517,7 @@ Test.describe("RigidBody + Collider components") {
 Test.describe("PhysicsSystem3D bridge") {
   Test.it("spawns the right kind for each RigidBody.kind") {
     var w = World.new()
-    var pw = MockPhysicsWorld_.new()
+    var pw = MockPhysicsWorld3D_.new()
 
     var d = w.spawn()
     w.attach(d, Transform.translation(1, 2, 3))
@@ -496,7 +549,7 @@ Test.describe("PhysicsSystem3D bridge") {
 
   Test.it("seeds spawn position from Transform.position") {
     var w = World.new()
-    var pw = MockPhysicsWorld_.new()
+    var pw = MockPhysicsWorld3D_.new()
     var e = w.spawn()
     w.attach(e, Transform.translation(7, -3, 11))
     w.attach(e, RigidBody.new())
@@ -513,7 +566,7 @@ Test.describe("PhysicsSystem3D bridge") {
 
   Test.it("forwards optional linearVelocity") {
     var w = World.new()
-    var pw = MockPhysicsWorld_.new()
+    var pw = MockPhysicsWorld3D_.new()
     var e = w.spawn()
     w.attach(e, Transform.identity)
     var rb = RigidBody.new()
@@ -531,7 +584,7 @@ Test.describe("PhysicsSystem3D bridge") {
 
   Test.it("stamps RigidBody.bodyId after spawn") {
     var w = World.new()
-    var pw = MockPhysicsWorld_.new()
+    var pw = MockPhysicsWorld3D_.new()
     var e = w.spawn()
     var rb = RigidBody.new()
     w.attach(e, Transform.identity)
@@ -553,7 +606,7 @@ Test.describe("PhysicsSystem3D bridge") {
 
   Test.it("writes simulated position back into Transform.position") {
     var w = World.new()
-    var pw = MockPhysicsWorld_.new()
+    var pw = MockPhysicsWorld3D_.new()
     var e = w.spawn()
     var t = Transform.translation(0, 10, 0)
     var rb = RigidBody.new()
@@ -571,7 +624,7 @@ Test.describe("PhysicsSystem3D bridge") {
 
   Test.it("doesn't write back static bodies") {
     var w = World.new()
-    var pw = MockPhysicsWorld_.new()
+    var pw = MockPhysicsWorld3D_.new()
     var e = w.spawn()
     var t = Transform.translation(0, 0, 0)
     var rb = RigidBody.new("static")
@@ -590,7 +643,7 @@ Test.describe("PhysicsSystem3D bridge") {
 
   Test.it("skips entities missing Transform or Collider") {
     var w = World.new()
-    var pw = MockPhysicsWorld_.new()
+    var pw = MockPhysicsWorld3D_.new()
     var e = w.spawn()
     w.attach(e, RigidBody.new())   // no Transform / Collider
 
@@ -607,7 +660,7 @@ Test.describe("PhysicsSystem3D bridge") {
 Test.describe("PhysicsSystem2D bridge") {
   Test.it("seeds 2D position from Transform.position xy") {
     var w = World.new()
-    var pw = MockPhysicsWorld_.new()
+    var pw = MockPhysicsWorld2D_.new()
     var e = w.spawn()
     w.attach(e, Transform.translation(3, 4, 99))  // z ignored
     w.attach(e, RigidBody.new())
@@ -623,7 +676,7 @@ Test.describe("PhysicsSystem2D bridge") {
 
   Test.it("preserves Transform.position.z across writeback") {
     var w = World.new()
-    var pw = MockPhysicsWorld_.new()
+    var pw = MockPhysicsWorld2D_.new()
     var e = w.spawn()
     var t = Transform.translation(0, 0, 5)   // z = depth hint
     var rb = RigidBody.new()

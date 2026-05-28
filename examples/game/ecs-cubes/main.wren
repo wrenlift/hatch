@@ -39,14 +39,35 @@ class EcsCubes is Game {
     _physics  = World3D.new()
     _renderer = Renderer3D.new(g.device, g.surfaceFormat, g.depthFormat)
 
+    _eye    = Vec3.new(0, 14, 22)
+    _target = Vec3.new(0, 2, 0)
+    _fovYDeg = 55
     var aspect = g.width / g.height
-    _camera = Camera3D.perspective(55, aspect, 0.1, 200)
-    _camera.lookAt(Vec3.new(0, 14, 22), Vec3.new(0, 2, 0), Vec3.new(0, 1, 0))
+    _camera = Camera3D.perspective(_fovYDeg, aspect, 0.1, 200)
+    _camera.lookAt(_eye, _target, Vec3.new(0, 1, 0))
 
     // Shared cube mesh — every entity reuses the same vertex /
-    // index buffers, so 100 cubes = 100 draws but 1 GPU upload.
-    var cubeMesh   = Mesh.cube(g.device, 0.5)
+    // index buffers, so N cubes = N draws but 1 GPU upload.
+    _cubeMesh   = Mesh.cube(g.device, 0.5)
     var groundMesh = Mesh.plane(g.device, 40)
+    // Pre-built materials shared across every cube. Renderer3D
+    // caches a GPU bind group per Material identity (UBO + 5
+    // TextureViews + 1 sampler binding) — allocating a fresh
+    // Material per cube leaves a pinned cache entry behind every
+    // time, so a thousand spawns leaks a thousand bind groups.
+    // Sharing five palette materials caps the cache at five.
+    _materials = [
+      buildCubeMaterial_(Vec4.new(0.92, 0.45, 0.50, 1.0)),
+      buildCubeMaterial_(Vec4.new(0.45, 0.85, 0.62, 1.0)),
+      buildCubeMaterial_(Vec4.new(0.45, 0.62, 0.95, 1.0)),
+      buildCubeMaterial_(Vec4.new(0.95, 0.85, 0.45, 1.0)),
+      buildCubeMaterial_(Vec4.new(0.80, 0.55, 0.95, 1.0)),
+    ]
+    // FIFO of dynamic cube entity ids — bounded so the simulation
+    // stays smooth as the user spams clicks.
+    _cubes      = []
+    _cubeLimit  = 20
+    _frameCounter = 0
 
     // Lights: brighter ambient + key sun + fill light. The
     // renderer collects them off the world via SceneRenderer3D's
@@ -82,45 +103,25 @@ class EcsCubes is Game {
       "restitution": 0.4, "friction": 0.9
     })))
 
-    // 100 dynamic cubes. Random initial position + small spin via
-    // Transform.rotation (physics doesn't propagate rotation yet,
-    // so this stays static across the sim — fine for the demo).
-    var palette = [
-      Vec4.new(0.92, 0.45, 0.50, 1.0),
-      Vec4.new(0.45, 0.85, 0.62, 1.0),
-      Vec4.new(0.45, 0.62, 0.95, 1.0),
-      Vec4.new(0.95, 0.85, 0.45, 1.0),
-      Vec4.new(0.80, 0.55, 0.95, 1.0),
-    ]
+    // Triage scene — three cubes. Used to isolate whether the
+    // host's per-frame allocation pattern explodes regardless of
+    // entity count; if memory still climbs with three, the leak
+    // is in the per-frame plumbing (queue write, command record,
+    // GC marking) rather than scaling with cube count.
     var i = 0
-    while (i < 100) {
-      var e = _world.spawn()
-      var x = Rand.float(-8, 8)
-      var y = Rand.float(8, 24)
-      var z = Rand.float(-8, 8)
-      _world.attach(e, Transform.translation(x, y, z))
-
-      var mat = Material.new(palette[i % palette.count])
-      mat.roughnessFactor = 0.55
-      mat.metallicFactor  = 0.1
-      _world.attach(e, MeshRenderer.new(cubeMesh, mat))
-
-      var rb = RigidBody.new("dynamic", 1.0)
-      rb.linearVelocity = Vec3.new(Rand.float(-1, 1), 0, Rand.float(-1, 1))
-      _world.attach(e, rb)
-      _world.attach(e, Collider.new(Collider3D.box(0.5, 0.5, 0.5, {
-        "restitution": 0.35, "friction": 0.6
-      })))
+    while (i < 3) {
+      spawnCubeAt_(Rand.float(-4, 4), Rand.float(6, 12), Rand.float(-4, 4))
       i = i + 1
     }
   }
 
   resize(g, w, h) {
-    _camera.setPerspective(55, w / h, 0.1, 200)
+    _camera.setPerspective(_fovYDeg, w / h, 0.1, 200)
   }
 
   update(g) {
     if (g.input.justPressed("Escape")) g.requestQuit
+    if (g.input.mouseJustPressed("left")) dropCubeAtCursor_(g)
 
     // Clamp dt to dodge giant single-step blow-ups when the tab
     // un-pauses or the first frame's wall-time is wonky.
@@ -129,6 +130,17 @@ class EcsCubes is Game {
 
     PhysicsSystem3D.step(_world, _physics, dt)
     TransformPropagation.run(_world)
+
+    // Triage: nudge the GC every 30 frames (~2x per sec) so
+    // short-lived per-frame allocations don't get promoted to
+    // old gen. If the leak is host-side (wgpu / Metal driver),
+    // this is a no-op; if it's Wren-side, this should keep RSS
+    // flat under steady idle.
+    _frameCounter = _frameCounter + 1
+    if (_frameCounter >= 30) {
+      _frameCounter = 0
+      System.gc()
+    }
   }
 
   draw(g) {
@@ -141,6 +153,88 @@ class EcsCubes is Game {
     m.roughnessFactor = 0.85
     m.metallicFactor  = 0.0
     return m
+  }
+
+  // Build one of the cube's shared palette materials. Stored
+  // once at setup; every cube references whichever one the
+  // palette picks for it.
+  buildCubeMaterial_(albedo) {
+    var m = Material.new(albedo)
+    m.roughnessFactor = 0.55
+    m.metallicFactor  = 0.1
+    return m
+  }
+
+  // Spawn one dynamic cube entity at (x, y, z) with a randomly
+  // picked palette material. Appends to `_cubes` (a FIFO) and
+  // evicts the oldest cube when `_cubeLimit` is exceeded so the
+  // sim stays smooth under sustained clicking.
+  spawnCubeAt_(x, y, z) {
+    var e = _world.spawn()
+    _world.attach(e, Transform.translation(x, y, z))
+    _world.attach(e, MeshRenderer.new(_cubeMesh, _materials[Rand.int(_materials.count)]))
+
+    var rb = RigidBody.new("dynamic", 1.0)
+    rb.linearVelocity = Vec3.new(Rand.float(-1, 1), 0, Rand.float(-1, 1))
+    _world.attach(e, rb)
+    _world.attach(e, Collider.new(Collider3D.box(0.5, 0.5, 0.5, {
+      "restitution": 0.35, "friction": 0.6
+    })))
+
+    _cubes.add(e)
+    if (_cubes.count > _cubeLimit) {
+      var oldest = _cubes.removeAt(0)
+      var oldRb = _world.get(oldest, RigidBody)
+      if (oldRb != null && oldRb.bodyId != null) _physics.despawn(oldRb.bodyId)
+      _world.despawn(oldest)
+    }
+    return e
+  }
+
+  // Spawn a cube at the cursor's 3D position — the screen point
+  // is unprojected through the camera's focal plane (the plane
+  // through `_target` perpendicular to the view direction), so
+  // dragging the cursor up the screen lifts the spawn point and
+  // dragging it down drops it closer to the ground. Cubes that
+  // would spawn underground get clamped to half their height
+  // above the floor so they don't tunnel through the collider.
+  dropCubeAtCursor_(g) {
+    var hit = cursorInFocalPlane_(g)
+    if (hit == null) return
+    var y = hit.y
+    if (y < 0.5) y = 0.5
+    spawnCubeAt_(hit.x, y, hit.z)
+  }
+
+  // Build a world-space ray through the cursor + intersect with
+  // the plane through `_target` whose normal is the camera's
+  // forward axis. Skips `Mat4.inverse` (not yet exposed by
+  // @hatch:math) by working in the camera basis directly.
+  cursorInFocalPlane_(g) {
+    // NDC: x ∈ [-1, 1], y flipped so screen-top maps to +Y.
+    var ndcX = (g.input.mouseX / g.width)  * 2 - 1
+    var ndcY = 1 - (g.input.mouseY / g.height) * 2
+    var aspect = g.width / g.height
+    // Frustum half-extents at unit distance from the camera.
+    var halfV = ((_fovYDeg * 0.017453292519943295) / 2).tan   // π/180
+    var halfH = halfV * aspect
+
+    // Camera basis. Forward = target - eye, right = forward × up,
+    // up = right × forward.
+    var fwd   = (_target - _eye).normalized
+    var right = fwd.cross(Vec3.new(0, 1, 0)).normalized
+    var up    = right.cross(fwd)
+
+    // Ray direction in world space.
+    var dir = (fwd + right * (ndcX * halfH) + up * (ndcY * halfV)).normalized
+
+    // Intersect with the plane through `_target` whose normal is
+    // `fwd`. t = ((target - eye) · fwd) / (dir · fwd).
+    var denom = dir.dot(fwd)
+    if (denom.abs < 0.0001) return null
+    var t = (_target - _eye).dot(fwd) / denom
+    if (t < 0) return null
+    return _eye + dir * t
   }
 }
 
