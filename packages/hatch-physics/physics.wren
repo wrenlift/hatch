@@ -105,6 +105,22 @@ foreign class PhysicsCore {
   foreign static world3dDrainContactEvents(worldId)
   #!symbol = "wlift_physics_world2d_drain_contact_events"
   foreign static world2dDrainContactEvents(worldId)
+
+  // -- Shape casts ----------------------------------------------
+  #!symbol = "wlift_physics_world3d_cast_shape"
+  foreign static world3dCastShape(worldId, shape, ox, oy, oz, dx, dy, dz, maxToi)
+  #!symbol = "wlift_physics_world2d_cast_shape"
+  foreign static world2dCastShape(worldId, shape, ox, oy, dx, dy, maxToi)
+
+  // -- Joints ---------------------------------------------------
+  #!symbol = "wlift_physics_world3d_create_joint"
+  foreign static world3dCreateJoint(worldId, bodyA, bodyB, descriptor)
+  #!symbol = "wlift_physics_world3d_destroy_joint"
+  foreign static world3dDestroyJoint(worldId, jointId)
+  #!symbol = "wlift_physics_world2d_create_joint"
+  foreign static world2dCreateJoint(worldId, bodyA, bodyB, descriptor)
+  #!symbol = "wlift_physics_world2d_destroy_joint"
+  foreign static world2dDestroyJoint(worldId, jointId)
 }
 
 /// -- 2D ----------------------------------------------------------
@@ -180,6 +196,45 @@ class World2D {
   ///
   /// @returns {List<Map>}
   drainContactEvents { PhysicsCore.world2dDrainContactEvents(_id) }
+
+  /// Sweep `shape` (the same descriptor `Collider2D.box(...)` /
+  /// `.ball(...)` returns) from `(ox, oy)` along `(dx, dy)` and
+  /// return the first hit Map (`{ bodyId, point, normal, toi }`)
+  /// or `null`. Useful for character-controller capsule sweeps,
+  /// projectile-with-volume hit tests, and "would this fit?"
+  /// placement checks.
+  ///
+  /// @param  {Map}  shape    descriptor from `Collider2D.*`
+  /// @param  {Num}  ox
+  /// @param  {Num}  oy
+  /// @param  {Num}  dx       direction (and length scale, via maxToi)
+  /// @param  {Num}  dy
+  /// @param  {Num}  maxToi
+  /// @returns {Map?}
+  castShape(shape, ox, oy, dx, dy, maxToi) {
+    return PhysicsCore.world2dCastShape(_id, shape, ox, oy, dx, dy, maxToi)
+  }
+
+  /// Create a joint between `bodyA` and `bodyB`. `descriptor`
+  /// has a `kind` (`"fixed"`, `"revolute"`, or `"prismatic"`)
+  /// plus optional `anchor1: [x, y]`, `anchor2: [x, y]`, and
+  /// (prismatic only) `axis: [x, y]` keys. Returns a numeric
+  /// joint id you can pass to `destroyJoint` later.
+  ///
+  /// In 2D, `revolute` is the only rotation-axis joint (rotation
+  /// happens around the implicit Z axis) — no `axis` field is
+  /// needed for it.
+  ///
+  /// @param  {Num} bodyA
+  /// @param  {Num} bodyB
+  /// @param  {Map} descriptor
+  /// @returns {Num} joint id
+  createJoint(bodyA, bodyB, descriptor) {
+    return PhysicsCore.world2dCreateJoint(_id, bodyA, bodyB, descriptor)
+  }
+
+  /// Remove a joint previously returned by `createJoint`.
+  destroyJoint(jointId) { PhysicsCore.world2dDestroyJoint(_id, jointId) }
 
   destroy {
     PhysicsCore.world2dDestroy(_id)
@@ -294,6 +349,53 @@ class World3D {
   ///
   /// @returns {List<Map>}
   drainContactEvents { PhysicsCore.world3dDrainContactEvents(_id) }
+
+  /// Sweep `shape` (e.g. `Collider3D.box(...)`,
+  /// `Collider3D.capsule(...)`) from `(ox, oy, oz)` along
+  /// `(dx, dy, dz)` and return the first hit Map
+  /// (`{ bodyId, point, normal, toi }`) or `null`.
+  ///
+  /// This is what character controllers use to step forward
+  /// without tunnelling through walls — sweep the capsule
+  /// instead of casting a ray from the centre.
+  ///
+  /// @param  {Map} shape    descriptor from `Collider3D.*`
+  /// @param  {Num} ox
+  /// @param  {Num} oy
+  /// @param  {Num} oz
+  /// @param  {Num} dx
+  /// @param  {Num} dy
+  /// @param  {Num} dz
+  /// @param  {Num} maxToi
+  /// @returns {Map?}
+  castShape(shape, ox, oy, oz, dx, dy, dz, maxToi) {
+    return PhysicsCore.world3dCastShape(_id, shape, ox, oy, oz, dx, dy, dz, maxToi)
+  }
+
+  /// Create a joint between `bodyA` and `bodyB`. `descriptor`
+  /// has a `kind` (`"fixed"`, `"revolute"`, `"prismatic"`, or
+  /// `"spherical"`) plus optional `anchor1: [x, y, z]`,
+  /// `anchor2: [x, y, z]`, and `axis: [x, y, z]` keys.
+  ///
+  /// | kind        | uses `axis`? | rapier joint |
+  /// |-------------|--------------|--------------|
+  /// | `fixed`     | no           | FixedJoint — six DOFs locked |
+  /// | `revolute`  | yes          | RevoluteJoint — rotate about axis |
+  /// | `prismatic` | yes          | PrismaticJoint — slide along axis |
+  /// | `spherical` | no           | SphericalJoint — ball-and-socket |
+  ///
+  /// Returns a numeric joint id you can pass to `destroyJoint`.
+  ///
+  /// @param  {Num} bodyA
+  /// @param  {Num} bodyB
+  /// @param  {Map} descriptor
+  /// @returns {Num} joint id
+  createJoint(bodyA, bodyB, descriptor) {
+    return PhysicsCore.world3dCreateJoint(_id, bodyA, bodyB, descriptor)
+  }
+
+  /// Remove a joint previously returned by `createJoint`.
+  destroyJoint(jointId) { PhysicsCore.world3dDestroyJoint(_id, jointId) }
 
   destroy {
     PhysicsCore.world3dDestroy(_id)
