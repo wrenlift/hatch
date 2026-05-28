@@ -4,6 +4,12 @@ import "./scene"        for
   Transform,
   GlobalTransform,
   MeshRenderer,
+  RigidBody,
+  Collider,
+  PhysicsSystem3D,
+  PhysicsSystem2D,
+  AudioSource,
+  AudioListener,
   DirectionalLight,
   PointLight,
   SpotLight,
@@ -384,6 +390,284 @@ Test.describe("SceneRenderer3D ECS bridge") {
     Expect.that(dir.x.abs < 0.001).toBe(true)
     Expect.that(dir.y.abs < 0.001).toBe(true)
     Expect.that((dir.z + 1).abs < 0.001).toBe(true)
+  }
+}
+
+// Mock physics world for the PhysicsSystem3D / PhysicsSystem2D
+// bridge specs. Doesn't simulate anything — just records every
+// API call the bridge makes and lets the spec drive the
+// reported positions back into the ECS Transforms.
+class MockPhysicsWorld_ {
+  construct new() {
+    _calls   = []
+    _nextId  = 1
+    _bodies  = {}    // bodyId → { kind, desc, position }
+  }
+  calls  { _calls }
+
+  spawnDynamic(desc) {
+    var id = _nextId
+    _nextId = _nextId + 1
+    _bodies[id] = { "kind": "dynamic", "desc": desc, "position": desc["position"] }
+    _calls.add(["spawnDynamic", id, desc])
+    return id
+  }
+  spawnStatic(desc) {
+    var id = _nextId
+    _nextId = _nextId + 1
+    _bodies[id] = { "kind": "static", "desc": desc, "position": desc["position"] }
+    _calls.add(["spawnStatic", id, desc])
+    return id
+  }
+  spawnKinematic(desc) {
+    var id = _nextId
+    _nextId = _nextId + 1
+    _bodies[id] = { "kind": "kinematic", "desc": desc, "position": desc["position"] }
+    _calls.add(["spawnKinematic", id, desc])
+    return id
+  }
+  step(dt) { _calls.add(["step", dt]) }
+  position(bodyId) { _bodies[bodyId]["position"] }
+
+  // Spec convenience — pretend the simulation moved a body so the
+  // bridge's read-back pass has something to copy into Transform.
+  setPosition_(bodyId, list) { _bodies[bodyId]["position"] = list }
+}
+
+Test.describe("RigidBody + Collider components") {
+  Test.it("RigidBody defaults to dynamic, mass 1.0, no body id") {
+    var rb = RigidBody.new()
+    Expect.that(rb.kind).toBe("dynamic")
+    Expect.that(rb.mass).toBe(1.0)
+    Expect.that(rb.bodyId).toBe(null)
+    Expect.that(rb.linearVelocity).toBe(null)
+  }
+
+  Test.it("RigidBody accepts kind + mass via ctors") {
+    var rb1 = RigidBody.new("static")
+    Expect.that(rb1.kind).toBe("static")
+    Expect.that(rb1.mass).toBe(1.0)
+
+    var rb2 = RigidBody.new("kinematic", 50.0)
+    Expect.that(rb2.kind).toBe("kinematic")
+    Expect.that(rb2.mass).toBe(50.0)
+  }
+
+  Test.it("Collider stores the shape descriptor verbatim") {
+    var shape = { "kind": "ball", "radius": 0.5, "restitution": 0.6 }
+    var c = Collider.new(shape)
+    Expect.that(c.shape).toBe(shape)
+    Expect.that(c.shape["restitution"]).toBe(0.6)
+  }
+}
+
+Test.describe("PhysicsSystem3D bridge") {
+  Test.it("spawns the right kind for each RigidBody.kind") {
+    var w = World.new()
+    var pw = MockPhysicsWorld_.new()
+
+    var d = w.spawn()
+    w.attach(d, Transform.translation(1, 2, 3))
+    w.attach(d, RigidBody.new("dynamic", 5.0))
+    w.attach(d, Collider.new({ "kind": "ball", "radius": 0.5 }))
+
+    var s = w.spawn()
+    w.attach(s, Transform.translation(0, 0, 0))
+    w.attach(s, RigidBody.new("static"))
+    w.attach(s, Collider.new({ "kind": "box", "halfX": 5, "halfY": 0.1, "halfZ": 5 }))
+
+    var k = w.spawn()
+    w.attach(k, Transform.translation(10, 0, 0))
+    w.attach(k, RigidBody.new("kinematic", 2.0))
+    w.attach(k, Collider.new({ "kind": "capsule", "halfHeight": 1.0, "radius": 0.3 }))
+
+    PhysicsSystem3D.step(w, pw, 1.0 / 60)
+
+    var kinds = []
+    for (c in pw.calls) {
+      if (c[0] == "spawnDynamic" || c[0] == "spawnStatic" || c[0] == "spawnKinematic") {
+        kinds.add(c[0])
+      }
+    }
+    Expect.that(kinds.contains("spawnDynamic")).toBe(true)
+    Expect.that(kinds.contains("spawnStatic")).toBe(true)
+    Expect.that(kinds.contains("spawnKinematic")).toBe(true)
+  }
+
+  Test.it("seeds spawn position from Transform.position") {
+    var w = World.new()
+    var pw = MockPhysicsWorld_.new()
+    var e = w.spawn()
+    w.attach(e, Transform.translation(7, -3, 11))
+    w.attach(e, RigidBody.new())
+    w.attach(e, Collider.new({ "kind": "ball", "radius": 1.0 }))
+
+    PhysicsSystem3D.step(w, pw, 1.0 / 60)
+
+    var spawnCall = pw.calls[0]
+    var pos = spawnCall[2]["position"]
+    Expect.that(pos[0]).toBe(7)
+    Expect.that(pos[1]).toBe(-3)
+    Expect.that(pos[2]).toBe(11)
+  }
+
+  Test.it("forwards optional linearVelocity") {
+    var w = World.new()
+    var pw = MockPhysicsWorld_.new()
+    var e = w.spawn()
+    w.attach(e, Transform.identity)
+    var rb = RigidBody.new()
+    rb.linearVelocity = Vec3.new(2, 4, -1)
+    w.attach(e, rb)
+    w.attach(e, Collider.new({ "kind": "ball", "radius": 0.5 }))
+
+    PhysicsSystem3D.step(w, pw, 1.0 / 60)
+
+    var v = pw.calls[0][2]["linearVelocity"]
+    Expect.that(v[0]).toBe(2)
+    Expect.that(v[1]).toBe(4)
+    Expect.that(v[2]).toBe(-1)
+  }
+
+  Test.it("stamps RigidBody.bodyId after spawn") {
+    var w = World.new()
+    var pw = MockPhysicsWorld_.new()
+    var e = w.spawn()
+    var rb = RigidBody.new()
+    w.attach(e, Transform.identity)
+    w.attach(e, rb)
+    w.attach(e, Collider.new({ "kind": "ball", "radius": 0.5 }))
+    Expect.that(rb.bodyId).toBe(null)
+
+    PhysicsSystem3D.step(w, pw, 1.0 / 60)
+    Expect.that(rb.bodyId).toBe(1)
+
+    // Second step shouldn't re-spawn — already has a bodyId.
+    PhysicsSystem3D.step(w, pw, 1.0 / 60)
+    var spawnCount = 0
+    for (c in pw.calls) {
+      if (c[0] == "spawnDynamic") spawnCount = spawnCount + 1
+    }
+    Expect.that(spawnCount).toBe(1)
+  }
+
+  Test.it("writes simulated position back into Transform.position") {
+    var w = World.new()
+    var pw = MockPhysicsWorld_.new()
+    var e = w.spawn()
+    var t = Transform.translation(0, 10, 0)
+    var rb = RigidBody.new()
+    w.attach(e, t)
+    w.attach(e, rb)
+    w.attach(e, Collider.new({ "kind": "ball", "radius": 0.5 }))
+
+    PhysicsSystem3D.step(w, pw, 1.0 / 60)
+    // Pretend gravity dropped the ball a bit.
+    pw.setPosition_(rb.bodyId, [0, 9.5, 0])
+    PhysicsSystem3D.step(w, pw, 1.0 / 60)
+
+    Expect.that(t.position.y).toBe(9.5)
+  }
+
+  Test.it("doesn't write back static bodies") {
+    var w = World.new()
+    var pw = MockPhysicsWorld_.new()
+    var e = w.spawn()
+    var t = Transform.translation(0, 0, 0)
+    var rb = RigidBody.new("static")
+    w.attach(e, t)
+    w.attach(e, rb)
+    w.attach(e, Collider.new({ "kind": "box", "halfX": 5, "halfY": 0.1, "halfZ": 5 }))
+
+    PhysicsSystem3D.step(w, pw, 1.0 / 60)
+    pw.setPosition_(rb.bodyId, [99, 99, 99])
+    PhysicsSystem3D.step(w, pw, 1.0 / 60)
+
+    Expect.that(t.position.x).toBe(0)
+    Expect.that(t.position.y).toBe(0)
+    Expect.that(t.position.z).toBe(0)
+  }
+
+  Test.it("skips entities missing Transform or Collider") {
+    var w = World.new()
+    var pw = MockPhysicsWorld_.new()
+    var e = w.spawn()
+    w.attach(e, RigidBody.new())   // no Transform / Collider
+
+    PhysicsSystem3D.step(w, pw, 1.0 / 60)
+
+    var spawnCount = 0
+    for (c in pw.calls) {
+      if (c[0] == "spawnDynamic") spawnCount = spawnCount + 1
+    }
+    Expect.that(spawnCount).toBe(0)
+  }
+}
+
+Test.describe("PhysicsSystem2D bridge") {
+  Test.it("seeds 2D position from Transform.position xy") {
+    var w = World.new()
+    var pw = MockPhysicsWorld_.new()
+    var e = w.spawn()
+    w.attach(e, Transform.translation(3, 4, 99))  // z ignored
+    w.attach(e, RigidBody.new())
+    w.attach(e, Collider.new({ "kind": "ball", "radius": 0.5 }))
+
+    PhysicsSystem2D.step(w, pw, 1.0 / 60)
+
+    var pos = pw.calls[0][2]["position"]
+    Expect.that(pos.count).toBe(2)
+    Expect.that(pos[0]).toBe(3)
+    Expect.that(pos[1]).toBe(4)
+  }
+
+  Test.it("preserves Transform.position.z across writeback") {
+    var w = World.new()
+    var pw = MockPhysicsWorld_.new()
+    var e = w.spawn()
+    var t = Transform.translation(0, 0, 5)   // z = depth hint
+    var rb = RigidBody.new()
+    w.attach(e, t)
+    w.attach(e, rb)
+    w.attach(e, Collider.new({ "kind": "ball", "radius": 0.5 }))
+
+    PhysicsSystem2D.step(w, pw, 1.0 / 60)
+    pw.setPosition_(rb.bodyId, [10, 20])
+    PhysicsSystem2D.step(w, pw, 1.0 / 60)
+
+    Expect.that(t.position.x).toBe(10)
+    Expect.that(t.position.y).toBe(20)
+    Expect.that(t.position.z).toBe(5)   // untouched
+  }
+}
+
+Test.describe("Audio components") {
+  Test.it("AudioSource defaults to no sound, full volume, non-looping") {
+    var src = AudioSource.new()
+    Expect.that(src.sound).toBe(null)
+    Expect.that(src.volume).toBe(1.0)
+    Expect.that(src.loop).toBe(false)
+    Expect.that(src.spatial).toBe(false)
+  }
+
+  Test.it("AudioSource setters mutate") {
+    var src = AudioSource.new()
+    src.volume = 0.6
+    src.loop = true
+    src.spatial = true
+    Expect.that(src.volume).toBe(0.6)
+    Expect.that(src.loop).toBe(true)
+    Expect.that(src.spatial).toBe(true)
+  }
+
+  Test.it("AudioListener attaches as an ECS component with gain") {
+    var w = World.new()
+    var cam = w.spawn()
+    var listener = AudioListener.new()
+    listener.gain = 0.8
+    w.attach(cam, listener)
+    Expect.that(w.get(cam, AudioListener)).toBe(listener)
+    Expect.that(w.get(cam, AudioListener).gain).toBe(0.8)
   }
 }
 

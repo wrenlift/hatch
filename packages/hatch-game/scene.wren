@@ -180,6 +180,317 @@ class MeshRenderer {
   toString { "MeshRenderer(mesh=%(_mesh), material=%(_material))" }
 }
 
+/// Physics body component. Plain data — the bridge to a real
+/// physics simulation (`PhysicsSystem3D` / `PhysicsSystem2D`)
+/// reads the kind / mass / spawn metadata, calls the world's
+/// `spawnDynamic` / `spawnStatic` / `spawnKinematic`, and stashes
+/// the returned `bodyId` here for the sync-back pass.
+///
+/// `kind` is one of `"dynamic"` (gravity + force + collision
+/// response), `"static"` (immovable, infinite mass), or
+/// `"kinematic"` (animated by gameplay, collides with dynamics
+/// but isn't pushed by them).
+///
+/// ## Example
+///
+/// ```wren
+/// var ball = world.spawn()
+/// world.attach(ball, Transform.translation(0, 5, 0))
+/// world.attach(ball, RigidBody.new("dynamic", 1.0))
+/// world.attach(ball, Collider.new(Collider3D.ball(0.5)))
+/// ```
+class RigidBody {
+  /// Default: dynamic, mass 1.0, no initial linear velocity.
+  construct new() {
+    _kind = "dynamic"
+    _mass = 1.0
+    _linearVelocity = null
+    _bodyId = null
+  }
+
+  /// Explicit kind only.
+  ///
+  /// @param {String} kind. `"dynamic"` / `"static"` / `"kinematic"`.
+  construct new(kind) {
+    _kind = kind
+    _mass = 1.0
+    _linearVelocity = null
+    _bodyId = null
+  }
+
+  /// Explicit kind + mass.
+  ///
+  /// @param {String} kind. `"dynamic"` / `"static"` / `"kinematic"`.
+  /// @param {Num} mass. Body mass in kg. Ignored for static bodies.
+  construct new(kind, mass) {
+    _kind = kind
+    _mass = mass
+    _linearVelocity = null
+    _bodyId = null
+  }
+
+  /// `"dynamic"` / `"static"` / `"kinematic"`.
+  /// @returns {String}
+  kind     { _kind }
+  kind=(v) { _kind = v }
+
+  /// Body mass in kg. Static bodies treat this as infinite.
+  /// @returns {Num}
+  mass     { _mass }
+  mass=(v) { _mass = v }
+
+  /// Optional initial linear velocity. Set before the body is
+  /// first spawned to start moving at frame 0; mutations after
+  /// spawn are ignored (use the physics world's
+  /// `setLinearVelocity(bodyId, ...)` to change at runtime).
+  ///
+  /// @returns {Vec3|Null}
+  linearVelocity     { _linearVelocity }
+  linearVelocity=(v) { _linearVelocity = v }
+
+  /// Internal — physics body handle. `null` until
+  /// `PhysicsSystem3D.step` registers the body with the world.
+  /// Consumers read this to call physics-world methods directly
+  /// (apply force, set velocity, raycast filter, etc.).
+  ///
+  /// @returns {Num|Null}
+  bodyId        { _bodyId }
+  bodyId_=(id)  { _bodyId = id }
+
+  toString { "RigidBody(kind=%(_kind), mass=%(_mass), bodyId=%(_bodyId))" }
+}
+
+/// Collision shape component. Wraps a descriptor from
+/// `@hatch:physics`'s `Collider3D` / `Collider2D` static
+/// builders (a `Map` describing the kind + dimensions +
+/// material parameters like restitution / friction).
+///
+/// ## Example
+///
+/// ```wren
+/// world.attach(ball, Collider.new(Collider3D.ball(0.5, {
+///   "restitution": 0.6, "friction": 0.1
+/// })))
+/// ```
+class Collider {
+  /// Build from a shape descriptor.
+  ///
+  /// @param {Map} shape. The `Collider3D.X` / `Collider2D.X`
+  ///   Map; opaque to this class.
+  construct new(shape) {
+    _shape = shape
+  }
+
+  /// The shape descriptor passed at construction. The physics
+  /// bridge forwards this verbatim to `world.spawnX(descriptor)`.
+  /// @returns {Map}
+  shape     { _shape }
+  shape=(s) { _shape = s }
+
+  toString { "Collider(%(_shape))" }
+}
+
+/// Frame-once bridge between an ECS world and a 3D physics
+/// world (anything with the `@hatch:physics.World3D` shape:
+/// `.spawnDynamic` / `.spawnStatic` / `.spawnKinematic` /
+/// `.step(dt)` / `.position(bodyId)`). Duck-typed on those
+/// methods — `@hatch:game` doesn't depend on `@hatch:physics`.
+///
+/// Call order:
+///
+/// ```wren
+/// update(g) {
+///   PhysicsSystem3D.step(_world, _physics, g.dt)
+///   TransformPropagation.run(_world)
+/// }
+/// ```
+///
+/// `step` does three things, in order:
+/// 1. For every `(RigidBody, Collider, Transform)` entity whose
+///    `RigidBody.bodyId` is still null, spawn a body in the
+///    physics world (`dynamic` / `static` / `kinematic` based on
+///    `RigidBody.kind`) seeded from `Transform.position` +
+///    `RigidBody.linearVelocity`. Store the returned `bodyId`.
+/// 2. Advance the physics world by `dt`.
+/// 3. For every entity with a registered `bodyId` and a
+///    non-static `RigidBody`, read `physicsWorld.position(bodyId)`
+///    and write it back into the entity's `Transform.position`.
+class PhysicsSystem3D {
+  /// Drive one physics tick.
+  ///
+  /// @param {World} world. ECS world.
+  /// @param {Object} physicsWorld. A `@hatch:physics.World3D` (or
+  ///   anything with `.spawnDynamic` / `.spawnStatic` /
+  ///   `.spawnKinematic` / `.step(dt)` / `.position(bodyId)`).
+  /// @param {Num} dt. Frame delta in seconds.
+  static step(world, physicsWorld, dt) {
+    // 1. Spawn unregistered bodies.
+    for (e in world.query(RigidBody)) {
+      var rb = world.get(e, RigidBody)
+      if (rb.bodyId != null) continue
+      var col = world.get(e, Collider)
+      var t   = world.get(e, Transform)
+      if (col == null || t == null) continue
+      var desc = {
+        "shape":    col.shape,
+        "position": [t.position.x, t.position.y, t.position.z],
+        "mass":     rb.mass,
+      }
+      if (rb.linearVelocity != null) {
+        var v = rb.linearVelocity
+        desc["linearVelocity"] = [v.x, v.y, v.z]
+      }
+      var bodyId = spawnBody3d_(physicsWorld, rb.kind, desc)
+      rb.bodyId_ = bodyId
+    }
+
+    // 2. Advance simulation.
+    physicsWorld.step(dt)
+
+    // 3. Read positions back into Transforms.
+    for (e in world.query(RigidBody)) {
+      var rb = world.get(e, RigidBody)
+      if (rb.bodyId == null) continue
+      if (rb.kind == "static") continue
+      var t = world.get(e, Transform)
+      if (t == null) continue
+      var pos = physicsWorld.position(rb.bodyId)
+      t.position = Vec3.new(pos[0], pos[1], pos[2])
+    }
+  }
+
+  static spawnBody3d_(physicsWorld, kind, desc) {
+    if (kind == "static")    return physicsWorld.spawnStatic(desc)
+    if (kind == "kinematic") return physicsWorld.spawnKinematic(desc)
+    return physicsWorld.spawnDynamic(desc)
+  }
+}
+
+/// 2D twin of [PhysicsSystem3D]. Pulls only the X / Y axes from
+/// `Transform.position` and writes the same pair back. Z stays
+/// untouched, so 2D entities can still parent under 3D scene
+/// hierarchies (Z is treated as a depth hint).
+class PhysicsSystem2D {
+  /// Drive one 2D physics tick.
+  ///
+  /// @param {World} world. ECS world.
+  /// @param {Object} physicsWorld. A `@hatch:physics.World2D`.
+  /// @param {Num} dt. Frame delta in seconds.
+  static step(world, physicsWorld, dt) {
+    for (e in world.query(RigidBody)) {
+      var rb = world.get(e, RigidBody)
+      if (rb.bodyId != null) continue
+      var col = world.get(e, Collider)
+      var t   = world.get(e, Transform)
+      if (col == null || t == null) continue
+      var desc = {
+        "shape":    col.shape,
+        "position": [t.position.x, t.position.y],
+        "mass":     rb.mass,
+      }
+      if (rb.linearVelocity != null) {
+        var v = rb.linearVelocity
+        desc["linearVelocity"] = [v.x, v.y]
+      }
+      var bodyId = spawnBody2d_(physicsWorld, rb.kind, desc)
+      rb.bodyId_ = bodyId
+    }
+
+    physicsWorld.step(dt)
+
+    for (e in world.query(RigidBody)) {
+      var rb = world.get(e, RigidBody)
+      if (rb.bodyId == null) continue
+      if (rb.kind == "static") continue
+      var t = world.get(e, Transform)
+      if (t == null) continue
+      var pos = physicsWorld.position(rb.bodyId)
+      t.position = Vec3.new(pos[0], pos[1], t.position.z)
+    }
+  }
+
+  static spawnBody2d_(physicsWorld, kind, desc) {
+    if (kind == "static")    return physicsWorld.spawnStatic(desc)
+    if (kind == "kinematic") return physicsWorld.spawnKinematic(desc)
+    return physicsWorld.spawnDynamic(desc)
+  }
+}
+
+/// Audio-source component. Stores the `@hatch:audio.Sound`
+/// handle + per-source playback parameters. `spatial = true`
+/// flags the source as 3D-positional — when the audio plugin
+/// grows pan + distance attenuation (Phase 9 in the parity
+/// plan), an audio system will read the entity's
+/// `GlobalTransform` to derive the listener-relative position.
+///
+/// Until then the source acts as a data carrier; gameplay code
+/// triggers playback via `Audio.play(source.sound, {"volume":
+/// source.volume, "loop": source.loop})`.
+class AudioSource {
+  /// Default: full-volume, non-looping, 2D one-shot. Set
+  /// `sound` after construction via the setter.
+  construct new() {
+    _sound = null
+    _volume = 1.0
+    _loop = false
+    _spatial = false
+  }
+
+  /// Explicit one-shot.
+  ///
+  /// @param {Sound} sound. `@hatch:audio.Sound` handle.
+  construct new(sound) {
+    _sound = sound
+    _volume = 1.0
+    _loop = false
+    _spatial = false
+  }
+
+  sound      { _sound }
+  sound=(s)  { _sound = s }
+
+  /// Linear gain, 0..1. Default 1.0.
+  /// @returns {Num}
+  volume     { _volume }
+  volume=(v) { _volume = v }
+
+  /// Loop the source. Default `false`.
+  /// @returns {Bool}
+  loop       { _loop }
+  loop=(v)   { _loop = v }
+
+  /// When true, the source's world position (`GlobalTransform`
+  /// translation) feeds the spatial audio mixer. The current
+  /// audio plugin treats this as a hint only; full positional
+  /// audio lands when the mixer grows pan + distance attenuation.
+  /// @returns {Bool}
+  spatial     { _spatial }
+  spatial=(v) { _spatial = v }
+
+  toString { "AudioSource(sound=%(_sound), vol=%(_volume), loop=%(_loop))" }
+}
+
+/// Audio-listener marker. Place one on the camera entity (or
+/// wherever the player's ears are). The eventual spatial-audio
+/// integration reads the entity's `GlobalTransform` translation
+/// + forward axis to position the 3D mixer's listener.
+///
+/// Multiple listeners are valid; the first one queried wins.
+class AudioListener {
+  /// Default: listener with the unit-gain master attenuation.
+  construct new() {
+    _gain = 1.0
+  }
+
+  /// Master gain applied to every spatial source heard through
+  /// this listener.
+  /// @returns {Num}
+  gain     { _gain }
+  gain=(v) { _gain = v }
+
+  toString { "AudioListener(gain=%(_gain))" }
+}
+
 /// Directional light component. The light has no spatial position;
 /// it shines in a fixed direction across the whole world. Direction
 /// comes from the entity's local `Transform` — the forward axis
