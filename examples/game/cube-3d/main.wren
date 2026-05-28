@@ -10,7 +10,7 @@
 
 import "@hatch:game"  for Game
 import "@hatch:gpu"   for Renderer3D, Renderer2D, Camera3D, Camera2D, Mesh,
-                          Material, Light, Sprite
+                          Material, Sprite
 import "@hatch:math"  for Vec3, Vec4, Mat4
 import "@hatch:image" for Image
 
@@ -30,10 +30,13 @@ class Cube3D is Game {
     _camera = Camera3D.perspective(60, aspect, 0.1, 100)
     _camera.lookAt(Vec3.new(3, 2.5, 5), Vec3.new(0, 0, 0), Vec3.new(0, 1, 0))
 
-    _light = Light.new()
-    _light.direction = Vec3.new(-0.4, -1.0, -0.3)
-    _light.color     = Vec3.new(1.0, 0.95, 0.85)
-    _light.ambient   = Vec3.new(0.18, 0.20, 0.25)
+    // Plain values now — Renderer3D's light API takes (direction,
+    // color, intensity) and applies attenuation per kind. The
+    // ambient term replaces the old Light.ambient role.
+    _sunDir       = Vec3.new(-0.4, -1.0, -0.3)
+    _sunColor     = Vec3.new(1.0, 0.95, 0.85)
+    _sunIntensity = 3.0
+    _ambient      = Vec3.new(0.18, 0.20, 0.25)
 
     _renderer3d = Renderer3D.new(g.device, g.surfaceFormat, g.depthFormat)
 
@@ -76,7 +79,9 @@ class Cube3D is Game {
   draw(g) {
     var t = g.elapsed
 
-    _renderer3d.beginFrame(g.pass, _camera, _light)
+    _renderer3d.beginFrame(g.pass, _camera)
+    _renderer3d.setAmbient(_ambient, 1.0)
+    _renderer3d.addDirectional(_sunDir, _sunColor, _sunIntensity)
 
     var groundXf = Mat4.translation(0, -0.75, 0)
     _renderer3d.draw(_ground, _groundMat, groundXf)
