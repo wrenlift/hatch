@@ -63,6 +63,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-28T12:43:42.817671+00:00"
 updated_at = "2026-04-28T12:43:42.817671+00:00"
 
+[packages."@hatch:audio-0.1.4"]
+name = "@hatch:audio"
+version = "0.1.4"
+git = "https://github.com/wrenlift/hatch"
+description = "General-purpose audio playback for WrenLift apps. cpal-backed output stream + a tiny mixer; WAV decoding via hound. `Audio.context()` opens the device, `Sound.load(bytes)` decodes a clip, `audio.play(sound)` schedules immediate playback against the global mixer."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:audio"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/audio/0.1.4/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/audio/0.1.4/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-28T08:16:17.701618+00:00"
+updated_at = "2026-05-28T08:16:17.701618+00:00"
+
 [packages."@hatch:audio-0.1.3"]
 name = "@hatch:audio"
 version = "0.1.3"
@@ -354,6 +367,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:03.569318+00:00"
 updated_at = "2026-04-20T16:29:03.569318+00:00"
 
+[packages."@hatch:fsm-0.1.0"]
+name = "@hatch:fsm"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch"
+description = "Harel statecharts for Wren. Hierarchical and parallel states, history, guards, entry/exit/transition actions, context, signal-based observation. Pure Wren."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:fsm"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/fsm/0.1.0/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/fsm/0.1.0/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-28T05:57:05.004444+00:00"
+updated_at = "2026-05-28T05:57:05.004444+00:00"
+
 [packages."@hatch:game-0.2.11"]
 name = "@hatch:game"
 version = "0.2.11"
@@ -438,6 +464,19 @@ description = "Tiny game-loop scaffold for the WrenLift game framework. `Game.ru
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-28T12:43:44.455346+00:00"
 updated_at = "2026-04-28T12:43:44.455346+00:00"
+
+[packages."@hatch:gpu-0.2.13"]
+name = "@hatch:gpu"
+version = "0.2.13"
+git = "https://github.com/wrenlift/hatch"
+description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, CommandEncoder, RenderPass on the bottom; Camera2D/3D, Renderer2D (sprite batcher), Renderer3D (lit), Mesh, Material on top. wgpu on native, WebGPU on web \u2014 same Wren API both targets."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:gpu"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/gpu/0.2.13/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/gpu/0.2.13/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-28T08:18:26.220379+00:00"
+updated_at = "2026-05-28T08:18:26.220379+00:00"
 
 [packages."@hatch:gpu-0.2.12"]
 name = "@hatch:gpu"
@@ -632,6 +671,19 @@ description = "Synchronous HTTP/1.1 client with TLS."
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:03.93575+00:00"
 updated_at = "2026-04-20T16:29:03.93575+00:00"
+
+[packages."@hatch:image-0.1.6"]
+name = "@hatch:image"
+version = "0.1.6"
+git = "https://github.com/wrenlift/hatch"
+description = "Image encode + decode. PNG / JPG / BMP / WebP in, RGBA8 buffer out \u2014 `Image.decode(bytes)` feeds straight into `@hatch:gpu`'s `Device.uploadImage(image)`, and `Image.encodePng(...)` writes synthesized buffers back out. Backed by the `image` crate."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:image"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/image/0.1.6/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/image/0.1.6/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-28T08:16:26.214379+00:00"
+updated_at = "2026-05-28T08:16:26.214379+00:00"
 
 [packages."@hatch:image-0.1.5"]
 name = "@hatch:image"
@@ -893,6 +945,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:04.839683+00:00"
 updated_at = "2026-04-20T16:29:04.839683+00:00"
 
+[packages."@hatch:physics-0.1.5"]
+name = "@hatch:physics"
+version = "0.1.5"
+git = "https://github.com/wrenlift/hatch"
+description = "Rapier-backed physics. `World2D` and `World3D` from one import \u2014 bodies, colliders, gravity, force / impulse, position + velocity reads. Bundles rapier2d + rapier3d in a single cdylib so games never have to choose between dimensions at the package level. Wires into `@hatch:game` for a step-per-frame physics loop."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:physics"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/physics/0.1.5/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/physics/0.1.5/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-28T08:18:10.140818+00:00"
+updated_at = "2026-05-28T08:18:10.140818+00:00"
+
 [packages."@hatch:physics-0.1.4"]
 name = "@hatch:physics"
 version = "0.1.4"
@@ -1051,6 +1116,32 @@ description = "TCP listeners + connections and UDP datagram sockets. Blocking an
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-23T22:18:17.761353+00:00"
 updated_at = "2026-04-23T22:18:17.761353+00:00"
+
+[packages."@hatch:sqlite-0.1.9"]
+name = "@hatch:sqlite"
+version = "0.1.9"
+git = "https://github.com/wrenlift/hatch"
+description = "Embedded SQLite. `Database.open(path)` returns a connection; prepared statements with named parameter binding, rows iterated as Maps, transactions, error handling. Backed by rusqlite (bundled libsqlite \u2014 no system dependency)."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:sqlite"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/sqlite/0.1.9/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/sqlite/0.1.9/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-28T08:16:34.781068+00:00"
+updated_at = "2026-05-28T08:16:34.781068+00:00"
+
+[packages."@hatch:sqlite-0.1.8"]
+name = "@hatch:sqlite"
+version = "0.1.8"
+git = "https://github.com/wrenlift/hatch"
+description = "Embedded SQLite. `Database.open(path)` returns a connection; prepared statements with named parameter binding, rows iterated as Maps, transactions, error handling. Backed by rusqlite (bundled libsqlite \u2014 no system dependency)."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:sqlite"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/sqlite/0.1.8/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/sqlite/0.1.8/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-28T06:12:04.022097+00:00"
+updated_at = "2026-05-28T06:12:04.022097+00:00"
 
 [packages."@hatch:sqlite-0.1.7"]
 name = "@hatch:sqlite"
@@ -1384,6 +1475,19 @@ description = "Server-rendered, htmx-native web framework for Wren. Router, midd
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-25T14:09:48.115122+00:00"
 updated_at = "2026-04-25T14:09:48.115122+00:00"
+
+[packages."@hatch:window-0.2.10"]
+name = "@hatch:window"
+version = "0.2.10"
+git = "https://github.com/wrenlift/hatch"
+description = "Window + input for any WrenLift app. winit on native, page-attached canvas on web \u2014 same `Window.create({...})` API, same `pollEvents` / `closeRequested` / `size` surface across targets. Bring-your-own canvas via `Window.attach(elementId)` on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:window"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/window/0.2.10/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/window/0.2.10/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-28T08:18:36.154772+00:00"
+updated_at = "2026-05-28T08:18:36.154772+00:00"
 
 [packages."@hatch:window-0.2.9"]
 name = "@hatch:window"
