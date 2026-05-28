@@ -1,7 +1,7 @@
 name        = "@hatch:physics"
-version     = "0.1.6"
+version     = "0.1.7"
 entry       = "physics"
-description = "Rapier-backed physics. `World2D` and `World3D` from one import — bodies, colliders, gravity, force / impulse, position + velocity reads. Bundles rapier2d + rapier3d in a single cdylib so games never have to choose between dimensions at the package level. Wires into `@hatch:game` for a step-per-frame physics loop."
+description = "Rapier-backed physics. `World2D` and `World3D` from one import — bodies, colliders, gravity, force / impulse, position + velocity reads, raycasts, and contact-event streams. Bundles rapier2d + rapier3d in a single cdylib so games never have to choose between dimensions at the package level. Wires into `@hatch:game` for a step-per-frame physics loop."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:physics"
 readme   = "README.md"
 
@@ -9,11 +9,10 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-# 0.1.5 republishes against `e52ba41` where the plugin migrated
-# to the `wlift_abi` opaque-VM C shim — no more `wren_lift` Rust
-# internals in the cdylib. Future host bumps only need a rev
-# bump here when the `wlift_plugin_*` C surface grows.
-rev   = "e52ba41"
+# 0.1.7 brings raycasts + contact events. Track the wren_lift
+# rev that lit up the `ChannelEventCollector` path on the plugin
+# (still wlift_abi-only on the C surface, no host ABI churn).
+rev   = "05cbc54"
 crate = "wlift_physics"
 
 [native_libs.wlift_physics]
