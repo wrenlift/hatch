@@ -116,6 +116,43 @@ class GlobalTransform {
   toString { "GlobalTransform(%(_matrix))" }
 }
 
+/// ECS-side bind between an entity and its drawable: a
+/// `@hatch:gpu` `Mesh` + the `Material` it draws with. The
+/// renderer reads `(Transform, MeshRenderer)` (or the propagated
+/// `GlobalTransform` once `TransformPropagation` has run) and
+/// records one draw per match.
+///
+/// ## Example
+///
+/// ```wren
+/// var e = world.spawn()
+/// world.attach(e, Transform.new())
+/// world.attach(e, MeshRenderer.new(cubeMesh, redMaterial))
+/// ```
+class MeshRenderer {
+  construct new(mesh, material) {
+    _mesh = mesh
+    _material = material
+    _visible = true
+  }
+
+  /// The `@hatch:gpu` `Mesh` handle to draw.
+  mesh        { _mesh }
+  mesh=(m)    { _mesh = m }
+
+  /// The `@hatch:gpu` `Material` describing how to shade `mesh`.
+  material    { _material }
+  material=(m) { _material = m }
+
+  /// Cull flag. When false the renderer skips this entity for the
+  /// frame; the Transform / GlobalTransform components stay
+  /// up-to-date so flipping back is free.
+  visible     { _visible }
+  visible=(v) { _visible = v }
+
+  toString { "MeshRenderer(mesh=%(_mesh), material=%(_material))" }
+}
+
 /// Frame-once walk over the ECS hierarchy that turns local
 /// `Transform`s into propagated `GlobalTransform`s. Roots (any
 /// entity with a `Transform` but no `Parent`) are walked first;
