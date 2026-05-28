@@ -66,7 +66,7 @@ class EcsCubes is Game {
     // FIFO of dynamic cube entity ids — bounded so the simulation
     // stays smooth as the user spams clicks.
     _cubes      = []
-    _cubeLimit  = 20
+    _cubeLimit  = 200
     _frameCounter = 0
 
     // Lights: brighter ambient + key sun + fill light. The
