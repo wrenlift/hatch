@@ -75,6 +75,13 @@ import "./scene" for
   TransformPropagation,
   SceneRenderer3D
 
+// Semantic input mapping. `Actions.define("jump", [...])` and
+// `Actions.justPressed("jump")` decouple game code from raw key
+// codes; `Actions.emitter` exposes the press / release stream
+// so `@hatch:fsm` statecharts can subscribe directly via
+// `chart.bindEvents(Actions.emitter, [...])`.
+import "./actions" for Actions
+
 // On web, the main fiber holds the JS thread until it parks on
 // an async bridge. The frame loop yields with
 // `Browser.nextFrame.await` (vsync-paced via requestAnimationFrame
@@ -586,6 +593,13 @@ class Game {
       var events = window.pollEvents
       g.input.beginFrame_
       Game.drainEvents_(events, g)
+      // Refresh semantic action state (held / justPressed /
+      // justReleased / value) from the now-current Input. Also
+      // emits press / release events on `Actions.emitter` —
+      // any StateChart that called `bindEvents(Actions.emitter, …)`
+      // sees them as transition triggers without the frame loop
+      // needing to know about it.
+      Actions.update_(g.input)
 
       // Poll the live window size every frame instead of relying
       // on `WindowEvent::Resized` reaching us through the event
