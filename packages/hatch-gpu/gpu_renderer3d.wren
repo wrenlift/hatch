@@ -520,23 +520,25 @@ class Renderer3D {
     // Sharing one UBO across draws within a frame collapses
     // every model matrix to the last `writeFloats` call — see
     // pool comment in the constructor.
-    var slot = drawSlot_()
-    slot["ubo"].writeFloats(0, _drawUboFloats)
+    var i = reserveDrawSlot_()
+    _drawUboPool[i].writeFloats(0, _drawUboFloats)
 
     // Resolve material bind group; rebuild on revision change.
     var entry = bindGroupFor_(material)
     var pass = _pass
-    pass.setBindGroup(1, slot["bg"])
+    pass.setBindGroup(1, _drawBindGroupPool[i])
     pass.setBindGroup(2, entry["bg"])
     pass.setVertexBuffer(0, mesh.vertexBuffer)
     pass.setIndexBuffer(mesh.indexBuffer, "uint32")
     pass.drawIndexed(mesh.indexCount)
   }
 
-  // Reserve the next free per-draw UBO + BindGroup slot. Grows
-  // the pool by one when the scene's draw count exceeds previous
-  // frames'; otherwise reuses an existing slot.
-  drawSlot_() {
+  // Reserve the next free per-draw slot. Grows the parallel
+  // pool arrays when the scene's draw count exceeds previous
+  // frames'; otherwise just bumps the index. Returns the slot
+  // index — callers read `_drawUboPool[i]` / `_drawBindGroupPool[i]`
+  // directly so the hot path never allocates a Map wrapper.
+  reserveDrawSlot_() {
     if (_drawIndex >= _drawUboPool.count) {
       var ubo = _device.createBuffer({
         "size":  Renderer3D.DRAW_UBO_BYTES_,
@@ -552,7 +554,7 @@ class Renderer3D {
     }
     var i = _drawIndex
     _drawIndex = _drawIndex + 1
-    return { "ubo": _drawUboPool[i], "bg": _drawBindGroupPool[i] }
+    return i
   }
 
   commitScene_() {

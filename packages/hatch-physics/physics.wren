@@ -53,6 +53,8 @@ foreign class PhysicsCore {
   foreign static world2dDespawn(worldId, bodyId)
   #!symbol = "wlift_physics_world2d_position"
   foreign static world2dPosition(worldId, bodyId)
+  #!symbol = "wlift_physics_world2d_rotation"
+  foreign static world2dRotation(worldId, bodyId)
   #!symbol = "wlift_physics_world2d_linear_velocity"
   foreign static world2dLinearVelocity(worldId, bodyId)
   #!symbol = "wlift_physics_world2d_set_linear_velocity"
@@ -79,6 +81,12 @@ foreign class PhysicsCore {
   foreign static world3dDespawn(worldId, bodyId)
   #!symbol = "wlift_physics_world3d_position"
   foreign static world3dPosition(worldId, bodyId)
+  #!symbol = "wlift_physics_world3d_position_into"
+  foreign static world3dPositionInto(worldId, bodyId, out, offset)
+  #!symbol = "wlift_physics_world3d_rotation"
+  foreign static world3dRotation(worldId, bodyId)
+  #!symbol = "wlift_physics_world3d_rotation_into"
+  foreign static world3dRotationInto(worldId, bodyId, out, offset)
   #!symbol = "wlift_physics_world3d_linear_velocity"
   foreign static world3dLinearVelocity(worldId, bodyId)
   #!symbol = "wlift_physics_world3d_set_linear_velocity"
@@ -116,6 +124,11 @@ class World2D {
 
   /// Read-back helpers. Returns Lists for cheap `[x, y]` results.
   position(bodyId)       { PhysicsCore.world2dPosition(_id, bodyId) }
+  /// Body orientation as a `Num` — the angle in radians around
+  /// the implicit Z axis. Positive values rotate
+  /// counter-clockwise in screen space.
+  /// @returns {Num}
+  rotation(bodyId)       { PhysicsCore.world2dRotation(_id, bodyId) }
   linearVelocity(bodyId) { PhysicsCore.world2dLinearVelocity(_id, bodyId) }
 
   /// Write-back / forces.
@@ -173,6 +186,32 @@ class World3D {
   despawn(bodyId)            { PhysicsCore.world3dDespawn(_id, bodyId) }
 
   position(bodyId)       { PhysicsCore.world3dPosition(_id, bodyId) }
+  /// Non-allocating position read — write the body's (x, y, z)
+  /// into `out` (a `Float32Array`) starting at element `offset`.
+  /// Use this in hot per-frame paths to dodge the `List<Num>`
+  /// alloc that `position(bodyId)` returns. Three f32s written
+  /// per call.
+  ///
+  /// @param {Num} bodyId
+  /// @param {Float32Array} out
+  /// @param {Num} offset. Element index (not byte offset).
+  positionInto(bodyId, out, offset) {
+    PhysicsCore.world3dPositionInto(_id, bodyId, out, offset)
+  }
+  /// Body orientation as a `List<Num>` in scalar-first quaternion
+  /// layout: `[w, x, y, z]`. Construct a `@hatch:math.Quat` from
+  /// it directly: `Quat.new(q[0], q[1], q[2], q[3])`.
+  /// @returns {List<Num>}
+  rotation(bodyId)       { PhysicsCore.world3dRotation(_id, bodyId) }
+  /// Non-allocating rotation read — same shape as `positionInto`,
+  /// writes 4 f32s in (w, x, y, z) scalar-first order.
+  ///
+  /// @param {Num} bodyId
+  /// @param {Float32Array} out
+  /// @param {Num} offset. Element index (not byte offset).
+  rotationInto(bodyId, out, offset) {
+    PhysicsCore.world3dRotationInto(_id, bodyId, out, offset)
+  }
   linearVelocity(bodyId) { PhysicsCore.world3dLinearVelocity(_id, bodyId) }
 
   setLinearVelocity(bodyId, x, y, z) { PhysicsCore.world3dSetLinearVelocity(_id, bodyId, x, y, z) }
