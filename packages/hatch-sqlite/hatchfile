@@ -1,5 +1,5 @@
 name        = "@hatch:sqlite"
-version     = "0.1.8"
+version     = "0.1.9"
 entry       = "sqlite"
 description = "Embedded SQLite. `Database.open(path)` returns a connection; prepared statements with named parameter binding, rows iterated as Maps, transactions, error handling. Backed by rusqlite (bundled libsqlite — no system dependency)."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:sqlite"
@@ -21,17 +21,15 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-# 0.1.8 bumps to a revision that picks up the AOT-runtime fixes
-# in `5051d6f` (SM-tainted CallStaticSelf routed through
-# `wren_call_N`, 8-user-arg constructor JIT entry, empty-MIR
-# walker bailout). Site under AOT needs all three — the FSM
-# package's `applyTransitionFromMap_` tripped the verifier and
-# the `StateNode_` constructor hit the 7-arg dispatch cap. The
-# plugin dylib is rebuilt at this rev so its ABI matches any
-# consumer wren_lift binary at or past this commit.
-# `e074b57` gates the dladdr-based AOT-frame label resolver to
-# unix so the Windows plugin CI matrix builds.
-rev   = "e074b57"
+# 0.1.9 republishes against `e52ba41` (post-`5ac41ce`), where the
+# plugin migrated to the `wlift_abi` opaque-VM C shim. The dylib
+# no longer statically links `wren_lift` Rust internals; VM /
+# GcImpl / ObjList layout changes in the host can't silently
+# SIGSEGV the cdylib anymore. Future plugin republishes only need
+# this `rev` bump when the host's `wlift_plugin_*` C surface
+# grows (additive bumps stay compatible; signature changes need
+# an `ABI_VERSION` bump in `wlift_abi`).
+rev   = "e52ba41"
 crate = "wlift_sqlite"
 
 # Per-platform dylib paths. CI populates `libs/` via the
