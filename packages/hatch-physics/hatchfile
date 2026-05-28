@@ -1,5 +1,5 @@
 name        = "@hatch:physics"
-version     = "0.1.4"
+version     = "0.1.5"
 entry       = "physics"
 description = "Rapier-backed physics. `World2D` and `World3D` from one import — bodies, colliders, gravity, force / impulse, position + velocity reads. Bundles rapier2d + rapier3d in a single cdylib so games never have to choose between dimensions at the package level. Wires into `@hatch:game` for a step-per-frame physics loop."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:physics"
@@ -9,7 +9,11 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-rev   = "6c2e530"
+# 0.1.5 republishes against `e52ba41` where the plugin migrated
+# to the `wlift_abi` opaque-VM C shim — no more `wren_lift` Rust
+# internals in the cdylib. Future host bumps only need a rev
+# bump here when the `wlift_plugin_*` C surface grows.
+rev   = "e52ba41"
 crate = "wlift_physics"
 
 [native_libs.wlift_physics]
