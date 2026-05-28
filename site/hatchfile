@@ -19,3 +19,7 @@ description = "hatch.wrenlift.com — landing page for Hatch. Server-rendered wi
 "@hatch:http"   = "0.3.2"
 "@hatch:toml"   = "0.1.0"
 "@hatch:os"     = "0.1.1"
+# Path dep until @hatch:fsm 0.1.0 publishes. Drives the boot
+# lifecycle state machine in `lib/lifecycle.wren` and the
+# `/readyz` readiness probe.
+"@hatch:fsm"    = { path = "../packages/hatch-fsm" }

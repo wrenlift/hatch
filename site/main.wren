@@ -8,9 +8,11 @@ import "@hatch:web"      for App, Static, Response
 import "@hatch:template" for TemplateRegistry, FnLoader
 import "@hatch:fs"       for Fs
 import "@hatch:os"       for Os
+import "@hatch:time"     for Clock
 import "./lib/catalog"   for Catalog
 import "./lib/api"       for Api
 import "./lib/badge"     for Badge
+import "./lib/lifecycle" for Lifecycle
 
 // Render the cozy 404 page. Used by every 404-producing route
 // (missing guide, missing blog, missing package). The path is
@@ -54,6 +56,14 @@ var CACHE_BLOG     = "public, max-age=3600, stale-while-revalidate=86400"     //
 var CACHE_FRAGMENT = "no-cache"                                                // htmx swaps depend on query state
 
 var app = App.new()
+
+// Boot-lifecycle state machine. See `lib/lifecycle.wren` for the
+// chart shape; we drive it around the existing boot stages by
+// updating `Lifecycle.fsm.context` and `send`-ing the appropriate
+// event at each transition point. `/readyz` reads `Lifecycle.snapshot`.
+Lifecycle.start()
+Lifecycle.fsm.context["startedAtMs"] = (Clock.mono * 1000).floor
+Lifecycle.fsm.send("boot")
 
 // `/assets/*` cache policy. The sprite SVG, the CSS, the
 // CodeMirror module — all immutable per deploy (Fly's image
@@ -118,11 +128,16 @@ var bootFiber = Fiber.new { Catalog.boot() }
 while (!bootFiber.isDone) {
   bootFiber.try()
 }
+Lifecycle.fsm.context["bootDurationMs"] = (Clock.mono * 1000).floor - Lifecycle.fsm.context["startedAtMs"]
 if (bootFiber.error != null) {
+  Lifecycle.fsm.context["catalogError"] = "%(bootFiber.error)"
   System.print("boot: catalog hydration failed: %(bootFiber.error)")
   System.print("boot: continuing with empty catalog — refresh later")
+  Lifecycle.fsm.send("catalogFailed")
 } else {
+  Lifecycle.fsm.context["catalogPackages"] = Catalog.count
   System.print("boot: catalog: %(Catalog.count) distinct packages loaded")
+  Lifecycle.fsm.send("catalogHydrated")
 }
 
 // Build the context any landing-page render needs. Used by both
@@ -478,6 +493,32 @@ app.get("/healthz") {|req|
   return r
 }
 
+// `/readyz` — readiness probe. Returns 200 only once the boot
+// state machine reaches `serving`; otherwise 503 with a short
+// body describing the current phase. The body is human-readable
+// (Fly's UI doesn't render JSON) and includes the boot duration
+// + catalog stats so a hung phase shows up in `fly logs` as the
+// last reported state. `/healthz` stays minimal for liveness;
+// readiness is the right place to gate traffic during boot.
+app.get("/readyz") {|req|
+  var snap = Lifecycle.snapshot
+  var status = snap["ready"] ? 200 : 503
+  var lines = [
+    "ready: %(snap["ready"])",
+    "state: %(snap["state"])",
+    "bootMs: %(snap["bootDurationMs"])",
+    "catalog: %(snap["catalogPackages"]) packages"
+  ]
+  if (snap["catalogError"] != null) {
+    lines.add("catalogError: %(snap["catalogError"])")
+  }
+  var r = Response.new(status)
+  r.text(lines.join("\n") + "\n")
+  r.header("Content-Type", "text/plain; charset=utf-8")
+  r.header("Cache-Control", "no-store")
+  return r
+}
+
 // `/badge/version` — static "version: <hatchfile-version>"
 // badge. Reads the deployed site's hatchfile once at boot,
 // so the README's version badge tracks the live deploy
@@ -623,4 +664,5 @@ app.spawn(Fn.new { Catalog.warmReadmes() })
 // 2.6s before this change).
 app.spawn(Fn.new { warmBlogs.call() })
 
+Lifecycle.fsm.send("listen")
 app.listen("0.0.0.0:" + port)
