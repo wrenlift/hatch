@@ -97,9 +97,6 @@ var fsm = StateChart.build {|c|
 
     sess.state("gameOver") {|s|
       s.entry {|ctx, evt|
-        // Subscript interpolation works fine; bare-param multi-interp
-        // is the case bitten by the tiered JIT bug, so keep the
-        // formatting through map subscripts here.
         System.print("[gameOver] score=%(ctx["score"]) lives=%(ctx["lives"])")
       }
       s.final()
@@ -117,14 +114,8 @@ System.print(fsm.tree)
 // Wire signal-based observers. The chart definition above never
 // mentions sound effects, UI, or analytics — they're added here
 // as decoupled subscribers.
-//
-// NB: string `+` concat below (rather than `"%(from) -> %(to)"`)
-// is a workaround for a tiered-JIT bug — multi-`%()` strings whose
-// interpolation slots reference closure params currently render as
-// `null` under `hatch run`. Single-interp inside a closure works,
-// so action handlers above can keep the `%()` form.
 fsm.on("transition") {|from, to, evt|
-  System.print("    [sfx]  transition " + from + " -> " + to + " via " + evt)
+  System.print("    [sfx]  transition %(from) -> %(to) via %(evt)")
 }
 fsm.on("done") {|path|
   System.print("    [ui]   chart done: %(path)")
