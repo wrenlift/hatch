@@ -1,0 +1,12 @@
+name        = "ecs-cubes"
+version     = "0.1.0"
+entry       = "main"
+description = "100 cubes raining onto a ground plane, simulated by @hatch:physics and rendered through @hatch:game's PBR Renderer3D — driven entirely off ECS components (Transform / MeshRenderer / RigidBody / Collider / DirectionalLight / AmbientLight). Game code never builds a Mat4 by hand; PhysicsSystem3D → TransformPropagation → SceneRenderer3D close the loop."
+
+# @hatch:gpu + @hatch:window come transitively via @hatch:game.
+[dependencies]
+"@hatch:game"    = { path = "../../../packages/hatch-game" }
+"@hatch:ecs"     = { path = "../../../packages/hatch-ecs" }
+"@hatch:math"    = { path = "../../../packages/hatch-math" }
+"@hatch:physics" = { path = "../../../packages/hatch-physics" }
+"@hatch:random"  = { path = "../../../packages/hatch-random" }
