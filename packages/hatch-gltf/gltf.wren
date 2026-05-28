@@ -29,7 +29,7 @@ var GLB_MAGIC_ = 0x46546C67
 var CHUNK_JSON_ = 0x4E4F534A   // "JSON"
 var CHUNK_BIN_  = 0x004E4942   // "BIN\0"
 
-/// Front-door static. Hands back a `GltfDocument` you can either
+/// Front-door static. Hands back a `GltfScene` you can either
 /// inspect directly (parse-only flow) or hand to a GPU device for
 /// upload + ECS spawn.
 class Gltf {
@@ -42,9 +42,9 @@ class Gltf {
   /// step suitable for headless tests.
   ///
   /// @param {ByteArray|List<Num>} bytes
-  /// @returns {GltfDocument}
+  /// @returns {GltfScene}
   static parse(bytes) {
-    return GltfDocument.parse_(bytes)
+    return GltfScene.parse_(bytes)
   }
 
   /// Parse + upload mesh primitives to `device` in one call. The
@@ -53,7 +53,7 @@ class Gltf {
   ///
   /// @param {Device} device
   /// @param {ByteArray|List<Num>} bytes
-  /// @returns {GltfDocument}
+  /// @returns {GltfScene}
   static load(device, bytes) {
     var d = parse(bytes)
     d.upload(device)
@@ -81,7 +81,7 @@ class Gltf {
   /// @param {Device} device
   /// @param {Asset} asset. Any object exposing a `bytes` getter
   ///   that returns a `ByteArray` (or `List<Num>`).
-  /// @returns {GltfDocument}
+  /// @returns {GltfScene}
   static fromAsset(device, asset) {
     return load(device, asset.bytes)
   }
@@ -99,7 +99,7 @@ class Gltf {
   /// @param {Device} device
   /// @param {Assets} db. Object with a `bytes(relPath)` method.
   /// @param {String} relPath. Path into the assets database.
-  /// @returns {GltfDocument}
+  /// @returns {GltfScene}
   static fromAssets(device, db, relPath) {
     return load(device, db.bytes(relPath))
   }
@@ -160,10 +160,12 @@ class Bytes_ {
   }
 }
 
-/// Parsed-but-not-yet-uploaded glTF document. Holds the raw JSON
-/// tree, the BIN buffer (`ByteArray`), and the constructed
-/// `GltfNode` / `GltfMesh` / `GltfMaterial` views.
-class GltfDocument {
+/// Parsed glTF scene. Holds the raw JSON tree, the BIN buffer
+/// (`ByteArray`), and the constructed `GltfNode` / `GltfMesh` /
+/// `GltfMaterial` views. `Gltf.load` runs the GPU upload pass
+/// over a `GltfScene`; `spawnInto(world)` walks the default-scene
+/// root nodes into ECS entities.
+class GltfScene {
   /// Internal — constructed by `Gltf.parse` after the .glb header
   /// + chunk split has resolved the JSON tree and the BIN buffer.
   /// User code goes through `Gltf.parse` / `Gltf.load` instead.
@@ -174,10 +176,10 @@ class GltfDocument {
   construct new_(json, bin) {
     _json = json
     _bin  = bin
-    _materials   = GltfDocument.buildMaterials_(json)
-    _meshes      = GltfDocument.buildMeshes_(json, bin)
-    _nodes       = GltfDocument.buildNodes_(json)
-    _rootIndices = GltfDocument.pickRootIndices_(json)
+    _materials   = GltfScene.buildMaterials_(json)
+    _meshes      = GltfScene.buildMeshes_(json, bin)
+    _nodes       = GltfScene.buildNodes_(json)
+    _rootIndices = GltfScene.pickRootIndices_(json)
   }
 
   /// The parsed top-level glTF JSON tree (Map). Use this for
@@ -230,7 +232,7 @@ class GltfDocument {
         var text = Bytes_.asciiString(bytes, dataStart, chunkLen)
         // Trim trailing pad bytes (0x00 for JSON, 0x20 spaces sometimes
         // appended by exporters before alignment).
-        json = JSON.parse(GltfDocument.stripPad_(text))
+        json = JSON.parse(GltfScene.stripPad_(text))
       } else if (chunkType == CHUNK_BIN_) {
         if (bin.count > 0) Fiber.abort("Gltf.parse: more than one BIN chunk")
         // Copy the chunk into a packed ByteArray. One contiguous
@@ -248,7 +250,7 @@ class GltfDocument {
     }
     if (json == null) Fiber.abort("Gltf.parse: no JSON chunk found")
     if (!(json is Map)) Fiber.abort("Gltf.parse: JSON chunk did not decode to an object")
-    return GltfDocument.new_(json, bin)
+    return GltfScene.new_(json, bin)
   }
 
   static stripPad_(s) {
@@ -297,7 +299,7 @@ class GltfDocument {
       var prims = []
       var pl = m["primitives"]
       if (pl is List) {
-        for (p in pl) prims.add(GltfDocument.extractPrimitive_(json, bin, p))
+        for (p in pl) prims.add(GltfScene.extractPrimitive_(json, bin, p))
       }
       out.add(GltfMesh.new_(name, prims))
     }
@@ -311,18 +313,18 @@ class GltfDocument {
 
     var posIdx = attrs["POSITION"]
     if (!(posIdx is Num)) Fiber.abort("Gltf: primitive missing required POSITION accessor")
-    var positions = GltfDocument.readVec3Accessor_(json, bin, posIdx)
+    var positions = GltfScene.readVec3Accessor_(json, bin, posIdx)
 
     var normals = null
     var normIdx = attrs["NORMAL"]
-    if (normIdx is Num) normals = GltfDocument.readVec3Accessor_(json, bin, normIdx)
+    if (normIdx is Num) normals = GltfScene.readVec3Accessor_(json, bin, normIdx)
 
     var uvs = null
     var uvIdx = attrs["TEXCOORD_0"]
-    if (uvIdx is Num) uvs = GltfDocument.readVec2Accessor_(json, bin, uvIdx)
+    if (uvIdx is Num) uvs = GltfScene.readVec2Accessor_(json, bin, uvIdx)
 
     var indices = null
-    if (p["indices"] is Num) indices = GltfDocument.readIndexAccessor_(json, bin, p["indices"])
+    if (p["indices"] is Num) indices = GltfScene.readIndexAccessor_(json, bin, p["indices"])
 
     var materialIndex = p["material"] is Num ? p["material"] : null
     return GltfPrimitive.new_(positions, normals, uvs, indices, materialIndex)
@@ -335,7 +337,7 @@ class GltfDocument {
     var arr = json["nodes"]
     if (!(arr is List)) return out
     for (n in arr) {
-      out.add(GltfDocument.buildNode_(n))
+      out.add(GltfScene.buildNode_(n))
     }
     return out
   }
@@ -422,11 +424,11 @@ class GltfDocument {
   }
 
   static readVec3Accessor_(json, bin, idx) {
-    return GltfDocument.readFloatAccessor_(json, bin, idx, 3, "VEC3")
+    return GltfScene.readFloatAccessor_(json, bin, idx, 3, "VEC3")
   }
 
   static readVec2Accessor_(json, bin, idx) {
-    return GltfDocument.readFloatAccessor_(json, bin, idx, 2, "VEC2")
+    return GltfScene.readFloatAccessor_(json, bin, idx, 2, "VEC2")
   }
 
   // Reads a contiguous f32-typed accessor into a packed
@@ -435,7 +437,7 @@ class GltfDocument {
   // interleaved glTF exports parse correctly; the output is
   // always packed.
   static readFloatAccessor_(json, bin, idx, components, expectedType) {
-    var a = GltfDocument.accessorAt_(json, idx)
+    var a = GltfScene.accessorAt_(json, idx)
     if (a["type"] != expectedType) {
       Fiber.abort("Gltf: accessor %(idx) is %(a["type"]), expected %(expectedType)")
     }
@@ -444,7 +446,7 @@ class GltfDocument {
     }
     var bvIdx = a["bufferView"]
     if (!(bvIdx is Num)) Fiber.abort("Gltf: float accessor %(idx) has no bufferView")
-    var bv = GltfDocument.bufferViewAt_(json, bvIdx)
+    var bv = GltfScene.bufferViewAt_(json, bvIdx)
     var byteOffset = (a["byteOffset"] is Num ? a["byteOffset"] : 0) +
                      (bv["byteOffset"] is Num ? bv["byteOffset"] : 0)
     var count = a["count"]
@@ -467,7 +469,7 @@ class GltfDocument {
   // `Int32Array`. i32 is plenty for any realistic mesh (max 2³¹
   // vertices) and matches `Mesh.fromArrays`'s u32 index buffer.
   static readIndexAccessor_(json, bin, idx) {
-    var a = GltfDocument.accessorAt_(json, idx)
+    var a = GltfScene.accessorAt_(json, idx)
     if (a["type"] != "SCALAR") {
       Fiber.abort("Gltf: index accessor %(idx) type %(a["type"]), expected SCALAR")
     }
@@ -480,7 +482,7 @@ class GltfDocument {
 
     var bvIdx = a["bufferView"]
     if (!(bvIdx is Num)) Fiber.abort("Gltf: index accessor %(idx) has no bufferView")
-    var bv = GltfDocument.bufferViewAt_(json, bvIdx)
+    var bv = GltfScene.bufferViewAt_(json, bvIdx)
     var byteOffset = (a["byteOffset"] is Num ? a["byteOffset"] : 0) +
                      (bv["byteOffset"] is Num ? bv["byteOffset"] : 0)
     var count = a["count"]
@@ -520,7 +522,7 @@ class GltfDocument {
   /// hierarchy still has one entity per glTF node from the
   /// caller's view).
   ///
-  /// Returns the list of root entity ids matching the document's
+  /// Returns the list of root entity ids matching the scene's
   /// `rootIndices`, in order.
   spawnInto(world) {
     var spawned = {}      // gltf node index → entity id
@@ -575,17 +577,16 @@ class GltfDocument {
 /// child node indices. The `transform` is a `@hatch:game`
 /// `Transform`, ready to attach to an ECS entity.
 class GltfNode {
-  /// Internal — the document builder hands these to the
-  /// `GltfDocument` constructor. User code reads them via
-  /// `doc.nodes`.
+  /// Internal — the scene builder hands these to the `GltfScene`
+  /// constructor. User code reads them via `scene.nodes`.
   ///
   /// @param {String} name. Node's glTF `name` (empty string if
   ///   absent).
   /// @param {Transform} transform. Local TRS placement.
-  /// @param {Num|Null} meshIndex. Index into `doc.meshes`, or
+  /// @param {Num|Null} meshIndex. Index into `scene.meshes`, or
   ///   `null` for nodes without geometry.
   /// @param {List<Num>} children. Child node indices into
-  ///   `doc.nodes`.
+  ///   `scene.nodes`.
   construct new_(name, transform, meshIndex, children) {
     _name = name
     _transform = transform
@@ -603,7 +604,7 @@ class GltfNode {
 /// its own vertex layout and material reference; `upload_`
 /// converts every primitive into a `@hatch:gpu` `Mesh`.
 class GltfMesh {
-  /// Internal — built by `GltfDocument.buildMeshes_`.
+  /// Internal — built by `GltfScene.buildMeshes_`.
   ///
   /// @param {String} name. The mesh's glTF `name` (empty if
   ///   absent).
@@ -616,8 +617,8 @@ class GltfMesh {
   name        { _name }
   primitives  { _primitives }
 
-  // Resolve material indices against the parent document's
-  // material list, then upload each primitive to the GPU.
+  // Resolve material indices against the parent scene's material
+  // list, then upload each primitive to the GPU.
   upload_(device, materials) {
     for (p in _primitives) p.upload_(device, materials)
   }
@@ -628,7 +629,7 @@ class GltfMesh {
 /// material index. `upload_` populates `mesh` and `material`
 /// once a device is available.
 class GltfPrimitive {
-  /// Internal — built by `GltfDocument.extractPrimitive_`.
+  /// Internal — built by `GltfScene.extractPrimitive_`.
   /// `mesh` and `material` start `null`; both get populated by
   /// `upload_` once a `Device` is available.
   ///
@@ -722,7 +723,7 @@ class GltfPrimitive {
 /// metallic / roughness / textures land when the renderer grows
 /// the textured-PBR path.
 class GltfMaterial {
-  /// Internal — built by `GltfDocument.buildMaterials_`.
+  /// Internal — built by `GltfScene.buildMaterials_`.
   ///
   /// @param {String} name. Material's glTF `name` (empty if
   ///   absent).
