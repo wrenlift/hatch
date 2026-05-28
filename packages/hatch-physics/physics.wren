@@ -96,7 +96,7 @@ foreign class PhysicsCore {
   #!symbol = "wlift_physics_world3d_apply_force"
   foreign static world3dApplyForce(worldId, bodyId, x, y, z)
 
-  // -- Raycasts + contact events (Phase 4) ----------------------
+  // -- Raycasts + contact events --------------------------------
   #!symbol = "wlift_physics_world3d_cast_ray"
   foreign static world3dCastRay(worldId, ox, oy, oz, dx, dy, dz, maxToi, solid)
   #!symbol = "wlift_physics_world2d_cast_ray"
