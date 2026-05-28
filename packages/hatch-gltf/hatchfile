@@ -1,0 +1,17 @@
+name        = "@hatch:gltf"
+version     = "0.1.0"
+entry       = "gltf"
+description = "Pure-Wren glTF 2.0 / .glb loader. Parses the binary container into nodes / meshes / materials, resolves accessors into typed vertex + index arrays, and spawns a Transform-rooted hierarchy into a `@hatch:ecs` World. Materials are flat baseColor today; texture binding lands when @hatch:gpu grows a textured Material."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:gltf"
+readme   = "README.md"
+
+[dependencies]
+"@hatch:json" = { path = "../hatch-json" }
+"@hatch:math" = { path = "../hatch-math" }
+"@hatch:ecs"  = { path = "../hatch-ecs" }
+"@hatch:gpu"  = { path = "../hatch-gpu" }
+"@hatch:game" = { path = "../hatch-game" }
+
+[spec-dependencies]
+"@hatch:test"   = { path = "../hatch-test" }
+"@hatch:assert" = { path = "../hatch-assert" }
