@@ -19,10 +19,11 @@
 // line primitives, morph targets, cameras. Each lands when the
 // downstream feature needs it.
 
-import "@hatch:json" for JSON
-import "@hatch:math" for Vec3, Vec4, Quat
-import "@hatch:gpu"  for Mesh, Material
-import "@hatch:game" for Transform, MeshRenderer
+import "@hatch:json"  for JSON
+import "@hatch:math"  for Vec3, Vec4, Quat
+import "@hatch:gpu"   for Mesh, Material
+import "@hatch:image" for Image
+import "@hatch:game"  for Transform, MeshRenderer
 
 // .glb magic: 0x46546C67  ("glTF" little-endian).
 var GLB_MAGIC_ = 0x46546C67
@@ -176,10 +177,22 @@ class GltfScene {
   construct new_(json, bin) {
     _json = json
     _bin  = bin
-    _materials   = GltfScene.buildMaterials_(json)
-    _meshes      = GltfScene.buildMeshes_(json, bin)
-    _nodes       = GltfScene.buildNodes_(json)
-    _rootIndices = GltfScene.pickRootIndices_(json)
+    _materials      = GltfScene.buildMaterials_(json)
+    _meshes         = GltfScene.buildMeshes_(json, bin)
+    _nodes          = GltfScene.buildNodes_(json)
+    _rootIndices    = GltfScene.pickRootIndices_(json)
+    // One image-descriptor entry per glTF `images[i]`, holding
+    // either the bufferView range (embedded in .glb) or `null`
+    // for external-URI images we can't load without a fetcher.
+    // The sRGB flag is set per how each material slot uses the
+    // image (albedo + emissive = sRGB; MR / normal / occlusion =
+    // linear). Pass the parsed `_materials` list so the builder
+    // can walk each material's slot indices.
+    _imageSources   = GltfScene.buildImageSources_(json, _materials)
+    // Populated by `upload(device)` — same length as
+    // `_imageSources`, each entry an uploaded `Texture` or
+    // `null` when the source couldn't be decoded.
+    _imageTextures  = []
   }
 
   /// The parsed top-level glTF JSON tree (Map). Use this for
@@ -265,15 +278,48 @@ class GltfScene {
 
   // -- Materials ---------------------------------------------------
 
+  // glTF `texture` entries are an indirection: each one references
+  // a `source` (image index) + optional `sampler`. We collapse the
+  // chain here — every texture index in a material slot resolves
+  // directly to its underlying image index so the upload path
+  // only has to track images.
+  static textureToImageMap_(json) {
+    var out = []
+    var arr = json["textures"]
+    if (!(arr is List)) return out
+    for (t in arr) {
+      if (t is Map && t["source"] is Num) {
+        out.add(t["source"])
+      } else {
+        out.add(null)
+      }
+    }
+    return out
+  }
+
+  // Resolve a glTF texture-info entry (`{ "index": N, ... }`) into
+  // the underlying image index, or `null` when the slot is absent /
+  // malformed.
+  static imageIndexOf_(json, t2i, slot) {
+    if (!(slot is Map)) return null
+    if (!(slot["index"] is Num)) return null
+    var texIdx = slot["index"]
+    if (texIdx >= t2i.count) return null
+    return t2i[texIdx]
+  }
+
   static buildMaterials_(json) {
     var out = []
     var arr = json["materials"]
     if (!(arr is List)) return out
+    var t2i = GltfScene.textureToImageMap_(json)
     for (m in arr) {
       var name = m["name"] is String ? m["name"] : ""
       var bc   = Vec4.new(1, 1, 1, 1)
       var metallic  = 1.0
       var roughness = 1.0
+      var albedoImgIdx = null
+      var mrImgIdx     = null
       var pbr = m["pbrMetallicRoughness"]
       if (pbr is Map) {
         var bcf = pbr["baseColorFactor"]
@@ -282,8 +328,102 @@ class GltfScene {
         }
         if (pbr["metallicFactor"]  is Num) metallic  = pbr["metallicFactor"]
         if (pbr["roughnessFactor"] is Num) roughness = pbr["roughnessFactor"]
+        albedoImgIdx = GltfScene.imageIndexOf_(json, t2i, pbr["baseColorTexture"])
+        mrImgIdx     = GltfScene.imageIndexOf_(json, t2i, pbr["metallicRoughnessTexture"])
       }
-      out.add(GltfMaterial.new_(name, bc, metallic, roughness))
+      var normalImgIdx    = GltfScene.imageIndexOf_(json, t2i, m["normalTexture"])
+      var occlusionImgIdx = GltfScene.imageIndexOf_(json, t2i, m["occlusionTexture"])
+      var emissiveImgIdx  = GltfScene.imageIndexOf_(json, t2i, m["emissiveTexture"])
+
+      var normalScale = 1.0
+      if (m["normalTexture"] is Map && m["normalTexture"]["scale"] is Num) {
+        normalScale = m["normalTexture"]["scale"]
+      }
+      var occlusionStrength = 1.0
+      if (m["occlusionTexture"] is Map && m["occlusionTexture"]["strength"] is Num) {
+        occlusionStrength = m["occlusionTexture"]["strength"]
+      }
+      var emissive = Vec4.new(0, 0, 0, 1)
+      if (m["emissiveFactor"] is List && m["emissiveFactor"].count >= 3) {
+        var e = m["emissiveFactor"]
+        emissive = Vec4.new(e[0], e[1], e[2], 1.0)
+      }
+      // glTF spec writes "OPAQUE" / "MASK" / "BLEND"; the
+      // renderer's Material accepts "opaque" / "mask" / "blend".
+      // Match the spec's uppercase forms explicitly rather than
+      // lower-casing the string — Wren's String surface has no
+      // built-in case conversion.
+      var alphaMode = "opaque"
+      if (m["alphaMode"] == "MASK")  alphaMode = "mask"
+      if (m["alphaMode"] == "BLEND") alphaMode = "blend"
+      var alphaCutoff  = m["alphaCutoff"] is Num ? m["alphaCutoff"] : 0.5
+      var doubleSided  = m["doubleSided"] == true
+
+      out.add(GltfMaterial.new_(
+        name,
+        bc, metallic, roughness,
+        albedoImgIdx, mrImgIdx, normalImgIdx, normalScale,
+        occlusionImgIdx, occlusionStrength,
+        emissiveImgIdx, emissive,
+        alphaMode, alphaCutoff, doubleSided))
+    }
+    return out
+  }
+
+  // -- Images ------------------------------------------------------
+
+  // Walk `images[]` building a per-image descriptor + sRGB flag.
+  // The descriptor holds the bufferView range (byteOffset +
+  // byteLength) for .glb-embedded images; external-URI images
+  // get `null` (we can't fetch them from inside the loader).
+  //
+  // sRGB tagging: each material slot has a fixed expected
+  // encoding by the glTF spec — `baseColor` + `emissive` are
+  // sRGB, `metallicRoughness` + `normal` + `occlusion` are
+  // linear. We walk every material and tag each referenced
+  // image accordingly. If an image is referenced by both an
+  // sRGB and a linear slot (rare in practice), sRGB wins so
+  // albedo paths render correctly; the linear sampler picks
+  // up the wrong gamma but the result is still close enough
+  // for the workflows that hit this edge case.
+  static buildImageSources_(json, materials) {
+    var imgs = json["images"]
+    if (!(imgs is List)) return []
+
+    var srgbFlags = []
+    var i = 0
+    while (i < imgs.count) {
+      srgbFlags.add(false)
+      i = i + 1
+    }
+    for (m in materials) {
+      if (m.albedoImageIndex   != null) srgbFlags[m.albedoImageIndex]   = true
+      if (m.emissiveImageIndex != null) srgbFlags[m.emissiveImageIndex] = true
+      // MR / normal / occlusion stay `false` (linear).
+    }
+
+    var out = []
+    var idx = 0
+    while (idx < imgs.count) {
+      var im = imgs[idx]
+      if (im is Map && im["bufferView"] is Num) {
+        var bvIdx = im["bufferView"]
+        var bvs   = json["bufferViews"]
+        if (!(bvs is List) || bvIdx >= bvs.count) {
+          out.add(null)
+        } else {
+          var bv = bvs[bvIdx]
+          out.add({
+            "byteOffset": bv["byteOffset"] is Num ? bv["byteOffset"] : 0,
+            "byteLength": bv["byteLength"],
+            "sRGB":       srgbFlags[idx],
+          })
+        }
+      } else {
+        // External URI (or no source field) — unsupported here.
+        out.add(null)
+      }
+      idx = idx + 1
     }
     return out
   }
@@ -511,7 +651,43 @@ class GltfScene {
   /// normals + uvs as optional and downstream shaders / renderers
   /// tolerate the defaults.
   upload(device) {
-    for (m in _meshes) m.upload_(device, _materials)
+    uploadImages_(device)
+    for (m in _meshes) m.upload_(device, _materials, _imageTextures)
+  }
+
+  // Decode + upload every embedded image. External-URI images
+  // (where `bufferView` is absent / null) stay as `null` in the
+  // textures list so `GltfMaterial.toGpuMaterial` falls through
+  // to the renderer's 1×1 fallback for that slot.
+  uploadImages_(device) {
+    _imageTextures = []
+    var i = 0
+    while (i < _imageSources.count) {
+      var src = _imageSources[i]
+      if (src == null) {
+        _imageTextures.add(null)
+      } else {
+        var bytes = ByteArray.new(src["byteLength"])
+        var off = src["byteOffset"]
+        var len = src["byteLength"]
+        var k = 0
+        while (k < len) {
+          bytes[k] = _bin[off + k]
+          k = k + 1
+        }
+        var img = Image.decode(bytes)
+        // Albedo + emissive are sRGB-encoded; MR / normal / AO
+        // are linear. We don't know which slot this image will
+        // be sampled in (the same image could conceivably fill
+        // either), so default to sRGB. Material slot doc-strings
+        // note the expected encoding for callers building their
+        // own textures.
+        var fmt = (src["sRGB"] == true) ? "rgba8unorm-srgb" : "rgba8unorm"
+        var tex = device.uploadImage(img, { "format": fmt })
+        _imageTextures.add(tex)
+      }
+      i = i + 1
+    }
   }
 
   /// Spawn the default scene into `world`. Each glTF node becomes
@@ -618,9 +794,10 @@ class GltfMesh {
   primitives  { _primitives }
 
   // Resolve material indices against the parent scene's material
-  // list, then upload each primitive to the GPU.
-  upload_(device, materials) {
-    for (p in _primitives) p.upload_(device, materials)
+  // list (+ uploaded textures) and upload each primitive to
+  // the GPU.
+  upload_(device, materials, textures) {
+    for (p in _primitives) p.upload_(device, materials, textures)
   }
 }
 
@@ -665,7 +842,7 @@ class GltfPrimitive {
   /// rides on a packed `Float32Array` so the GPU upload path
   /// streams contiguous bytes; indices go to an `Int32Array` for
   /// the same reason.
-  upload_(device, materials) {
+  upload_(device, materials, textures) {
     if (_positions == null || _positions.count == 0) return
     var vertexCount = (_positions.count / 3).floor
     var verts = Float32Array.new(vertexCount * 8)
@@ -704,13 +881,13 @@ class GltfPrimitive {
       }
     }
     _mesh = Mesh.fromArrays(device, verts, indices)
-    _material = pickMaterial_(materials)
+    _material = pickMaterial_(materials, textures)
   }
 
-  pickMaterial_(materials) {
+  pickMaterial_(materials, textures) {
     if (_materialIndex == null) return defaultMaterial_()
     if (_materialIndex >= materials.count) return defaultMaterial_()
-    return materials[_materialIndex].toGpuMaterial
+    return materials[_materialIndex].toGpuMaterial(textures)
   }
 
   defaultMaterial_() {
@@ -718,10 +895,10 @@ class GltfPrimitive {
   }
 }
 
-/// Parsed glTF material. `toGpuMaterial` produces the current
-/// flat-colour `@hatch:gpu` `Material` from the baseColorFactor;
-/// metallic / roughness / textures land when the renderer grows
-/// the textured-PBR path.
+/// Parsed glTF material. Holds every factor + texture-index
+/// reference the spec defines for the metallic-roughness
+/// workflow. `toGpuMaterial(textures)` resolves the texture
+/// indices into a fully-textured `@hatch:gpu.Material`.
 class GltfMaterial {
   /// Internal — built by `GltfScene.buildMaterials_`.
   ///
@@ -733,21 +910,83 @@ class GltfMaterial {
   ///   when missing per glTF spec).
   /// @param {Num} roughness. `roughnessFactor` (defaults to
   ///   `1.0` when missing per glTF spec).
-  construct new_(name, baseColor, metallic, roughness) {
+  /// @param {Num|Null} albedoImageIndex. Resolved image index for
+  ///   `pbrMetallicRoughness.baseColorTexture`, or `null`.
+  /// @param {Num|Null} mrImageIndex. Image index for
+  ///   `pbrMetallicRoughness.metallicRoughnessTexture`, or `null`.
+  /// @param {Num|Null} normalImageIndex. Image index for the
+  ///   normal map, or `null`.
+  /// @param {Num} normalScale. `normalTexture.scale` (defaults
+  ///   to `1.0`).
+  /// @param {Num|Null} occlusionImageIndex. Image index for the
+  ///   AO map, or `null`.
+  /// @param {Num} occlusionStrength. `occlusionTexture.strength`.
+  /// @param {Num|Null} emissiveImageIndex. Image index for the
+  ///   emissive map, or `null`.
+  /// @param {Vec4} emissiveColor. `emissiveFactor` lifted to a
+  ///   `Vec4` (alpha = 1).
+  /// @param {String} alphaMode. `"opaque"` / `"mask"` / `"blend"`.
+  /// @param {Num} alphaCutoff. Per glTF spec.
+  /// @param {Bool} doubleSided. Per glTF spec.
+  construct new_(name, baseColor, metallic, roughness, albedoImageIndex, mrImageIndex, normalImageIndex, normalScale, occlusionImageIndex, occlusionStrength, emissiveImageIndex, emissiveColor, alphaMode, alphaCutoff, doubleSided) {
     _name = name
     _baseColor = baseColor
     _metallic = metallic
     _roughness = roughness
+    _albedoImg    = albedoImageIndex
+    _mrImg        = mrImageIndex
+    _normalImg    = normalImageIndex
+    _normalScale  = normalScale
+    _occlusionImg = occlusionImageIndex
+    _occlusionStrength = occlusionStrength
+    _emissiveImg  = emissiveImageIndex
+    _emissiveColor = emissiveColor
+    _alphaMode = alphaMode
+    _alphaCutoff = alphaCutoff
+    _doubleSided = doubleSided
   }
-  name        { _name }
-  baseColor   { _baseColor }
-  metallic    { _metallic }
-  roughness   { _roughness }
 
-  /// Build the current flat-color `@hatch:gpu.Material` from the
-  /// baseColorFactor. Discards metallic / roughness until the
-  /// renderer can consume them.
-  toGpuMaterial {
-    return Material.new(_baseColor)
+  name              { _name }
+  baseColor         { _baseColor }
+  metallic          { _metallic }
+  roughness         { _roughness }
+  albedoImageIndex     { _albedoImg }
+  mrImageIndex         { _mrImg }
+  normalImageIndex     { _normalImg }
+  normalScale          { _normalScale }
+  occlusionImageIndex  { _occlusionImg }
+  occlusionStrength    { _occlusionStrength }
+  emissiveImageIndex   { _emissiveImg }
+  emissiveColor        { _emissiveColor }
+  alphaMode            { _alphaMode }
+  alphaCutoff          { _alphaCutoff }
+  doubleSided          { _doubleSided }
+
+  /// Resolve the parsed factors + texture indices into a fully
+  /// configured `@hatch:gpu.Material`. `textures` is the parent
+  /// scene's `_imageTextures` list (one `Texture` per glTF image
+  /// after `upload`); `null` entries fall through to the
+  /// renderer's 1×1 fallback.
+  ///
+  /// @param {List<Texture|Null>} textures
+  /// @returns {Material}
+  toGpuMaterial(textures) {
+    var m = Material.new()
+    m.albedoColor      = _baseColor
+    m.metallicFactor   = _metallic
+    m.roughnessFactor  = _roughness
+    m.normalScale      = _normalScale
+    m.occlusionStrength = _occlusionStrength
+    m.emissiveColor    = _emissiveColor
+    m.alphaMode        = _alphaMode
+    m.alphaCutoff      = _alphaCutoff
+    m.doubleSided      = _doubleSided
+
+    if (_albedoImg    != null) m.albedoTexture            = textures[_albedoImg]
+    if (_mrImg        != null) m.metallicRoughnessTexture = textures[_mrImg]
+    if (_normalImg    != null) m.normalTexture            = textures[_normalImg]
+    if (_occlusionImg != null) m.occlusionTexture         = textures[_occlusionImg]
+    if (_emissiveImg  != null) m.emissiveTexture          = textures[_emissiveImg]
+    return m
   }
 }
