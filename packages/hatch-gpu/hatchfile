@@ -24,7 +24,7 @@ native_search_paths = ["libs"]
 # load a filesystem-backed assets db) can use the rest of the
 # package without bringing in code that wouldn't run anyway.
 [dependencies]
-"@hatch:math"   = "0.1.4"
+"@hatch:math" = "0.1.5"
 # Where the cdylib lives. Same shape as @hatch:sqlite — clone
 # `repo` at `rev`, run `cargo build -p wlift_gpu --release`
 # across the platform matrix, drop each dylib into `libs/`,
@@ -58,12 +58,12 @@ windows          = "libs/wlift_gpu.dll"
 wasm             = "libs/wlift_gpu_web.wasm"
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test" = "0.2.1"
+"@hatch:assert" = "0.2.3"
 # `gpu.spec.wren` exercises the LivePipeline path — it imports
 # `@hatch:assets` directly. Declared here (not in [dependencies])
 # so the runtime package stays minimal: users who never touch
 # LivePipeline don't pull a filesystem-only dep through.
-"@hatch:assets" = { path = "../hatch-assets" }
-"@hatch:fs"     = { path = "../hatch-fs" }
-"@hatch:hash"   = { path = "../hatch-hash" }
+"@hatch:assets" = "0.2.2"
+"@hatch:fs" = "0.1.2"
+"@hatch:hash" = "0.1.1"

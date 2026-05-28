@@ -5,18 +5,15 @@ description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering 
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:game"
 readme   = "README.md"
 
-# In-workspace cross-package deps. Path entries keep the workspace
-# self-contained — every sibling's `*.spec.wren` runs against the
-# local copy without round-tripping through the registry. CI's
-# publish workflow tags each package version separately; the
-# in-tree `version =` line above is what gets used.
+# Cross-package deps. Version pins resolve through the registry,
+# so the published bundle is fully self-describing.
 [dependencies]
-"@hatch:window" = { path = "../hatch-window" }
-"@hatch:gpu"    = { path = "../hatch-gpu" }
-"@hatch:time"   = { path = "../hatch-time" }
-"@hatch:math"   = { path = "../hatch-math" }
-"@hatch:ecs"    = { path = "../hatch-ecs" }
+"@hatch:window" = "0.2.11"
+"@hatch:gpu" = "0.3.0"
+"@hatch:time" = "0.1.2"
+"@hatch:math" = "0.1.5"
+"@hatch:ecs" = "0.2.3"
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test" = "0.2.1"
+"@hatch:assert" = "0.2.3"

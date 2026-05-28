@@ -1,10 +1,10 @@
 name        = "@hatch:time"
-version     = "0.1.1"
+version     = "0.1.2"
 entry       = "time"
 description = "Clocks, sleep, and UTC timestamp formatting."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:time"
 readme   = "README.md"
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test" = "0.2.1"
+"@hatch:assert" = "0.2.3"

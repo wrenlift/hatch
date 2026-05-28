@@ -1,12 +1,12 @@
 name        = "@hatch:log"
-version     = "0.1.1"
+version     = "0.1.2"
 entry       = "log"
 description = "Level-filtered structured logger with ANSI colors."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:log"
 readme   = "README.md"
 
 [dependencies]
-"@hatch:fmt" = "0.1.0"
+"@hatch:fmt" = "0.1.2"
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test" = "0.2.1"
+"@hatch:assert" = "0.2.3"

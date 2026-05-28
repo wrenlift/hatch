@@ -1,10 +1,10 @@
 name        = "@hatch:uuid"
-version     = "0.1.1"
+version     = "0.1.2"
 entry       = "uuid"
 description = "UUID v4/v5/v7 generation, parsing, and byte conversion."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:uuid"
 readme   = "README.md"
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test" = "0.2.1"
+"@hatch:assert" = "0.2.3"

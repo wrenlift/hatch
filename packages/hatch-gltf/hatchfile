@@ -6,13 +6,13 @@ homepage    = "https://hatch.wrenlift.com/packages/@hatch:gltf"
 readme   = "README.md"
 
 [dependencies]
-"@hatch:json"  = { path = "../hatch-json" }
-"@hatch:math"  = { path = "../hatch-math" }
-"@hatch:ecs"   = { path = "../hatch-ecs" }
-"@hatch:gpu"   = { path = "../hatch-gpu" }
-"@hatch:image" = { path = "../hatch-image" }
-"@hatch:game"  = { path = "../hatch-game" }
+"@hatch:json" = "0.1.4"
+"@hatch:math" = "0.1.5"
+"@hatch:ecs" = "0.2.3"
+"@hatch:gpu" = "0.3.0"
+"@hatch:image" = "0.1.7"
+"@hatch:game" = "0.3.0"
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test" = "0.2.1"
+"@hatch:assert" = "0.2.3"

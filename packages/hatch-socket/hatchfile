@@ -1,10 +1,10 @@
 name        = "@hatch:socket"
-version     = "0.1.1"
+version     = "0.1.2"
 entry       = "socket"
 description = "TCP listeners + connections and UDP datagram sockets. Blocking and non-blocking variants suitable for fiber-cooperative schedulers."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:socket"
 readme   = "README.md"
 
 [spec-dependencies]
-"@hatch:test"   = { path = "../hatch-test" }
-"@hatch:assert" = { path = "../hatch-assert" }
+"@hatch:test" = "0.2.1"
+"@hatch:assert" = "0.2.3"
