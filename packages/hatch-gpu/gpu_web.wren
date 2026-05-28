@@ -1074,6 +1074,12 @@ class RenderPass {
     // the encoder so encoderRecordPass (which calls renderPassBegin
     // against a frame) gets the right one.
     GpuCore.encoderRecordPass(_encoder.frameHandle_, dec)
+    // Proactively release the per-draw command Maps so they're
+    // collected on the next GC cycle instead of being pinned by
+    // the caller's local until the frame function returns.
+    _cmds = null
+    _desc = null
+    _encoder = null
   }
 
   static normalizeDescriptor_(d) {
@@ -1167,6 +1173,10 @@ class SurfaceFrame {
       GpuCore.surfacePresentFrame(_id)
       _id = -1
     }
+    // Release the per-frame TextureView wrapper alongside the
+    // frame itself; the Rust-side view entry was removed inside
+    // `surfacePresentFrame`.
+    _view = null
   }
 }
 

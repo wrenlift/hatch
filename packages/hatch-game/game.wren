@@ -668,9 +668,18 @@ class Game {
       instance.draw(g)
       g.pass = null
       pass.end
+      pass = null
       encoder.finish
       device.submit([encoder])
+      // submit already removed the encoder from the registry; the
+      // destroy here is the proactive Wren-side cleanup that nulls
+      // the wrapper so GC reclaims it on the next cycle without
+      // waiting for the frame-loop iteration to drop the local.
+      encoder.destroy
+      encoder = null
       frame.present
+      frame = null
+      passDesc = null
 
       g.tick = g.tick + 1
 
