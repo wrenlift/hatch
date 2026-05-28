@@ -253,7 +253,10 @@ class Shader {
         let cc = 2.43;
         let d = 0.59;
         let e = 0.14;
-        return saturate((c * (a * c + b)) / (c * (cc * c + d) + e));
+        // clamp(vec3, scalar, scalar) broadcasts the bounds —
+        // `saturate` in the prelude is the f32-only helper.
+        return clamp((c * (a * c + b)) / (c * (cc * c + d) + e),
+                     vec3<f32>(0.0), vec3<f32>(1.0));
       }
 
       fn tonemap_reinhard(c: vec3<f32>) -> vec3<f32> {
