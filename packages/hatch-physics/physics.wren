@@ -95,6 +95,16 @@ foreign class PhysicsCore {
   foreign static world3dApplyImpulse(worldId, bodyId, x, y, z)
   #!symbol = "wlift_physics_world3d_apply_force"
   foreign static world3dApplyForce(worldId, bodyId, x, y, z)
+
+  // -- Raycasts + contact events (Phase 4) ----------------------
+  #!symbol = "wlift_physics_world3d_cast_ray"
+  foreign static world3dCastRay(worldId, ox, oy, oz, dx, dy, dz, maxToi, solid)
+  #!symbol = "wlift_physics_world2d_cast_ray"
+  foreign static world2dCastRay(worldId, ox, oy, dx, dy, maxToi, solid)
+  #!symbol = "wlift_physics_world3d_drain_contact_events"
+  foreign static world3dDrainContactEvents(worldId)
+  #!symbol = "wlift_physics_world2d_drain_contact_events"
+  foreign static world2dDrainContactEvents(worldId)
 }
 
 /// -- 2D ----------------------------------------------------------
@@ -135,6 +145,41 @@ class World2D {
   setLinearVelocity(bodyId, x, y) { PhysicsCore.world2dSetLinearVelocity(_id, bodyId, x, y) }
   applyImpulse(bodyId, x, y)      { PhysicsCore.world2dApplyImpulse(_id, bodyId, x, y) }
   applyForce(bodyId, x, y)        { PhysicsCore.world2dApplyForce(_id, bodyId, x, y) }
+
+  /// Cast a ray from `(ox, oy)` along `(dx, dy)`. Returns the
+  /// first hit as a Map `{ bodyId, point: [x, y], normal: [x, y],
+  /// toi }` or `null` if nothing was hit within `maxToi`.
+  /// `solid` defaults to `true` — when the ray starts *inside*
+  /// a shape, a solid hit returns `toi = 0` so the caller knows
+  /// the origin is intersecting; pass `false` to keep marching
+  /// until the ray exits the shape (sensor-style sweeps).
+  ///
+  /// `point` and `normal` are 2-element Lists; the underlying
+  /// plugin emits the 3-element shape `World3D` uses with the
+  /// `z` slot zeroed for parity, but only the first two
+  /// elements are meaningful in 2D.
+  ///
+  /// @param  {Num}    ox
+  /// @param  {Num}    oy
+  /// @param  {Num}    dx
+  /// @param  {Num}    dy
+  /// @param  {Num}    maxToi   max distance to march
+  /// @param  {Bool}   solid    optional, default `true`
+  /// @returns {Map?}
+  castRay(ox, oy, dx, dy, maxToi)        { castRay(ox, oy, dx, dy, maxToi, true) }
+  castRay(ox, oy, dx, dy, maxToi, solid) {
+    return PhysicsCore.world2dCastRay(_id, ox, oy, dx, dy, maxToi, solid)
+  }
+
+  /// Drain every contact event captured during the most recent
+  /// `step`. Returns a List of `{ a, b, started }` Maps where
+  /// `a` and `b` are body IDs and `started` is `true` for
+  /// touch-start, `false` for touch-stop. The internal buffer
+  /// is cleared on each call — re-call after the next `step`
+  /// to read the next batch.
+  ///
+  /// @returns {List<Map>}
+  drainContactEvents { PhysicsCore.world2dDrainContactEvents(_id) }
 
   destroy {
     PhysicsCore.world2dDestroy(_id)
@@ -217,6 +262,38 @@ class World3D {
   setLinearVelocity(bodyId, x, y, z) { PhysicsCore.world3dSetLinearVelocity(_id, bodyId, x, y, z) }
   applyImpulse(bodyId, x, y, z)      { PhysicsCore.world3dApplyImpulse(_id, bodyId, x, y, z) }
   applyForce(bodyId, x, y, z)        { PhysicsCore.world3dApplyForce(_id, bodyId, x, y, z) }
+
+  /// Cast a ray from `(ox, oy, oz)` along `(dx, dy, dz)`.
+  /// Returns the first hit as a Map
+  /// `{ bodyId, point: [x, y, z], normal: [x, y, z], toi }`
+  /// or `null` if nothing was hit within `maxToi`. `solid`
+  /// defaults to `true` (see `World2D.castRay` for the
+  /// solid-vs-hollow distinction).
+  ///
+  /// Useful for projectile hit detection, line-of-sight checks,
+  /// reticle picking, footstep audio surface detection, and the
+  /// "click-to-place" pattern in editors.
+  ///
+  /// @param  {Num}    ox
+  /// @param  {Num}    oy
+  /// @param  {Num}    oz
+  /// @param  {Num}    dx
+  /// @param  {Num}    dy
+  /// @param  {Num}    dz
+  /// @param  {Num}    maxToi
+  /// @param  {Bool}   solid    optional, default `true`
+  /// @returns {Map?}
+  castRay(ox, oy, oz, dx, dy, dz, maxToi)        { castRay(ox, oy, oz, dx, dy, dz, maxToi, true) }
+  castRay(ox, oy, oz, dx, dy, dz, maxToi, solid) {
+    return PhysicsCore.world3dCastRay(_id, ox, oy, oz, dx, dy, dz, maxToi, solid)
+  }
+
+  /// Same as `World2D.drainContactEvents` — see that docstring
+  /// for lifecycle. Returns body-ID-keyed pairs (`a`, `b`) and
+  /// the touch-start / touch-stop flag (`started`).
+  ///
+  /// @returns {List<Map>}
+  drainContactEvents { PhysicsCore.world3dDrainContactEvents(_id) }
 
   destroy {
     PhysicsCore.world3dDestroy(_id)
