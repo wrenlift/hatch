@@ -1,5 +1,5 @@
 name        = "@hatch:sqlite"
-version     = "0.1.7"
+version     = "0.1.8"
 entry       = "sqlite"
 description = "Embedded SQLite. `Database.open(path)` returns a connection; prepared statements with named parameter binding, rows iterated as Maps, transactions, error handling. Backed by rusqlite (bundled libsqlite — no system dependency)."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:sqlite"
@@ -21,17 +21,15 @@ native_search_paths = ["libs"]
 
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
-# 0.1.7 bumps to a revision that picks up two post-0.1.6 fixes:
-# `aafe0b8` (refresh raw list+map pointers across alloc calls in
-# query() — the query result builder was caching a `*mut Value`
-# from a List that got reallocated when an intermediate row map's
-# String alloc fired a GC, so later rows wrote into freed memory),
-# and the upstream AOT-stability fixes that ship with wren_lift
-# 0.1.18 (fiber rooting in invoke_sm_method, Phase 7 GC default
-# flip, named closure frames). The site running under AOT depends
-# on both — without the query() fix it crashed on the second
-# catalog refresh after a fresh start.
-rev   = "9546c0c"
+# 0.1.8 bumps to a revision that picks up the AOT-runtime fixes
+# in `5051d6f` (SM-tainted CallStaticSelf routed through
+# `wren_call_N`, 8-user-arg constructor JIT entry, empty-MIR
+# walker bailout). Site under AOT needs all three — the FSM
+# package's `applyTransitionFromMap_` tripped the verifier and
+# the `StateNode_` constructor hit the 7-arg dispatch cap. The
+# plugin dylib is rebuilt at this rev so its ABI matches any
+# consumer wren_lift binary at or past this commit.
+rev   = "5051d6f"
 crate = "wlift_sqlite"
 
 # Per-platform dylib paths. CI populates `libs/` via the
