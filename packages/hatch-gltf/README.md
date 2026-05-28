@@ -22,6 +22,26 @@ doc.meshes[0].primitives[0].positions  // Float32Array
 doc.nodes[0].transform.position        // @hatch:game Transform → Vec3
 ```
 
+For asset-driven content pipelines, route through `@hatch:assets`:
+
+```wren
+import "@hatch:assets" for Assets
+import "@hatch:gltf"   for Gltf
+
+var db    = Assets.open("assets")
+var model = Gltf.fromAsset(device, db.get("models/player.glb"))
+
+// Hot-reload on file change:
+db.on("models/player.glb") {|asset|
+  model = Gltf.fromAsset(device, asset)
+}
+```
+
+`Gltf.fromAsset(device, asset)` and `Gltf.fromAssets(device, db, relPath)`
+are duck-typed on `.bytes` / `.bytes(relPath)`, so `@hatch:gltf` doesn't
+pull `@hatch:assets` as a hard dep — drop in any other asset shim that
+returns a `ByteArray`.
+
 ## What's here today
 
 - `.glb` (single-file binary) container parsing — magic, version, JSON +

@@ -23,6 +23,9 @@ import "@hatch:ecs"  for Parent, Children
 /// var m = t.localMatrix
 /// ```
 class Transform {
+  /// Identity transform: zero translation, identity rotation,
+  /// unit scale. Mutate via the `position` / `rotation` / `scale`
+  /// setters once constructed.
   construct new() {
     _position = Vec3.zero
     _rotation = Quat.identity
@@ -33,6 +36,12 @@ class Transform {
 
   /// Construct from explicit components. Any argument can be
   /// `null` to take the identity default for that slot.
+  ///
+  /// @param {Vec3} position. World-frame translation. `null` →
+  ///   `Vec3.zero`.
+  /// @param {Quat} rotation. Unit quaternion. `null` →
+  ///   `Quat.identity`.
+  /// @param {Vec3} scale. Per-axis scale. `null` → `Vec3.one`.
   construct new(position, rotation, scale) {
     _position = position == null ? Vec3.zero    : position
     _rotation = rotation == null ? Quat.identity : rotation
@@ -104,6 +113,10 @@ class Transform {
 /// this entity get propagated yet?" check) and makes ECS queries
 /// trivial: `world.query(GlobalTransform)`.
 class GlobalTransform {
+  /// Internal — the propagation system constructs these on first
+  /// walk; user code only reads `matrix`.
+  ///
+  /// @param {Mat4} matrix. The seed world-space matrix.
   construct new_(matrix) { _matrix = matrix }
 
   /// World-space `Mat4`. Identity if the entity has no `Transform`
@@ -130,6 +143,13 @@ class GlobalTransform {
 /// world.attach(e, MeshRenderer.new(cubeMesh, redMaterial))
 /// ```
 class MeshRenderer {
+  /// Bind `mesh` + `material` to this entity. `visible` defaults
+  /// to `true`; flip via the `visible=` setter to cull without
+  /// detaching the component.
+  ///
+  /// @param {Mesh} mesh. `@hatch:gpu` `Mesh` handle to draw.
+  /// @param {Material} material. `@hatch:gpu` `Material` used for
+  ///   shading.
   construct new(mesh, material) {
     _mesh = mesh
     _material = material

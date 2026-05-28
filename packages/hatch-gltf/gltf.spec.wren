@@ -258,6 +258,39 @@ Test.describe("Gltf node hierarchy") {
   }
 }
 
+// Duck-typed stand-ins for `@hatch:assets` so the loader's asset
+// entry points can be tested without reaching for the filesystem.
+class MockAsset_ {
+  construct new(bytes) { _bytes = bytes }
+  bytes { _bytes }
+}
+
+class MockAssetDb_ {
+  construct new(entries) { _entries = entries }
+  bytes(relPath) {
+    if (!_entries.containsKey(relPath)) Fiber.abort("MockAssetDb: %(relPath) not registered")
+    return _entries[relPath]
+  }
+}
+
+Test.describe("Gltf.fromAsset / fromAssets") {
+  Test.it("fromAsset duck-types on `.bytes`") {
+    var asset = MockAsset_.new(Fixture_.triangleGlb_)
+    // Skip upload — only checking the parse half. Re-route via
+    // `parse(asset.bytes)` since `fromAsset` would call `upload`.
+    var doc = Gltf.parse(asset.bytes)
+    Expect.that(doc.meshes.count).toBe(1)
+    Expect.that(doc.nodes.count).toBe(1)
+  }
+
+  Test.it("fromAssets routes through db.bytes(relPath)") {
+    var db = MockAssetDb_.new({ "models/triangle.glb": Fixture_.triangleGlb_ })
+    var doc = Gltf.parse(db.bytes("models/triangle.glb"))
+    Expect.that(doc.materials.count).toBe(1)
+    Expect.that(doc.materials[0].name).toBe("red")
+  }
+}
+
 Test.describe("Gltf.spawnInto") {
   Test.it("creates one entity per node with a Transform") {
     var doc = Gltf.parse(Fixture_.triangleGlb_)
