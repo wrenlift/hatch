@@ -196,7 +196,12 @@ class HUD {
       "usage":  ["texture-binding", "copy-dst"],
       "label":  "hatch-hud-white-pixel"
     })
-    device.writeTexture(tex, [255, 255, 255, 255], { "width": 1, "height": 1, "bytesPerRow": 4 })
+    // ByteArray (not a plain List) so the gpu_web bridge — which
+    // reads slot bytes via wrenGetSlotBytes — can take the upload
+    // path. Lists aren't a typed-array kind and would silently
+    // return null on the web side, aborting at the foreign call.
+    device.writeTexture(tex, ByteArray.fromList([255, 255, 255, 255]),
+                        { "width": 1, "height": 1, "bytesPerRow": 4 })
     return tex
   }
 
