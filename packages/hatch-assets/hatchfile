@@ -1,5 +1,5 @@
 name        = "@hatch:assets"
-version     = "0.2.3"
+version     = "0.2.5"
 entry       = "assets"
 description = "Content-addressable assets database with hot-reload. Two backends behind one API — filesystem-backed on native (Fs.walk + content hashes + Hatch.watchFile), manifest-driven on web (fetch + lazy reads, page ships an `assets-manifest.json`). Edit a shader / texture / config file, see registered subscribers fire."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:assets"
@@ -14,7 +14,7 @@ readme   = "README.md"
 [dependencies]
 "@hatch:fs" = "0.1.2"
 "@hatch:hash" = "0.1.1"
-"@hatch:json" = "0.1.4"
+"@hatch:json" = "0.1.5"
 
 [spec-dependencies]
 "@hatch:test" = "0.2.1"

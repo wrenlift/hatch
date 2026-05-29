@@ -130,6 +130,34 @@ class AssetLoader {
     _queue.add({ "name": name, "load": loadFn })
   }
 
+  /// Queue an asset whose `loadFn` yields via `.await` (e.g.
+  /// `Browser.fetch(url).await` on web). The loader invokes the
+  /// closure directly on its calling fiber so the yield
+  /// propagates up to the game loop, which the wasm browser
+  /// bridge already drives — sidesteps the nested-`Fiber.try` +
+  /// async-scheduler conflict that breaks the `queue(...)` path
+  /// on web. Errors raised by the closure propagate out of
+  /// `update`; if you want soft failure, return a sentinel
+  /// instead of aborting.
+  ///
+  /// ```wren
+  /// loader.queueAsync("manifest", Fn.new {
+  ///   JSON.parse(Browser.fetch("./atlas.json").await)
+  /// })
+  /// ```
+  ///
+  /// @param {String} name
+  /// @param {Fn}     loadFn
+  queueAsync(name, loadFn) {
+    if (!(name is String)) {
+      Fiber.abort("AssetLoader.queueAsync: name must be a String, got %(name.type)")
+    }
+    if (!(loadFn is Fn)) {
+      Fiber.abort("AssetLoader.queueAsync: loadFn must be a Fn, got %(loadFn.type)")
+    }
+    _queue.add({ "name": name, "load": loadFn, "async": true })
+  }
+
   /// Set the per-item progress callback. Fires once per resolved
   /// entry with `(fraction, done, total)` where `fraction` is in
   /// `0..1` and `total` is the original queue size at `start`.
@@ -193,15 +221,30 @@ class AssetLoader {
   /// @returns {Num}
   total { _originalTotal }
 
-  /// Drain one pending entry. Called every frame by the game
-  /// loop (`loader.update(g.dt)`); a `dt` argument is accepted
-  /// for symmetry with the rest of the framework's per-frame
-  /// tick shape but currently ignored — one entry per call gives
-  /// monotonic progress and predictable frame cost.
+  /// Drain pending entries. Called every frame by the game loop
+  /// (`loader.update(g.dt)`). One entry per tick.
+  ///
+  /// Each entry is dispatched in one of two modes set at queue
+  /// time:
+  ///   * `queue(name, loadFn)` — synchronous, error-catching.
+  ///     The closure runs inside `Fiber.new(loadFn).try()`; any
+  ///     `Fiber.abort` from the closure populates `fiber.error`
+  ///     and routes to `onError`. Required for the desktop /
+  ///     filesystem-backed pattern where reads can raise.
+  ///   * `queueAsync(name, loadFn)` — closures that yield via
+  ///     `.await` (e.g. `Browser.fetch(url).await` on web). The
+  ///     loader `.call()`s the closure DIRECTLY on its calling
+  ///     fiber so the yield propagates up to the game-loop
+  ///     fiber, which the wasm browser-bridge scheduler resumes
+  ///     cleanly. The `Fiber.new` wrap can't be used here — the
+  ///     scheduler would resume the wrap fiber out from under the
+  ///     loader and the next `.try` would land on a finished
+  ///     fiber. Errors raised by an async closure propagate out
+  ///     of `update`; the caller wraps if it wants soft failure.
   ///
   /// @param {Num} dt. Seconds since the previous frame. Unused.
   update(dt) {
-    if (!_running)            return
+    if (!_running) return
     if (_queue.count == 0) {
       _running = false
       if (_onComplete != null) _onComplete.call(_loaded)
@@ -209,17 +252,27 @@ class AssetLoader {
     }
     var entry = _queue.removeAt(0)
     var name  = entry["name"]
-    var asset = null
-    var fiber = Fiber.new(entry["load"])
-    asset = fiber.try()
-    if (fiber.error != null) {
-      if (_onError != null) {
-        _onError.call(name, fiber.error)
-      } else {
-        Fiber.abort("AssetLoader.update: '%(name)' failed: %(fiber.error)")
-      }
-    } else {
+    var asset
+    if (entry["async"] == true) {
+      // Direct invocation: yields the calling fiber chain to the
+      // browser bridge; no Fiber.new wrap so the bridge can drive
+      // the same fiber the .await is parked on.
+      asset = entry["load"].call()
       _loaded[name] = asset
+    } else {
+      // Synchronous: wrap in a child fiber so we can route abort
+      // through onError without the loader itself dying.
+      var fiber = Fiber.new(entry["load"])
+      asset = fiber.try()
+      if (fiber.error != null) {
+        if (_onError != null) {
+          _onError.call(name, fiber.error)
+        } else {
+          Fiber.abort("AssetLoader.update: '%(name)' failed: %(fiber.error)")
+        }
+      } else {
+        _loaded[name] = asset
+      }
     }
     var fraction = _originalTotal == 0 ? 1 : _loaded.count / _originalTotal
     if (_onProgress != null) {
@@ -236,7 +289,9 @@ class AssetLoader {
   pause { _running = false }
 
   /// Clear every pending entry and previously loaded asset, and
-  /// drop the original-total counter. Useful between scenes.
+  /// drop the original-total counter. Useful between scenes; also
+  /// abandons any in-flight fiber so a half-decoded async closure
+  /// can't bleed into the next batch.
   reset() {
     _queue.clear()
     _loaded.clear()
