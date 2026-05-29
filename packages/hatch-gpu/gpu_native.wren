@@ -133,6 +133,14 @@ foreign class GpuCore {
   #!symbol = "wlift_gpu_render_pipeline_destroy"
   foreign static renderPipelineDestroy(id)
 
+  // -- Compute pipelines -----------------------------------------
+
+  #!symbol = "wlift_gpu_compute_pipeline_create"
+  foreign static computePipelineCreate(deviceId, descriptor)
+
+  #!symbol = "wlift_gpu_compute_pipeline_destroy"
+  foreign static computePipelineDestroy(id)
+
   // -- CommandEncoder + render pass + readback -------------------
 
   #!symbol = "wlift_gpu_encoder_create"
@@ -143,6 +151,9 @@ foreign class GpuCore {
 
   #!symbol = "wlift_gpu_encoder_record_pass"
   foreign static encoderRecordPass(encoderId, descriptor)
+
+  #!symbol = "wlift_gpu_encoder_record_compute_pass"
+  foreign static encoderRecordComputePass(encoderId, descriptor)
 
   #!symbol = "wlift_gpu_encoder_copy_texture_to_buffer"
   foreign static encoderCopyTextureToBuffer(encoderId, textureId, bufferId, descriptor)
@@ -155,6 +166,12 @@ foreign class GpuCore {
 
   #!symbol = "wlift_gpu_buffer_read_bytes"
   foreign static bufferReadBytes(id)
+
+  #!symbol = "wlift_gpu_buffer_read_into_typed_array"
+  foreign static bufferReadInto(id, typedArray)
+
+  #!symbol = "wlift_gpu_encoder_copy_buffer_to_buffer"
+  foreign static encoderCopyBufferToBuffer(encoderId, srcId, dstId, srcOffset, dstOffset, size)
 
   // -- Surface (bring-your-own-window) ---------------------------
 
@@ -430,6 +447,24 @@ class Device {
     return RenderPipeline.new_(pid)
   }
 
+  /// Compile a [ComputePipeline] from a descriptor. Keys:
+  ///
+  /// - `"module"` ([ShaderModule], required) — the WGSL module
+  ///   containing the compute entry point.
+  /// - `"entryPoint"` (String, required) — the `@compute` function
+  ///   in `module` to dispatch.
+  /// - `"layout"` (`"auto"` or [PipelineLayout], optional) —
+  ///   defaults to `"auto"`.
+  /// - `"label"` (String, optional).
+  ///
+  /// @param {Map} descriptor
+  /// @returns {ComputePipeline}
+  createComputePipeline(descriptor) {
+    var dec = ComputePipeline.normalize_(descriptor)
+    var pid = GpuCore.computePipelineCreate(_id, dec)
+    return ComputePipeline.new_(pid)
+  }
+
   /// Build a fresh [CommandEncoder] for this frame.
   /// @returns {CommandEncoder}
   createCommandEncoder() { createCommandEncoder({}) }
@@ -587,6 +622,15 @@ class Buffer {
   ///
   /// @returns {List}
   readBytes() { GpuCore.bufferReadBytes(_id) }
+
+  /// Fast in-place readback. Maps the buffer for read, copies its
+  /// bytes into `typedArray` (which must match the buffer's byte
+  /// length), then unmaps. Skips the per-byte `Num` allocation that
+  /// `readBytes` pays — required for sane wall-clock at compute
+  /// readback sizes (megabytes and up).
+  ///
+  /// @param {Float32Array|Uint8Array|Int32Array} typedArray
+  readInto(typedArray) { GpuCore.bufferReadInto(_id, typedArray) }
 
   /// Release the buffer's GPU memory. Idempotent.
   destroy {
@@ -777,6 +821,31 @@ class RenderPipeline {
   }
 }
 
+/// A compiled compute pipeline. Built by
+/// [Device.createComputePipeline]; bound inside a [ComputePass] via
+/// `pass.setPipeline`.
+class ComputePipeline {
+  construct new_(id) { _id = id }
+  id { _id }
+  destroy {
+    GpuCore.computePipelineDestroy(_id)
+    _id = -1
+  }
+
+  static normalize_(d) {
+    var out = {
+      "module":     d["module"].id,
+      "entryPoint": d["entryPoint"]
+    }
+    if (d.containsKey("label")) out["label"] = d["label"]
+    if (d.containsKey("layout")) {
+      var l = d["layout"]
+      out["layout"] = (l is String) ? l : l.id
+    }
+    return out
+  }
+}
+
 // -- Command encoder + render pass -------------------------------
 
 /// Records GPU commands. Build one per frame via
@@ -807,6 +876,26 @@ class CommandEncoder {
     return RenderPass.new_(this, descriptor)
   }
 
+  /// Open a compute pass against `descriptor`. Returns a
+  /// [ComputePass] that accumulates `setPipeline` / `setBindGroup`
+  /// / `dispatchWorkgroups` commands; `pass.end` flushes them into
+  /// the encoder.
+  ///
+  /// `descriptor` keys are all optional today (`label`). Future
+  /// timestamp / query knobs will land here without breaking
+  /// existing callers.
+  ///
+  /// @param {Map} descriptor
+  /// @returns {ComputePass}
+  beginComputePass(descriptor) {
+    return ComputePass.new_(this, descriptor)
+  }
+  /// Same as `beginComputePass({})`.
+  /// @returns {ComputePass}
+  beginComputePass() {
+    return ComputePass.new_(this, {})
+  }
+
   /// Copy `texture` into `buffer` so the host can read pixels
   /// back. Descriptor keys:
   ///
@@ -819,6 +908,28 @@ class CommandEncoder {
   /// @param {Map} descriptor
   copyTextureToBuffer(texture, buffer, descriptor) {
     GpuCore.encoderCopyTextureToBuffer(_id, texture.id, buffer.id, descriptor)
+  }
+
+  /// Copy `size` bytes from `src` (at `srcOffset`) into `dst` (at
+  /// `dstOffset`). The standard plumbing for moving compute
+  /// outputs from a `storage | copy-src` buffer into a
+  /// `copy-dst | map-read` staging buffer.
+  ///
+  /// @param {Buffer} src
+  /// @param {Buffer} dst
+  /// @param {Num} srcOffset
+  /// @param {Num} dstOffset
+  /// @param {Num} size
+  copyBufferToBuffer(src, dst, srcOffset, dstOffset, size) {
+    GpuCore.encoderCopyBufferToBuffer(_id, src.id, dst.id, srcOffset, dstOffset, size)
+  }
+  /// Convenience: copy the full `size` bytes from `src@0` → `dst@0`.
+  ///
+  /// @param {Buffer} src
+  /// @param {Buffer} dst
+  /// @param {Num} size
+  copyBufferToBuffer(src, dst, size) {
+    copyBufferToBuffer(src, dst, 0, 0, size)
   }
 
   /// Close recording. Returns `this` so callers can chain
@@ -950,6 +1061,66 @@ class RenderPass {
       out["depthStencilAttachment"] = rec
     }
     return out
+  }
+}
+
+/// Compute-pass builder. Mirrors [RenderPass]: commands accumulate
+/// client-side and emit in a single foreign call on `end`. Open
+/// one via [CommandEncoder.beginComputePass].
+class ComputePass {
+  construct new_(encoder, descriptor) {
+    _encoder = encoder
+    _desc    = descriptor
+    _cmds    = []
+  }
+
+  /// Bind a [ComputePipeline] for subsequent dispatches.
+  /// @param {ComputePipeline} p
+  /// @returns {ComputePass}
+  setPipeline(p) {
+    _cmds.add({ "op": "setPipeline", "pipeline": p.id })
+    return this
+  }
+
+  /// Bind a [BindGroup] at `index` (matching the pipeline's BGL
+  /// at that slot).
+  /// @param {Num} index
+  /// @param {BindGroup} group
+  /// @returns {ComputePass}
+  setBindGroup(index, group) {
+    _cmds.add({ "op": "setBindGroup", "index": index, "group": group.id })
+    return this
+  }
+
+  /// Dispatch `x * y * z` workgroups of the current pipeline. `y`
+  /// and `z` default to 1, matching the common 1D layout
+  /// (`@workgroup_size(64)` over a flat array, etc).
+  ///
+  /// @param {Num} x
+  /// @returns {ComputePass}
+  dispatchWorkgroups(x) { dispatchWorkgroups(x, 1, 1) }
+  /// @param {Num} x
+  /// @param {Num} y
+  /// @returns {ComputePass}
+  dispatchWorkgroups(x, y) { dispatchWorkgroups(x, y, 1) }
+  /// @param {Num} x
+  /// @param {Num} y
+  /// @param {Num} z
+  /// @returns {ComputePass}
+  dispatchWorkgroups(x, y, z) {
+    _cmds.add({ "op": "dispatch", "x": x, "y": y, "z": z })
+    return this
+  }
+
+  /// Flush the recorded commands into the parent encoder. Closes
+  /// this compute pass; call once per pass.
+  end {
+    var dec = { "commands": _cmds }
+    if (_desc.containsKey("label")) dec["label"] = _desc["label"]
+    GpuCore.encoderRecordComputePass(_encoder.id, dec)
+    _cmds = null
+    _desc = null
+    _encoder = null
   }
 }
 

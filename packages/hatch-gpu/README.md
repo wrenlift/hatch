@@ -1,4 +1,4 @@
-GPU primitives plus 2D and 3D renderers, written once against `wgpu` on native and `navigator.gpu` on web. The low layer hands you `Device`, `Buffer`, `Texture`, `Sampler`, `ShaderModule`, `BindGroup`, `RenderPipeline`, `CommandEncoder`, and `RenderPass`. The high layer adds `Camera2D` / `Camera3D`, a sprite-batching `Renderer2D`, and a lit `Renderer3D` over `Mesh` and `Material`. One Wren API, two backends behind it.
+GPU primitives plus 2D and 3D renderers, written once against `wgpu` on native and `navigator.gpu` on web. The low layer hands you `Device`, `Buffer`, `Texture`, `Sampler`, `ShaderModule`, `BindGroup`, `RenderPipeline`, `ComputePipeline`, `CommandEncoder`, `RenderPass`, and `ComputePass`. The high layer adds `Camera2D` / `Camera3D`, a sprite-batching `Renderer2D`, and a lit `Renderer3D` over `Mesh` and `Material`. One Wren API, two backends behind it.
 
 ## Overview
 
@@ -20,6 +20,42 @@ renderer.flush(g.pass)
 
 `Renderer2D` is a batcher. Every `sprite.draw(renderer)` accumulates against the current camera; `flush(pass)` issues the actual draw calls. The 3D renderer follows the same pacing with `Renderer3D`, `Mesh`, and `Material`.
 
+## Compute
+
+`Device.createComputePipeline` plus `CommandEncoder.beginComputePass` give you a WebGPU-style compute path for general-purpose GPU work — particle simulation, mesh skinning, terrain noise, anything that wants to mutate a storage buffer in parallel.
+
+```wren
+import "@hatch:gpu" for Gpu
+
+var device   = Gpu.requestDevice()
+var shader   = device.createShaderModule({ "code": wgsl })
+var bgl      = device.createBindGroupLayout({
+  "entries": [{ "binding": 0, "visibility": ["compute"], "kind": "storage" }]
+})
+var pipeline = device.createComputePipeline({
+  "module": shader, "entryPoint": "main",
+  "layout": device.createPipelineLayout({ "bindGroupLayouts": [bgl] })
+})
+
+var data    = device.createBuffer({ "size": n * 4, "usage": ["storage", "copy-src", "copy-dst"] })
+var staging = device.createBuffer({ "size": n * 4, "usage": ["copy-dst", "map-read"] })
+var bg      = device.createBindGroup({ "layout": bgl, "entries": [{ "binding": 0, "buffer": data }] })
+
+var enc  = device.createCommandEncoder()
+var pass = enc.beginComputePass()
+pass.setPipeline(pipeline)
+pass.setBindGroup(0, bg)
+pass.dispatchWorkgroups((n + 255) / 256)
+pass.end
+enc.copyBufferToBuffer(data, staging, n * 4)
+device.submit([enc.finish])
+
+var out = Float32Array.new(n)
+staging.readInto(out)        // memcpy back into a typed array — no per-byte Wren Num allocation
+```
+
+`Buffer.readInto(typedArray)` is the fast readback path for megabyte-class workloads. The list-of-bytes `Buffer.readBytes` is still there for small probes (pixel reads, asserts).
+
 ## Hot reload via `LivePipeline`
 
 `LivePipeline` watches WGSL shader sources via any duck-typed `db` with `.text(path)` (typically an `@hatch:assets` database) and rebuilds the pipeline when the file's content hash advances. Use it during development to iterate on shaders without rebuilding the binary.
@@ -37,7 +73,7 @@ g.pass.setPipeline(live.pipeline)
 ```
 
 > **Note: cross-target gaps**
-> Both backends ship the full class surface (`Renderer2D`, `Renderer3D`, `LivePipeline`, plus the underlying `Buffer` / `Texture` / `Shader` / `RenderPipeline` primitives). The web backend has two outstanding gaps: GPU→CPU readback (`Buffer.readBytes`, `encoderCopyTextureToBuffer`) lands when WebGPU's mapAsync path is wired, and `LivePipeline` shader hot-reload is build-once on web pending a browser-side filesystem watch. Cross-target game code that avoids those features works unchanged; opt in via `#!native` / `#!wasm` attributes when a path needs them.
+> Both backends ship the full class surface (`Renderer2D`, `Renderer3D`, `LivePipeline`, plus the underlying `Buffer` / `Texture` / `Shader` / `RenderPipeline` / `ComputePipeline` primitives). The web backend has three outstanding gaps: GPU→CPU readback (`Buffer.readBytes` / `Buffer.readInto` / `encoderCopyTextureToBuffer` / `encoderCopyBufferToBuffer`) lands when WebGPU's mapAsync path is wired, compute (`ComputePipeline`, `ComputePass`) lands when the JS bridge grows a compute path, and `LivePipeline` shader hot-reload is build-once on web pending a browser-side filesystem watch. Cross-target game code that avoids those features works unchanged; opt in via `#!native` / `#!wasm` attributes when a path needs them.
 
 > **Note: WebGPU on the desktop browser matrix**
 > Chromium, recent Firefox, and Safari on current macOS all ship WebGPU by default. Some mobile builds and older Safari versions (pre-current macOS) lack the API. Surface creation aborts on browsers without WebGPU; check `navigator.gpu` from the host page if a 2D-canvas fallback is needed.
