@@ -1367,53 +1367,19 @@ class Renderer2D {
     })
     _pipelineLayout = device.createPipelineLayout({"bindGroupLayouts": [_bgl]})
 
-    var pipelineDesc = {
-      "layout": _pipelineLayout,
-      "vertex": {
-        "module": shader, "entryPoint": "vs_main",
-        "buffers": [{
-          "arrayStride": Renderer2D.FLOATS_PER_VERTEX_ * 4,
-          "stepMode": "vertex",
-          "attributes": [
-            { "shaderLocation": 0, "offset": 0,  "format": "float32x2" },
-            { "shaderLocation": 1, "offset": 8,  "format": "float32x2" },
-            { "shaderLocation": 2, "offset": 16, "format": "float32x4" }
-          ]
-        }]
-      },
-      "fragment": {
-        "module": shader, "entryPoint": "fs_main",
-        "targets": [{
-          "format": surfaceFormat,
-          // Standard alpha-blend (src-over). Without this the
-          // colour target writes RGB verbatim regardless of the
-          // fragment's alpha; soft sprites (gradient glows,
-          // anti-aliased edges) read as hard discs.
-          "blend": {
-            "color": {
-              "srcFactor": "src-alpha",
-              "dstFactor": "one-minus-src-alpha",
-              "operation": "add"
-            },
-            "alpha": {
-              "srcFactor": "one",
-              "dstFactor": "one-minus-src-alpha",
-              "operation": "add"
-            }
-          }
-        }]
-      },
-      "primitive": { "topology": "triangle-list", "cullMode": "none" },
-      "label": "renderer2d-pipeline"
-    }
-    if (depthFormat != null) {
-      pipelineDesc["depthStencil"] = {
-        "format": depthFormat,
-        "depthWriteEnabled": false,
-        "depthCompare": "always"
-      }
-    }
-    _pipeline = device.createRenderPipeline(pipelineDesc)
+    // Per-blend-mode pipeline cache — same shape as gpu_native's
+    // Renderer2D. Default is `"alpha"` (src-over); `"additive"`
+    // and `"premultiplied"` lazy-build on the first `setBlend`
+    // switch. The web variant translates the built-in strings to
+    // the WebGPU descriptor Map shape; pass a Map directly for a
+    // custom blend state.
+    _shader        = shader
+    _surfaceFormat = surfaceFormat
+    _depthFormat   = depthFormat
+    _pipelines     = {}
+    _currentBlend  = "alpha"
+    _pipelines["alpha"] = buildPipelineFor_("alpha")
+    _pipeline      = _pipelines["alpha"]
 
     var vboBytes = Renderer2D.MAX_SPRITES_ *
                    Renderer2D.VERTS_PER_SPRITE_ *
@@ -1483,6 +1449,85 @@ class Renderer2D {
   /// Unbind the current pass. After this, a texture-id change
   /// aborts (as before) unless a new pass is bound.
   endPass() { _pendingPass = null }
+
+  /// Switch the active blend mode. If a pass is bound and the
+  /// current batch has pending sprites, they flush into that pass
+  /// first so the new mode applies only to sprites queued after.
+  /// Built-ins: `"alpha"` / `"premultiplied"` / `"additive"`. Pass
+  /// a Map for a custom WebGPU blend descriptor.
+  ///
+  /// @param {String|Map} mode
+  setBlend(mode) {
+    if (mode == _currentBlend) return
+    if (_pendingPass != null && _spriteCount > 0) {
+      flush(_pendingPass)
+    }
+    _currentBlend = mode
+    if (!_pipelines.containsKey(mode)) {
+      _pipelines[mode] = buildPipelineFor_(mode)
+    }
+    _pipeline = _pipelines[mode]
+  }
+
+  // Map built-in mode strings to WebGPU blend descriptor Maps.
+  // Passing a Map directly skips the lookup. Anything else aborts.
+  static blendDescFor_(mode) {
+    if (mode is Map) return mode
+    if (mode == "alpha") {
+      return {
+        "color": { "srcFactor": "src-alpha", "dstFactor": "one-minus-src-alpha", "operation": "add" },
+        "alpha": { "srcFactor": "one",       "dstFactor": "one-minus-src-alpha", "operation": "add" }
+      }
+    }
+    if (mode == "premultiplied") {
+      return {
+        "color": { "srcFactor": "one", "dstFactor": "one-minus-src-alpha", "operation": "add" },
+        "alpha": { "srcFactor": "one", "dstFactor": "one-minus-src-alpha", "operation": "add" }
+      }
+    }
+    if (mode == "additive") {
+      return {
+        "color": { "srcFactor": "src-alpha", "dstFactor": "one", "operation": "add" },
+        "alpha": { "srcFactor": "one",       "dstFactor": "one", "operation": "add" }
+      }
+    }
+    Fiber.abort("Renderer2D.setBlend: unknown blend mode %(mode); expected \"alpha\" / \"premultiplied\" / \"additive\" or a descriptor Map.")
+  }
+
+  buildPipelineFor_(blendMode) {
+    var pipelineDesc = {
+      "layout": _pipelineLayout,
+      "vertex": {
+        "module": _shader, "entryPoint": "vs_main",
+        "buffers": [{
+          "arrayStride": Renderer2D.FLOATS_PER_VERTEX_ * 4,
+          "stepMode": "vertex",
+          "attributes": [
+            { "shaderLocation": 0, "offset": 0,  "format": "float32x2" },
+            { "shaderLocation": 1, "offset": 8,  "format": "float32x2" },
+            { "shaderLocation": 2, "offset": 16, "format": "float32x4" }
+          ]
+        }]
+      },
+      "fragment": {
+        "module": _shader, "entryPoint": "fs_main",
+        "targets": [{
+          "format": _surfaceFormat,
+          "blend":  Renderer2D.blendDescFor_(blendMode)
+        }]
+      },
+      "primitive": { "topology": "triangle-list", "cullMode": "none" },
+      "label": "renderer2d-pipeline-%(blendMode)"
+    }
+    if (_depthFormat != null) {
+      pipelineDesc["depthStencil"] = {
+        "format": _depthFormat,
+        "depthWriteEnabled": false,
+        "depthCompare": "always"
+      }
+    }
+    return _device.createRenderPipeline(pipelineDesc)
+  }
 
   /// Queue an axis-aligned, full-texture sprite at `(x, y)` with
   /// the given size. Position is the top-left corner.
@@ -1639,13 +1684,13 @@ class Renderer2D {
   }
 
   /// Release the GPU resources held by this renderer (vertex /
-  /// uniform buffers, sampler, pipeline, layouts). Call when the
+  /// uniform buffers, sampler, pipelines, layouts). Call when the
   /// renderer goes out of scope; not called automatically.
   destroy {
     _vbo.destroy
     _ubo.destroy
     _sampler.destroy
-    _pipeline.destroy
+    for (p in _pipelines.values) p.destroy
     _pipelineLayout.destroy
     _bgl.destroy
   }

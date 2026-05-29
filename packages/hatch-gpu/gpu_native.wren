@@ -1207,43 +1207,23 @@ class Renderer2D {
     })
     _pipelineLayout = device.createPipelineLayout({"bindGroupLayouts": [_bgl]})
 
-    var pipelineDesc = {
-      "layout": _pipelineLayout,
-      "vertex": {
-        "module": shader, "entryPoint": "vs_main",
-        "buffers": [{
-          "arrayStride": Renderer2D.FLOATS_PER_VERTEX_ * 4,
-          "stepMode": "vertex",
-          "attributes": [
-            { "shaderLocation": 0, "offset": 0,  "format": "float32x2" },
-            { "shaderLocation": 1, "offset": 8,  "format": "float32x2" },
-            { "shaderLocation": 2, "offset": 16, "format": "float32x4" }
-          ]
-        }]
-      },
-      "fragment": {
-        "module": shader, "entryPoint": "fs_main",
-        // Alpha blending so transparent texels (bitmap font
-        // glyphs, soft-edged sprites, particle textures with
-        // gradients) composite correctly. Opaque sprites
-        // (`tint.a == 1.0`) still write at full intensity, so
-        // this is strictly an additive feature.
-        "targets": [{ "format": surfaceFormat, "blend": "alpha" }]
-      },
-      "primitive": { "topology": "triangle-list", "cullMode": "none" },
-      "label": "renderer2d-pipeline"
-    }
-    if (depthFormat != null) {
-      // depth-test on but always-pass + depth-write off, so 2D
-      // sprites overlay whatever depth value's already there
-      // without participating in the depth buffer's contents.
-      pipelineDesc["depthStencil"] = {
-        "format": depthFormat,
-        "depthWriteEnabled": false,
-        "depthCompare": "always"
-      }
-    }
-    _pipeline = device.createRenderPipeline(pipelineDesc)
+    // Per-blend-mode pipeline cache. Renderer2D batches by texture
+    // so a blend switch mid-frame flushes the current batch and
+    // rebinds a parallel pipeline — same auto-flush shape the
+    // texture-switch guard uses. Default is `"alpha"` (transparent
+    // texels for bitmap fonts + soft-edged sprites); `"additive"`
+    // and `"premultiplied"` are built on demand the first time
+    // `setBlend` switches to them. Custom blend maps (per the
+    // plugin's `blend_state_from_value` decoder) are accepted too:
+    // the key is the literal mode value (String or Map.toString),
+    // so callers reusing the same Map handle hit the cache.
+    _shader        = shader
+    _surfaceFormat = surfaceFormat
+    _depthFormat   = depthFormat
+    _pipelines     = {}
+    _currentBlend  = "alpha"
+    _pipelines["alpha"] = buildPipelineFor_("alpha")
+    _pipeline      = _pipelines["alpha"]
 
     var vboBytes = Renderer2D.MAX_SPRITES_ *
                    Renderer2D.VERTS_PER_SPRITE_ *
@@ -1351,6 +1331,66 @@ class Renderer2D {
   /// texture switches and full batches abort again until the next
   /// [beginPass].
   endPass() { _pendingPass = null }
+
+  /// Switch the active blend mode. If a pass is bound (`beginPass`)
+  /// and the current batch has pending sprites, they are flushed
+  /// into that pass first so the new mode applies only to sprites
+  /// queued from this point. Accepted built-ins: `"alpha"` (default
+  /// — straight alpha), `"premultiplied"` (pre-multiplied alpha,
+  /// useful when the source texture already bakes alpha into the
+  /// colour channels), `"additive"` (HDR-style accumulation —
+  /// canonical for fire / sparks / glow particle textures). Pass a
+  /// Map of the shape the plugin's blend-state decoder accepts for
+  /// custom configurations (see `RenderPipelineLayout`'s blend
+  /// docs); the map is its own cache key so reusing the same Map
+  /// handle hits the cache.
+  ///
+  /// @param {String|Map} mode
+  setBlend(mode) {
+    if (mode == _currentBlend) return
+    if (_pendingPass != null && _spriteCount > 0) {
+      flush(_pendingPass)
+    }
+    _currentBlend = mode
+    if (!_pipelines.containsKey(mode)) {
+      _pipelines[mode] = buildPipelineFor_(mode)
+    }
+    _pipeline = _pipelines[mode]
+  }
+
+  /// Build a Renderer2D pipeline for `blendMode`. Called lazily from
+  /// `setBlend` on the first switch into a not-yet-cached mode.
+  buildPipelineFor_(blendMode) {
+    var pipelineDesc = {
+      "layout": _pipelineLayout,
+      "vertex": {
+        "module": _shader, "entryPoint": "vs_main",
+        "buffers": [{
+          "arrayStride": Renderer2D.FLOATS_PER_VERTEX_ * 4,
+          "stepMode": "vertex",
+          "attributes": [
+            { "shaderLocation": 0, "offset": 0,  "format": "float32x2" },
+            { "shaderLocation": 1, "offset": 8,  "format": "float32x2" },
+            { "shaderLocation": 2, "offset": 16, "format": "float32x4" }
+          ]
+        }]
+      },
+      "fragment": {
+        "module": _shader, "entryPoint": "fs_main",
+        "targets": [{ "format": _surfaceFormat, "blend": blendMode }]
+      },
+      "primitive": { "topology": "triangle-list", "cullMode": "none" },
+      "label": "renderer2d-pipeline-%(blendMode)"
+    }
+    if (_depthFormat != null) {
+      pipelineDesc["depthStencil"] = {
+        "format": _depthFormat,
+        "depthWriteEnabled": false,
+        "depthCompare": "always"
+      }
+    }
+    return _device.createRenderPipeline(pipelineDesc)
+  }
 
   /// Queue an axis-aligned, full-texture sprite at `(x, y)`
   /// with the given size. Position is the top-left corner.
@@ -1498,13 +1538,13 @@ class Renderer2D {
   }
 
   /// Release the GPU resources held by this renderer (vertex /
-  /// uniform buffers, sampler, pipeline, layouts). Call when the
+  /// uniform buffers, sampler, pipelines, layouts). Call when the
   /// renderer goes out of scope; not called automatically.
   destroy {
     _vbo.destroy
     _ubo.destroy
     _sampler.destroy
-    _pipeline.destroy
+    for (p in _pipelines.values) p.destroy
     _pipelineLayout.destroy
     _bgl.destroy
   }
