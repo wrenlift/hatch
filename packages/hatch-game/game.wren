@@ -1,9 +1,8 @@
 // `@hatch:game`: minimal game-loop scaffold.
 //
-// PixiJS / Cocos / Godot-style: subclass `Game`, override the
-// relevant hooks, and hand the class to `Game.run`. State
-// lives in fields on the subclass. No userdata scratchpad,
-// no closure ceremony.
+// Subclass `Game`, override the relevant hooks, and hand the
+// class to `Game.run`. State lives in fields on the subclass.
+// No userdata scratchpad, no closure ceremony.
 //
 // ```wren
 // import "@hatch:game"  for Game

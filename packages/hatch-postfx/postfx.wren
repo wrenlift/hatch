@@ -95,7 +95,7 @@ class Tonemap is PostPass {
 
   fragmentBody { "
     let sample = textureSample(t, s, uv).rgb * u.exposure;
-    // Narkowicz approximate ACES — adequate for game-scale HDR
+    // Approximate ACES filmic curve — adequate for game-scale HDR
     // without the full curve's matrix ops.
     let a = 2.51;
     let b = 0.03;
