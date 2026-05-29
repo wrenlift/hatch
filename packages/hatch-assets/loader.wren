@@ -44,6 +44,52 @@
 //! 64 MB texture), wrap the slow decode in a closure that
 //! yields chunks across `update` calls — the loader's
 //! `partial(name, fn)` hook is planned for that path.
+//!
+//! ## Wiring into a game-flow statechart
+//!
+//! The loader exposes signals (`onProgress` / `onComplete` /
+//! `onError`); it doesn't model the surrounding scene
+//! transitions itself. For a typical
+//! `splash → loading → ready → playing` flow drive a
+//! `StateChart` from `@hatch:fsm` and route the loader's
+//! callbacks into chart events:
+//!
+//! ```wren
+//! import "@hatch:assets" for AssetLoader, Assets
+//! import "@hatch:fsm"    for StateChart
+//! import "@hatch:image"  for Image
+//!
+//! var chart = StateChart.build {|c|
+//!   c.id("flow")
+//!   c.initial("splash")
+//!   c.state("splash") {|s|
+//!     s.on("loadStart", "loading")
+//!   }
+//!   c.state("loading") {|s|
+//!     s.on("loadDone",  "ready")
+//!     s.on("loadError", "error")
+//!   }
+//!   c.state("ready") {|s|
+//!     s.on("play", "playing")
+//!   }
+//!   c.state("playing") {|s|}
+//!   c.state("error")   {|s|}
+//! }
+//!
+//! var db     = Assets.open("assets")
+//! var loader = AssetLoader.new()
+//! loader.queue("hero", Fn.new { Image.decode(db.bytes("hero.png")) })
+//! loader.onComplete(Fn.new {|loaded| chart.send("loadDone") })
+//! loader.onError(   Fn.new {|name, err| chart.send("loadError") })
+//!
+//! chart.start()
+//! chart.send("loadStart")
+//! loader.start()
+//! ```
+//!
+//! Chart entry actions handle the transient work the loader
+//! doesn't (camera fade-in, audio ducking, swapping scenes); the
+//! loader stays a pure progress engine.
 
 /// Frame-amortised asset loader. Holds a queue of
 /// `(name, loadFn)` entries; each `update(dt)` call resolves one
