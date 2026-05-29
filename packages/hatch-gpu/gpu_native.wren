@@ -2035,6 +2035,43 @@ class Camera3D {
   }
 }
 
+/// Per-instance level-of-detail selection. Static — callers feed
+/// scalar coordinates so the inner loop stays allocation-free
+/// and JIT-friendly. Pair with a per-bucket instance buffer and
+/// dispatch one `drawMeshInstanced` per LOD with the matching
+/// mesh.
+class Lod {
+  /// 3-tier LOD by squared distance from the camera eye. Returns:
+  ///
+  ///   - `0` (highest detail) when `distance² <  t0sq`
+  ///   - `1` (mid detail)     when `distance² <  t1sq`
+  ///   - `2` (lowest detail)  otherwise
+  ///
+  /// Squared thresholds skip a sqrt per call — compute them once
+  /// at setup as `t0 * t0`, `t1 * t1`. Add a `Frustum.sphereVisible`
+  /// pass before this to drop the off-screen majority; LOD only
+  /// runs on cubes the camera can actually see.
+  ///
+  /// @param {Num} eyeX
+  /// @param {Num} eyeY
+  /// @param {Num} eyeZ
+  /// @param {Num} cx
+  /// @param {Num} cy
+  /// @param {Num} cz
+  /// @param {Num} t0sq
+  /// @param {Num} t1sq
+  /// @returns {Num}
+  static select3(eyeX, eyeY, eyeZ, cx, cy, cz, t0sq, t1sq) {
+    var dx = cx - eyeX
+    var dy = cy - eyeY
+    var dz = cz - eyeZ
+    var d2 = dx * dx + dy * dy + dz * dz
+    if (d2 < t0sq) return 0
+    if (d2 < t1sq) return 1
+    return 2
+  }
+}
+
 /// Frustum-vs-volume tests against a `Camera3D.frustumPlanes`
 /// payload. Static — the plane array carries all the state.
 class Frustum {

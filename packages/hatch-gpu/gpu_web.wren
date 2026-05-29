@@ -2093,6 +2093,34 @@ class Camera3D {
   }
 }
 
+/// Per-instance level-of-detail selection. Static — scalar args
+/// keep the inner loop allocation-free.
+class Lod {
+  /// 3-tier LOD by squared distance from the camera eye. Returns
+  /// `0` (highest detail) when `distance² < t0sq`, `1` when
+  /// `< t1sq`, otherwise `2`. Squared thresholds skip a sqrt per
+  /// call.
+  ///
+  /// @param {Num} eyeX
+  /// @param {Num} eyeY
+  /// @param {Num} eyeZ
+  /// @param {Num} cx
+  /// @param {Num} cy
+  /// @param {Num} cz
+  /// @param {Num} t0sq
+  /// @param {Num} t1sq
+  /// @returns {Num}
+  static select3(eyeX, eyeY, eyeZ, cx, cy, cz, t0sq, t1sq) {
+    var dx = cx - eyeX
+    var dy = cy - eyeY
+    var dz = cz - eyeZ
+    var d2 = dx * dx + dy * dy + dz * dz
+    if (d2 < t0sq) return 0
+    if (d2 < t1sq) return 1
+    return 2
+  }
+}
+
 /// Frustum-vs-volume tests against a `Camera3D.frustumPlanes`
 /// payload. Static — the plane array carries all the state.
 class Frustum {
