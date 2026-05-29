@@ -115,8 +115,8 @@ gap, never a crash.
 
 ## Planned
 
-- **Retained widget tree** (Godot Control / PlayCanvas Element style) —
-  layout solver, themed widget hierarchy, declarative menu trees.
+- **Retained widget tree** — declarative widget hierarchy, layout
+  solver, lifecycle hooks (`onMount` / `onUnmount` / `onUpdate`).
   Ships as a separate package; immediate mode here stays the
   one-line-per-widget surface.
 - **Bitmap-font import** — `BitmapFont.fromImage(img, {glyphWidth,
