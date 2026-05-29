@@ -72,6 +72,11 @@ class EcsCubes is Game {
     _cubeLimit  = 1000
     _frameCounter = 0
 
+    // Maps entity id → palette index. Populated at spawn so the
+    // per-frame draw loop skips the 5-material identity compare
+    // for every cube and goes straight to its bucket.
+    _cubePalette = {}
+
     // Instanced-draw plumbing. One persistent storage buffer +
     // Float32Array scratchpad per palette material. Each frame
     // every cube of that colour writes its transposed model
@@ -81,6 +86,7 @@ class EcsCubes is Game {
     // `drawMeshInstanced` covers the whole bucket.
     _instanceBufs   = []
     _instanceFloats = []
+    _instanceCounts = []   // reset to 0 each frame, never reallocated
     var perBucket = _cubeLimit
     for (i in 0..._materials.count) {
       _instanceBufs.add(g.device.createBuffer({
@@ -89,6 +95,7 @@ class EcsCubes is Game {
         "label": "ecs-cubes-instances-%(i)"
       }))
       _instanceFloats.add(Float32Array.new(perBucket * 32))
+      _instanceCounts.add(0)
     }
 
     // Lights: brighter ambient + key sun + fill light. The
@@ -191,30 +198,30 @@ class EcsCubes is Game {
       renderer.addDirectional(dir, light.color, light.intensity)
     }
 
-    // Per-palette live-instance counters. The scratchpads keep
-    // their backing storage; only the head pointer resets.
-    var instanceCounts = [0, 0, 0, 0, 0]
+    // Per-palette live-instance counters reset in place — the
+    // scratchpads and the count list keep their backing storage,
+    // only the head pointers go to zero.
+    var counts = _instanceCounts
+    for (i in 0...counts.count) counts[i] = 0
 
-    // Walk drawables. Cubes (anything sharing _cubeMesh) batch
-    // into their palette's instance scratchpad; everything else
-    // (the ground plane) draws with the legacy per-entity path.
+    // Walk drawables. Cubes look their palette index up in the
+    // `_cubePalette` map (populated at spawn) — no per-frame
+    // 5-material identity scan. Anything else (the ground plane)
+    // takes the per-entity draw path.
+    var cubeMesh = _cubeMesh
+    var floats = _instanceFloats
+    var palette = _cubePalette
     for (e in _world.query(MeshRenderer)) {
       var mr = _world.get(e, MeshRenderer)
       if (!mr.visible) continue
       if (mr.mesh == null) continue
       var gt = _world.get(e, GlobalTransform)
       var model = (gt == null) ? Mat4.identity : gt.matrix
-      if (mr.mesh == _cubeMesh) {
-        var bucket = -1
-        for (i in 0..._materials.count) {
-          if (mr.material == _materials[i]) {
-            bucket = i
-            break
-          }
-        }
-        if (bucket >= 0) {
-          Renderer3D.writeInstance(_instanceFloats[bucket], instanceCounts[bucket], model)
-          instanceCounts[bucket] = instanceCounts[bucket] + 1
+      if (mr.mesh == cubeMesh) {
+        var bucket = palette[e]
+        if (bucket != null) {
+          Renderer3D.writeInstance(floats[bucket], counts[bucket], model)
+          counts[bucket] = counts[bucket] + 1
         } else {
           renderer.draw(mr.mesh, mr.material, model)
         }
@@ -224,14 +231,12 @@ class EcsCubes is Game {
     }
 
     // One drawIndexed per palette bucket with any live cubes.
-    // writeFloatsN bounds the upload at exactly the live tail —
-    // a 4 MB scratchpad at 10 % full uploads 400 KB, not the full
-    // pad.
-    for (i in 0..._instanceFloats.count) {
-      var n = instanceCounts[i]
+    // writeFloatsN bounds the upload at exactly the live tail.
+    for (i in 0...floats.count) {
+      var n = counts[i]
       if (n == 0) continue
-      _instanceBufs[i].writeFloatsN(0, _instanceFloats[i], n * 32)
-      renderer.drawMeshInstanced(_cubeMesh, _materials[i], _instanceBufs[i], n)
+      _instanceBufs[i].writeFloatsN(0, floats[i], n * 32)
+      renderer.drawMeshInstanced(cubeMesh, _materials[i], _instanceBufs[i], n)
     }
 
     renderer.endFrame()
@@ -260,9 +265,10 @@ class EcsCubes is Game {
   // evicts the oldest cube when `_cubeLimit` is exceeded so the
   // sim stays smooth under sustained clicking.
   spawnCubeAt_(x, y, z) {
+    var palette = Rand.int(_materials.count)
     var e = _world.spawn()
     _world.attach(e, Transform.translation(x, y, z))
-    _world.attach(e, MeshRenderer.new(_cubeMesh, _materials[Rand.int(_materials.count)]))
+    _world.attach(e, MeshRenderer.new(_cubeMesh, _materials[palette]))
 
     var rb = RigidBody.new("dynamic", 1.0)
     rb.linearVelocity = Vec3.new(Rand.float(-1, 1), 0, Rand.float(-1, 1))
@@ -272,11 +278,13 @@ class EcsCubes is Game {
     })))
 
     _cubes.add(e)
+    _cubePalette[e] = palette
     if (_cubes.count > _cubeLimit) {
       var oldest = _cubes.removeAt(0)
       var oldRb = _world.get(oldest, RigidBody)
       if (oldRb != null && oldRb.bodyId != null) _physics.despawn(oldRb.bodyId)
       _world.despawn(oldest)
+      _cubePalette.remove(oldest)
     }
     return e
   }
