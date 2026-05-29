@@ -275,6 +275,164 @@ class Renderer3D {
     "
   }
 
+  // Instanced PBR shader. Same fragment shader + struct surface as
+  // PBR_WGSL_; the difference is the vertex stage reads `model` +
+  // `normal_mat` out of a storage-buffer array indexed by
+  // `@builtin(instance_index)` instead of the per-draw uniform.
+  // One drawIndexed call covers an arbitrary number of instances,
+  // and the storage buffer can be the direct output of a compute
+  // pass (transform writers, culling, LOD selection).
+  static INSTANCED_PBR_WGSL_ {
+    return "
+      struct SceneUniforms {
+        vp:            mat4x4<f32>,
+        camera_pos:    vec4<f32>,
+        ambient:       vec4<f32>,
+        counts:        vec4<f32>,
+        light_vp:      mat4x4<f32>,
+        shadow_params: vec4<f32>,
+        dir_lights:    array<DirLight,   4>,
+        point_lights:  array<PointLight, 8>,
+        spot_lights:   array<SpotLight,  4>,
+      };
+      struct DrawUniforms {
+        model:      mat4x4<f32>,
+        normal_mat: mat4x4<f32>,
+      };
+      struct MaterialUniforms {
+        albedo_color:   vec4<f32>,
+        emissive_color: vec4<f32>,
+        factors:        vec4<f32>,
+        alpha:          vec4<f32>,
+      };
+
+      @group(0) @binding(0) var<uniform> scene: SceneUniforms;
+      @group(0) @binding(1) var shadow_tex:  texture_depth_2d;
+      @group(0) @binding(2) var shadow_samp: sampler_comparison;
+      // Per-instance transforms. One entry per drawn instance.
+      @group(1) @binding(0) var<storage, read> instances: array<DrawUniforms>;
+      @group(2) @binding(0) var<uniform> mat: MaterialUniforms;
+      @group(2) @binding(1) var albedo_tex:    texture_2d<f32>;
+      @group(2) @binding(2) var mr_tex:        texture_2d<f32>;
+      @group(2) @binding(3) var normal_tex:    texture_2d<f32>;
+      @group(2) @binding(4) var occlusion_tex: texture_2d<f32>;
+      @group(2) @binding(5) var emissive_tex:  texture_2d<f32>;
+      @group(2) @binding(6) var samp:          sampler;
+
+      fn shadow_factor(world_pos: vec3<f32>, N: vec3<f32>, L: vec3<f32>) -> f32 {
+        if (scene.counts.w < 0.5) { return 1.0; }
+        let pos_light = scene.light_vp * vec4<f32>(world_pos, 1.0);
+        let proj      = pos_light.xyz / pos_light.w;
+        let uv = vec2<f32>(proj.x * 0.5 + 0.5, -proj.y * 0.5 + 0.5);
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || proj.z > 1.0) {
+          return 1.0;
+        }
+        let cos_theta = clamp(dot(N, L), 0.0, 1.0);
+        let bias      = scene.shadow_params.x * (1.0 - cos_theta) + 0.0005;
+        let depth     = proj.z - bias;
+        let r = scene.shadow_params.y;
+        var acc = 0.0;
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>(-r, -r), depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>( 0.0, -r), depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>( r, -r), depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>(-r,  0.0), depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv, depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>( r,  0.0), depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>(-r,  r), depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>( 0.0,  r), depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>( r,  r), depth);
+        return acc / 9.0;
+      }
+
+      struct VsIn  {
+        @location(0) pos:    vec3<f32>,
+        @location(1) normal: vec3<f32>,
+        @location(2) uv:     vec2<f32>,
+      };
+      struct VsOut {
+        @builtin(position) clip:   vec4<f32>,
+        @location(0)       world:  vec3<f32>,
+        @location(1)       normal: vec3<f32>,
+        @location(2)       uv:     vec2<f32>,
+      };
+
+      @vertex
+      fn vs_main(in: VsIn, @builtin(instance_index) inst_idx: u32) -> VsOut {
+        let draw_u = instances[inst_idx];
+        var o: VsOut;
+        let world_pos  = draw_u.model * vec4<f32>(in.pos, 1.0);
+        let world_norm = (draw_u.normal_mat * vec4<f32>(in.normal, 0.0)).xyz;
+        o.clip   = scene.vp * world_pos;
+        o.world  = world_pos.xyz;
+        o.normal = world_norm;
+        o.uv     = in.uv;
+        return o;
+      }
+
+      @fragment
+      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+        let base_color = mat.albedo_color * albedo_sample;
+        let alpha_mode = mat.alpha.x;
+        if (alpha_mode == 1.0 && base_color.a < mat.alpha.y) { discard; }
+
+        let mr_sample = textureSample(mr_tex, samp, in.uv);
+        let metallic  = mat.factors.x * mr_sample.b;
+        let roughness = mat.factors.y * mr_sample.g;
+
+        let N0 = normalize(in.normal);
+        let n_sample = textureSample(normal_tex, samp, in.uv).xy * 2.0 - vec2<f32>(1.0);
+        let N = perturb_normal(N0, in.world, in.uv, n_sample, mat.factors.z);
+
+        let V = normalize(scene.camera_pos.xyz - in.world);
+        var Lo = vec3<f32>(0.0);
+
+        let dir_count = u32(scene.counts.x);
+        for (var i: u32 = 0u; i < dir_count; i = i + 1u) {
+          let dl = scene.dir_lights[i];
+          let L = normalize(-dl.dir_intensity.xyz);
+          var radiance = dl.color.rgb * dl.dir_intensity.w;
+          if (i == 0u) { radiance = radiance * shadow_factor(in.world, N, L); }
+          Lo = Lo + pbr_direct(N, V, L, base_color.rgb, metallic, roughness, radiance);
+        }
+
+        let point_count = u32(scene.counts.y);
+        for (var i: u32 = 0u; i < point_count; i = i + 1u) {
+          let pl = scene.point_lights[i];
+          let to_light = pl.pos_range.xyz - in.world;
+          let dist = length(to_light);
+          if (dist < EPSILON) { continue; }
+          let L = to_light / dist;
+          let att = distance_attenuation(dist, pl.pos_range.w);
+          let radiance = pl.color_intensity.rgb * pl.color_intensity.w * att;
+          Lo = Lo + pbr_direct(N, V, L, base_color.rgb, metallic, roughness, radiance);
+        }
+
+        let spot_count = u32(scene.counts.z);
+        for (var i: u32 = 0u; i < spot_count; i = i + 1u) {
+          let sl = scene.spot_lights[i];
+          let to_light = sl.pos_range.xyz - in.world;
+          let dist = length(to_light);
+          if (dist < EPSILON) { continue; }
+          let L = to_light / dist;
+          let dist_att = distance_attenuation(dist, sl.pos_range.w);
+          let cone_att = spot_attenuation(L, sl.dir_inner.xyz, sl.dir_inner.w, sl.outer_cos.x);
+          let radiance = sl.color_intensity.rgb * sl.color_intensity.w * dist_att * cone_att;
+          Lo = Lo + pbr_direct(N, V, L, base_color.rgb, metallic, roughness, radiance);
+        }
+
+        let ao_sample = textureSample(occlusion_tex, samp, in.uv).r;
+        let ao = mix(1.0, ao_sample, mat.factors.w);
+        let ambient_term = scene.ambient.rgb * base_color.rgb * ao;
+        let emissive_sample = textureSample(emissive_tex, samp, in.uv).rgb;
+        let emissive = mat.emissive_color.rgb * emissive_sample;
+        let hdr = Lo + ambient_term + emissive;
+        let ldr = tonemap_aces(hdr);
+        return vec4<f32>(ldr, base_color.a);
+      }
+    "
+  }
+
   // Vertex-only shader for the shadow pass. Reads `pos` out of
   // the shared mesh vertex layout (normal + uv are present but
   // unused — keeps mesh buffers reusable between main and
@@ -384,6 +542,57 @@ class Renderer3D {
       },
       "label": "renderer3d-pipeline"
     })
+
+    // Instanced pipeline. Same scene + material binding shape; the
+    // per-draw uniform is replaced by a storage buffer indexed by
+    // `@builtin(instance_index)`. One drawIndexed handles the whole
+    // batch — the foliage / asteroid-field / particle-mesh path.
+    var instancedShader = Shader.module(device, [
+      Shader.prelude,
+      Shader.lightTypes,
+      Shader.lightAttenuation,
+      Shader.pbrBrdf,
+      Shader.normalMapping,
+      Shader.tonemapping,
+      Renderer3D.INSTANCED_PBR_WGSL_,
+    ], "renderer3d-pbr-instanced")
+    _instancedBgl = device.createBindGroupLayout({
+      "entries": [
+        { "binding": 0, "visibility": ["vertex"], "kind": "read-only-storage" }
+      ],
+      "label": "renderer3d-instanced-bgl"
+    })
+    _instancedPipelineLayout = device.createPipelineLayout({
+      "bindGroupLayouts": [_sceneBgl, _instancedBgl, _materialBgl]
+    })
+    _instancedPipeline = device.createRenderPipeline({
+      "layout": _instancedPipelineLayout,
+      "vertex": {
+        "module": instancedShader, "entryPoint": "vs_main",
+        "buffers": [{
+          "arrayStride": Renderer3D.FLOATS_PER_VERTEX_ * 4,
+          "stepMode": "vertex",
+          "attributes": [
+            { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
+            { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
+            { "shaderLocation": 2, "offset": 24, "format": "float32x2" }
+          ]
+        }]
+      },
+      "fragment": {
+        "module": instancedShader, "entryPoint": "fs_main",
+        "targets": [{ "format": surfaceFormat }]
+      },
+      "primitive":    { "topology": "triangle-list", "cullMode": "back" },
+      "depthStencil": {
+        "format": depthFormat, "depthWriteEnabled": true,
+        "depthCompare": "less"
+      },
+      "label": "renderer3d-instanced-pipeline"
+    })
+    // Bind-group cache keyed by instance-storage-buffer id. Avoids
+    // re-binding on hot redraws of the same instance set.
+    _instanceBgCache = {}
 
     _sceneUbo = device.createBuffer({
       "size":  Renderer3D.SCENE_UBO_BYTES_,
@@ -952,11 +1161,85 @@ class Renderer3D {
     // Resolve material bind group; rebuild on revision change.
     var entry = bindGroupFor_(material)
     var pass = _pass
+    pass.setPipeline(_pipeline)
     pass.setBindGroup(1, _drawBindGroupPool[i])
     pass.setBindGroup(2, entry["bg"])
     pass.setVertexBuffer(0, mesh.vertexBuffer)
     pass.setIndexBuffer(mesh.indexBuffer, "uint32")
     pass.drawIndexed(mesh.indexCount)
+  }
+
+  /// Instanced draw. Submits `instanceCount` copies of `mesh`
+  /// styled with `material`, with per-instance `model` + `normalMat`
+  /// matrices read out of `instanceBuffer` (a storage buffer laid
+  /// out as `array<DrawUniforms>` — 32 f32 per instance: 16 model
+  /// + 16 normal_mat).
+  ///
+  /// The buffer must be created with `["storage", "copy-dst"]`
+  /// usage. Pack the matrix data with `Renderer3D.appendInstance(
+  /// scratchpad, model)` (auto-derives `normalMat = model` for
+  /// orthonormal transforms) or `appendInstance(scratchpad, model,
+  /// normalMat)` for the explicit form, then upload with
+  /// `instanceBuffer.writeFloats(0, scratchpad)`.
+  ///
+  /// One drawIndexed call covers the whole batch. The instance
+  /// buffer can also be the direct output of a compute pass that
+  /// computes per-instance transforms (procedural placement,
+  /// frustum culling write-out, LOD selection).
+  ///
+  /// @param {Mesh} mesh
+  /// @param {Material} material
+  /// @param {Buffer} instanceBuffer
+  /// @param {Num} instanceCount
+  drawMeshInstanced(mesh, material, instanceBuffer, instanceCount) {
+    if (_pass == null) Fiber.abort("Renderer3D.drawMeshInstanced: call beginFrame first.")
+    if (instanceCount <= 0) return
+    if (!_sceneCommitted) commitScene_()
+
+    var entry = bindGroupFor_(material)
+    var pass = _pass
+    pass.setPipeline(_instancedPipeline)
+    pass.setBindGroup(0, _sceneBindGroup)
+    pass.setBindGroup(1, instanceBindGroupFor_(instanceBuffer))
+    pass.setBindGroup(2, entry["bg"])
+    pass.setVertexBuffer(0, mesh.vertexBuffer)
+    pass.setIndexBuffer(mesh.indexBuffer, "uint32")
+    pass.drawIndexed(mesh.indexCount, instanceCount)
+  }
+
+  // Get or build the BindGroup that points at `buf` for the
+  // instanced pipeline's group 1.
+  instanceBindGroupFor_(buf) {
+    var existing = _instanceBgCache[buf.id]
+    if (existing != null) return existing
+    var bg = _device.createBindGroup({
+      "layout":  _instancedBgl,
+      "entries": [{ "binding": 0, "buffer": buf }]
+    })
+    _instanceBgCache[buf.id] = bg
+    return bg
+  }
+
+  /// Append one instance's (model, normalMat) to a Float32Array-
+  /// shaped scratchpad (32 floats per instance). Pass `normalMat`
+  /// explicitly when the transform isn't orthonormal (non-uniform
+  /// scale, shears); otherwise leave it off and the model matrix
+  /// doubles as the normal matrix.
+  ///
+  /// @param {List} floats. Scratchpad. The 32 f32 of this instance
+  ///   are appended to the end.
+  /// @param {Mat4} model
+  static appendInstance(floats, model) {
+    appendInstance(floats, model, model)
+  }
+  /// @param {List} floats
+  /// @param {Mat4} model
+  /// @param {Mat4} normalMat
+  static appendInstance(floats, model, normalMat) {
+    var md = model.data
+    for (i in 0...16) floats.add(md[i])
+    var nd = normalMat.data
+    for (i in 0...16) floats.add(nd[i])
   }
 
   // Reserve the next free per-draw slot. Grows the parallel
@@ -1197,6 +1480,11 @@ class Renderer3D {
     _sampler.destroy
     _whiteTex.destroy
     _normalTex.destroy
+    for (bg in _instanceBgCache.values) bg.destroy
+    _instanceBgCache = {}
+    _instancedPipeline.destroy
+    _instancedPipelineLayout.destroy
+    _instancedBgl.destroy
     _pipeline.destroy
     _pipelineLayout.destroy
     _materialBgl.destroy

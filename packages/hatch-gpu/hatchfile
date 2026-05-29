@@ -1,7 +1,7 @@
 name        = "@hatch:gpu"
-version     = "0.3.5"
+version     = "0.3.6"
 entry       = "gpu"
-description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, ComputePipeline, CommandEncoder, RenderPass, ComputePass on the bottom; Camera2D/3D, Renderer2D (sprite batcher), Renderer3D (Cook-Torrance / GGX PBR with multi-light + textured metallic-roughness workflow), Shader factory, Mesh, Material on top. Storage buffers + compute dispatch + fast typed-array readback for general-purpose GPU work. Same shared source drives wgpu on native and WebGPU on web."
+description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, ComputePipeline, CommandEncoder, RenderPass, ComputePass on the bottom; Camera2D/3D, Renderer2D (sprite batcher), Renderer3D (Cook-Torrance / GGX PBR with multi-light + textured metallic-roughness workflow, plus drawMeshInstanced for storage-buffer-driven instanced meshes), Shader factory, Mesh, Material on top. Storage buffers + compute dispatch + fast typed-array readback for general-purpose GPU work. Same shared source drives wgpu on native and WebGPU on web."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:gpu"
 readme   = "README.md"
 

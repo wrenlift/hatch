@@ -20,6 +20,35 @@ renderer.flush(g.pass)
 
 `Renderer2D` is a batcher. Every `sprite.draw(renderer)` accumulates against the current camera; `flush(pass)` issues the actual draw calls. The 3D renderer follows the same pacing with `Renderer3D`, `Mesh`, and `Material`.
 
+## Instanced meshes
+
+`Renderer3D.drawMeshInstanced(mesh, material, instanceBuffer, count)` issues one `drawIndexed` for an arbitrary number of copies of `mesh`. The per-instance `model` + `normalMat` matrices live in a storage buffer; the vertex shader reads them via `@builtin(instance_index)`. The same buffer can be the direct output of a compute pass — write transforms, do culling, select LODs, then draw — no round-trip through Wren.
+
+```wren
+import "@hatch:gpu"  for Gpu, Mesh, Material, Camera3D, Renderer3D
+import "@hatch:math" for Vec3, Vec4, Mat4
+
+var device   = Gpu.requestDevice()
+var renderer = Renderer3D.new(device, surfaceFormat, depthFormat)
+var cube     = Mesh.cube(device, 0.5)
+var grass    = Material.new(Vec4.new(0.4, 0.8, 0.2, 1.0))
+
+// 32 floats per instance: 16 model + 16 normalMat. For orthonormal
+// transforms the one-arg form copies model into normalMat.
+var floats = []
+for (i in 0...10000) Renderer3D.appendInstance(floats, Mat4.translation(...))
+
+var instances = device.createBuffer({
+  "size":  10000 * 32 * 4,
+  "usage": ["storage", "copy-dst"]
+})
+instances.writeFloats(0, floats)
+
+renderer.beginFrame(pass, camera)
+renderer.drawMeshInstanced(cube, grass, instances, 10000)   // one drawIndexed
+renderer.endFrame()
+```
+
 ## Compute
 
 `Device.createComputePipeline` plus `CommandEncoder.beginComputePass` give you a WebGPU-style compute path for general-purpose GPU work — particle simulation, mesh skinning, terrain noise, anything that wants to mutate a storage buffer in parallel.
