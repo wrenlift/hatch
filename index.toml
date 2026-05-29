@@ -54,6 +54,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-19T01:03:42.125747+00:00"
 updated_at = "2026-04-19T01:03:42.125747+00:00"
 
+[packages."@hatch:assets-0.2.5"]
+name = "@hatch:assets"
+version = "0.2.5"
+git = "https://github.com/wrenlift/hatch"
+description = "Content-addressable assets database with hot-reload. Two backends behind one API \u2014 filesystem-backed on native (Fs.walk + content hashes + Hatch.watchFile), manifest-driven on web (fetch + lazy reads, page ships an `assets-manifest.json`). Edit a shader / texture / config file, see registered subscribers fire."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:assets"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/assets/0.2.5/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/assets/0.2.5/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T16:32:09.640157+00:00"
+updated_at = "2026-05-29T16:32:09.640157+00:00"
+
 [packages."@hatch:assets-0.2.3"]
 name = "@hatch:assets"
 version = "0.2.3"
@@ -588,6 +601,45 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-05-28T05:57:05.004444+00:00"
 updated_at = "2026-05-28T05:57:05.004444+00:00"
 
+[packages."@hatch:game-0.3.8"]
+name = "@hatch:game"
+version = "0.3.8"
+git = "https://github.com/wrenlift/hatch"
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering \u2014 subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:game"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/game/0.3.8/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/game/0.3.8/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T19:54:18.104704+00:00"
+updated_at = "2026-05-29T19:54:18.104704+00:00"
+
+[packages."@hatch:game-0.3.7"]
+name = "@hatch:game"
+version = "0.3.7"
+git = "https://github.com/wrenlift/hatch"
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering \u2014 subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:game"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/game/0.3.7/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/game/0.3.7/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T17:44:37.142154+00:00"
+updated_at = "2026-05-29T17:44:37.142154+00:00"
+
+[packages."@hatch:game-0.3.6"]
+name = "@hatch:game"
+version = "0.3.6"
+git = "https://github.com/wrenlift/hatch"
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering \u2014 subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:game"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/game/0.3.6/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/game/0.3.6/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T16:25:22.530866+00:00"
+updated_at = "2026-05-29T16:25:22.530866+00:00"
+
 [packages."@hatch:game-0.3.5"]
 name = "@hatch:game"
 version = "0.3.5"
@@ -724,6 +776,42 @@ readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-05-28T19:04:06.713635+00:00"
 updated_at = "2026-05-28T19:04:06.713635+00:00"
+
+[packages."@hatch:gpu-0.3.7"]
+name = "@hatch:gpu"
+version = "0.3.7"
+git = "https://github.com/wrenlift/hatch"
+description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, ComputePipeline, CommandEncoder, RenderPass, ComputePass on the bottom; Camera2D/3D, Frustum, Renderer2D (sprite batcher), Renderer3D (Cook-Torrance / GGX PBR with multi-light + textured metallic-roughness workflow, plus drawMeshInstanced for storage-buffer-driven instanced meshes), Shader factory, Mesh, Material on top. Storage buffers + compute dispatch + fast typed-array readback for general-purpose GPU work. Camera3D.frustumPlanes + Frustum.sphereVisible for CPU-side frustum culling against the procedural-world performance target. Same shared source drives wgpu on native and WebGPU on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:gpu"
+readme = "README.md"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/gpu/0.3.7/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T20:23:13.417988+00:00"
+updated_at = "2026-05-29T20:23:13.417988+00:00"
+
+[packages."@hatch:gpu-0.3.6"]
+name = "@hatch:gpu"
+version = "0.3.6"
+git = "https://github.com/wrenlift/hatch"
+description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, ComputePipeline, CommandEncoder, RenderPass, ComputePass on the bottom; Camera2D/3D, Renderer2D (sprite batcher), Renderer3D (Cook-Torrance / GGX PBR with multi-light + textured metallic-roughness workflow, plus drawMeshInstanced for storage-buffer-driven instanced meshes), Shader factory, Mesh, Material on top. Storage buffers + compute dispatch + fast typed-array readback for general-purpose GPU work. Same shared source drives wgpu on native and WebGPU on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:gpu"
+readme = "README.md"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/gpu/0.3.6/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T19:42:17.055207+00:00"
+updated_at = "2026-05-29T19:42:17.055207+00:00"
+
+[packages."@hatch:gpu-0.3.4"]
+name = "@hatch:gpu"
+version = "0.3.4"
+git = "https://github.com/wrenlift/hatch"
+description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, CommandEncoder, RenderPass on the bottom; Camera2D/3D, Renderer2D (sprite batcher), Renderer3D (Cook-Torrance / GGX PBR with multi-light + textured metallic-roughness workflow), Shader factory, Mesh, Material on top. Same shared source drives wgpu on native and WebGPU on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:gpu"
+readme = "README.md"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/gpu/0.3.4/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T17:38:06.839198+00:00"
+updated_at = "2026-05-29T17:38:06.839198+00:00"
 
 [packages."@hatch:gpu-0.3.3"]
 name = "@hatch:gpu"
@@ -1143,6 +1231,19 @@ description = "Byte buffers plus Reader / Writer streams \u2014 in-memory and ad
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T20:41:56.64897+00:00"
 updated_at = "2026-04-20T20:41:56.64897+00:00"
+
+[packages."@hatch:json-0.1.5"]
+name = "@hatch:json"
+version = "0.1.5"
+git = "https://github.com/wrenlift/hatch"
+description = "JSON parser and serializer. Pure Wren, no native deps."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:json"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/json/0.1.5/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/json/0.1.5/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T16:25:19.555928+00:00"
+updated_at = "2026-05-29T16:25:19.555928+00:00"
 
 [packages."@hatch:json-0.1.4"]
 name = "@hatch:json"
