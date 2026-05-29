@@ -54,6 +54,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-19T01:03:42.125747+00:00"
 updated_at = "2026-04-19T01:03:42.125747+00:00"
 
+[packages."@hatch:assets-0.2.3"]
+name = "@hatch:assets"
+version = "0.2.3"
+git = "https://github.com/wrenlift/hatch"
+description = "Content-addressable assets database with hot-reload. Two backends behind one API \u2014 filesystem-backed on native (Fs.walk + content hashes + Hatch.watchFile), manifest-driven on web (fetch + lazy reads, page ships an `assets-manifest.json`). Edit a shader / texture / config file, see registered subscribers fire."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:assets"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/assets/0.2.3/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/assets/0.2.3/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T12:27:46.370224+00:00"
+updated_at = "2026-05-29T12:27:46.370224+00:00"
+
 [packages."@hatch:assets-0.2.2"]
 name = "@hatch:assets"
 version = "0.2.2"
@@ -334,6 +347,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-23T22:18:18.276114+00:00"
 updated_at = "2026-04-23T22:18:18.276114+00:00"
 
+[packages."@hatch:ecs-0.2.4"]
+name = "@hatch:ecs"
+version = "0.2.4"
+git = "https://github.com/wrenlift/hatch"
+description = "Entity-component-system for Wren. `World` storage + fluent `Query.with(C).without(C)` filters, component-instance bundles for one-call spawns, typed `Resources` and `Events<T>`, deferred `Commands` for safe mid-loop mutation, hierarchy via `setParent` / `childrenOf`, `onAdd` / `onRemove` lifecycle hooks, and a `Schedule` with `before` / `after` ordering for system dispatch. `SaveSystem.snapshot(world, components)` + `SaveSystem.restore(...)` round-trip ECS state through plain Maps ready for JSON. Pure Wren \u2014 composes with `@hatch:game`'s frame loop, runs anywhere Wren runs."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:ecs"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/ecs/0.2.4/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/ecs/0.2.4/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T12:28:04.479634+00:00"
+updated_at = "2026-05-29T12:28:04.479634+00:00"
+
 [packages."@hatch:ecs-0.2.3"]
 name = "@hatch:ecs"
 version = "0.2.3"
@@ -562,6 +588,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-05-28T05:57:05.004444+00:00"
 updated_at = "2026-05-28T05:57:05.004444+00:00"
 
+[packages."@hatch:game-0.3.5"]
+name = "@hatch:game"
+version = "0.3.5"
+git = "https://github.com/wrenlift/hatch"
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering \u2014 subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:game"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/game/0.3.5/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/game/0.3.5/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T12:19:26.090817+00:00"
+updated_at = "2026-05-29T12:19:26.090817+00:00"
+
 [packages."@hatch:game-0.3.1"]
 name = "@hatch:game"
 version = "0.3.1"
@@ -685,6 +724,18 @@ readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-05-28T19:04:06.713635+00:00"
 updated_at = "2026-05-28T19:04:06.713635+00:00"
+
+[packages."@hatch:gpu-0.3.3"]
+name = "@hatch:gpu"
+version = "0.3.3"
+git = "https://github.com/wrenlift/hatch"
+description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, CommandEncoder, RenderPass on the bottom; Camera2D/3D, Renderer2D (sprite batcher), Renderer3D (Cook-Torrance / GGX PBR with multi-light + textured metallic-roughness workflow), Shader factory, Mesh, Material on top. Same shared source drives wgpu on native and WebGPU on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:gpu"
+readme = "README.md"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/gpu/0.3.3/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T12:12:39.472855+00:00"
+updated_at = "2026-05-29T12:12:39.472855+00:00"
 
 [packages."@hatch:gpu-0.3.0"]
 name = "@hatch:gpu"
@@ -930,6 +981,19 @@ description = "Synchronous HTTP/1.1 client with TLS."
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:03.93575+00:00"
 updated_at = "2026-04-20T16:29:03.93575+00:00"
+
+[packages."@hatch:hud-0.1.1"]
+name = "@hatch:hud"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Immediate-mode HUD overlay for the WrenLift game framework. `HUD.new(g)` gives you `hud.label`, `hud.rect`, `hud.button` \u2014 drawn through `@hatch:gpu`'s Renderer2D, with click + hover state tracked across frames. Ships a built-in 5\u00d77 procedural font (digits + uppercase + common punctuation) so HUD essentials (`SCORE: 100`, `LIVES: 3`, `PAUSE`) work without bringing an asset font."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:hud"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/hud/0.1.1/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/hud/0.1.1/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T12:25:56.384878+00:00"
+updated_at = "2026-05-29T12:25:56.384878+00:00"
 
 [packages."@hatch:image-0.1.7"]
 name = "@hatch:image"
@@ -1386,6 +1450,19 @@ description = "Rapier-backed physics for the WrenLift game framework. World2D an
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-28T12:43:43.786756+00:00"
 updated_at = "2026-04-28T12:43:43.786756+00:00"
+
+[packages."@hatch:postfx-0.1.0"]
+name = "@hatch:postfx"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch"
+description = "Common post-processing effects for the WrenLift game framework. `Tonemap`, `Vignette`, `Bloom`, `FXAA`, `ColorGrade`, `ChromaticAberration` \u2014 each a `PostPass` subclass that drops into `g.postFX = PostFX.new(g)` from `@hatch:game`. Effects ship here so the engine stays lean; new effects can be added without bumping `@hatch:game`."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:postfx"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/postfx/0.1.0/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/postfx/0.1.0/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T12:28:24.593777+00:00"
+updated_at = "2026-05-29T12:28:24.593777+00:00"
 
 [packages."@hatch:proc-0.3.2"]
 name = "@hatch:proc"
