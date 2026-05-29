@@ -2009,19 +2009,26 @@ class Camera3D {
     _target = Vec3.new(0, 0, 0)
     _up     = Vec3.new(0, 1, 0)
     _viewDirty = true
+    _planes = Float32Array.new(24)
+    _planesDirty = true
   }
 
-  setProjection_(m) { _proj = m }
+  setProjection_(m) {
+    _proj = m
+    _planesDirty = true
+  }
 
   lookAt(eye, target, up) {
     _eye = eye
     _target = target
     _up = up
     _viewDirty = true
+    _planesDirty = true
   }
 
   setPerspective(fovY, aspect, near, far) {
     _proj = Mat4.perspective(fovY * 3.141592653589793 / 180, aspect, near, far)
+    _planesDirty = true
   }
 
   eye    { _eye }
@@ -2034,6 +2041,81 @@ class Camera3D {
       _viewDirty = false
     }
     return _proj * _view
+  }
+
+  /// World-space frustum planes as a `Float32Array.new(24)`,
+  /// laid out `(nx, ny, nz, d) × 6` in `left, right, bottom, top,
+  /// near, far` order. Tracks `@hatch:math`'s OpenGL [-1, 1]
+  /// depth convention. Lazily rebuilt on camera matrix change.
+  ///
+  /// @returns {Float32Array}
+  frustumPlanes {
+    if (_planesDirty) {
+      buildFrustumPlanes_()
+      _planesDirty = false
+    }
+    return _planes
+  }
+
+  buildFrustumPlanes_() {
+    var m = viewProj.data
+    var r00 = m[0]
+    var r01 = m[1]
+    var r02 = m[2]
+    var r03 = m[3]
+    var r10 = m[4]
+    var r11 = m[5]
+    var r12 = m[6]
+    var r13 = m[7]
+    var r20 = m[8]
+    var r21 = m[9]
+    var r22 = m[10]
+    var r23 = m[11]
+    var r30 = m[12]
+    var r31 = m[13]
+    var r32 = m[14]
+    var r33 = m[15]
+    var p = _planes
+    setPlane_(p,  0, r30 + r00, r31 + r01, r32 + r02, r33 + r03)
+    setPlane_(p,  4, r30 - r00, r31 - r01, r32 - r02, r33 - r03)
+    setPlane_(p,  8, r30 + r10, r31 + r11, r32 + r12, r33 + r13)
+    setPlane_(p, 12, r30 - r10, r31 - r11, r32 - r12, r33 - r13)
+    setPlane_(p, 16, r30 + r20, r31 + r21, r32 + r22, r33 + r23)
+    setPlane_(p, 20, r30 - r20, r31 - r21, r32 - r22, r33 - r23)
+  }
+
+  setPlane_(p, off, a, b, c, d) {
+    var inv = 1 / (a * a + b * b + c * c).sqrt
+    p[off]     = a * inv
+    p[off + 1] = b * inv
+    p[off + 2] = c * inv
+    p[off + 3] = d * inv
+  }
+}
+
+/// Frustum-vs-volume tests against a `Camera3D.frustumPlanes`
+/// payload. Static — the plane array carries all the state.
+class Frustum {
+  /// Returns `true` when a sphere at `(cx, cy, cz)` with the
+  /// given world-space `radius` lies at least partially inside
+  /// every frustum plane. `false` only when fully outside at
+  /// least one plane.
+  ///
+  /// @param {Float32Array} planes
+  /// @param {Num} cx
+  /// @param {Num} cy
+  /// @param {Num} cz
+  /// @param {Num} radius
+  /// @returns {Bool}
+  static sphereVisible(planes, cx, cy, cz, radius) {
+    var i = 0
+    var negR = -radius
+    while (i < 24) {
+      var d = planes[i] * cx + planes[i + 1] * cy + planes[i + 2] * cz + planes[i + 3]
+      if (d < negR) return false
+      i = i + 4
+    }
+    return true
   }
 }
 

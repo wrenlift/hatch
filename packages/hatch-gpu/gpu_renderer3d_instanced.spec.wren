@@ -8,7 +8,7 @@
 // to 10k for the procedural-world performance target.
 
 import "./gpu" for
-  Gpu, Buffer, Mesh, Material, Camera3D, Renderer3D
+  Gpu, Buffer, Mesh, Material, Camera3D, Frustum, Renderer3D
 import "@hatch:math"   for Vec3, Vec4, Mat4
 import "@hatch:time"   for Clock
 import "@hatch:test"   for Test
@@ -271,6 +271,106 @@ Test.describe("Renderer3D.drawMeshInstanced exit-gate") {
     mesh.indexBuffer.destroy
     depth.destroy
     color.destroy
+    renderer.destroy
+    device.destroy
+  }
+}
+
+Test.describe("Frustum cull exit-gate") {
+  Test.it("culls the off-screen majority of a 10k-cube grid before writeInstance") {
+    // 100×100 grid laid out on the XZ plane, spacing 3 units.
+    // Total span ≈ ±150 units. The camera looks at the centre
+    // from above-and-behind, so most of the grid lies outside
+    // the perspective frustum — the cull rate is the headline
+    // metric the procedural-world target depends on.
+    var device = Gpu.requestDevice()
+    var renderer = Renderer3D.new(device, "rgba8unorm", "depth32float")
+    var mesh = Mesh.cube(device, 0.45)
+    var mat  = Material.new(Vec4.new(0.6, 0.8, 1.0, 1.0))
+    var n = 10000
+    var perRow = 100
+    var spacing = 3
+    var origin = -((perRow - 1) * spacing) / 2
+
+    // Pre-build every cube's world centre + its model matrix once
+    // so the per-frame loop reads stored values, the same way
+    // ecs-cubes reads GlobalTransform.matrix in production. Without
+    // this the bench would also be measuring Mat4.translation
+    // allocations, which scale linearly in N and drown out the
+    // cull's actual cost.
+    var xs = Float32Array.new(n)
+    var ys = Float32Array.new(n)
+    var zs = Float32Array.new(n)
+    var models = []
+    for (i in 0...n) {
+      var col = (i % perRow).floor
+      var row = (i / perRow).floor
+      var x = origin + col * spacing
+      var z = origin + row * spacing
+      xs[i] = x
+      ys[i] = 0
+      zs[i] = z
+      models.add(Mat4.translation(x, 0, z))
+    }
+
+    var camera = Camera3D.perspective(60, 1.0, 0.1, 200)
+    camera.lookAt(Vec3.new(0, 30, 60), Vec3.zero, Vec3.unitY)
+
+    // Backing buffer + scratchpad sized for the worst case (the
+    // whole grid). Real consumers would size to the expected
+    // visible count + headroom.
+    var floats = Float32Array.new(n * 32)
+    var instanceBuf = device.createBuffer({
+      "size":  n * 32 * 4,
+      "usage": ["storage", "copy-dst"]
+    })
+
+    // Warmup: walk + write all 10k once so JIT lands and any GPU
+    // first-frame init isn't billed to the cull pass.
+    {
+      var planes = camera.frustumPlanes
+      var visible = 0
+      for (i in 0...n) {
+        if (Frustum.sphereVisible(planes, xs[i], ys[i], zs[i], 0.8)) {
+          Renderer3D.writeInstance(floats, visible, models[i])
+          visible = visible + 1
+        }
+      }
+      instanceBuf.writeFloatsN(0, floats, visible * 32)
+    }
+
+    var runs = 5
+    var totalCull = 0
+    var lastVisible = 0
+    for (r in 0...runs) {
+      var t0 = Clock.mono * 1000
+      var planes = camera.frustumPlanes
+      var visible = 0
+      for (i in 0...n) {
+        if (Frustum.sphereVisible(planes, xs[i], ys[i], zs[i], 0.8)) {
+          Renderer3D.writeInstance(floats, visible, models[i])
+          visible = visible + 1
+        }
+      }
+      instanceBuf.writeFloatsN(0, floats, visible * 32)
+      var t1 = Clock.mono * 1000
+      totalCull = totalCull + (t1 - t0)
+      lastVisible = visible
+    }
+
+    var rate = ((n - lastVisible) * 1000 / n).floor / 10
+    System.print("[bench] %(n) cubes, %(lastVisible) visible, %(rate)%% culled, runs=%(runs)")
+    System.print("[bench] cull + writeInstance + upload mean: %(totalCull / runs) ms")
+
+    // Conservative correctness: most of the grid should land off-
+    // screen so the cull genuinely buys something. If the visible
+    // share creeps past 80 % the camera+grid setup needs to widen.
+    Expect.that(lastVisible < n).toBe(true)
+    Expect.that((lastVisible / n) < 0.8).toBe(true)
+
+    instanceBuf.destroy
+    mesh.vertexBuffer.destroy
+    mesh.indexBuffer.destroy
     renderer.destroy
     device.destroy
   }
