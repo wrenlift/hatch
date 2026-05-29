@@ -8,4 +8,4 @@ description = "Fruit-Ninja-style swipe game wired through @hatch:assets/AssetLoa
 "@hatch:json"   = "0.1.4"
 "@hatch:assets" = "0.2.3"
 "@hatch:fsm"    = "0.1.1"
-"@hatch:hud"    = "0.1.1"
+"@hatch:hud"    = "0.1.2"
