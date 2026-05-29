@@ -647,15 +647,24 @@ class Game {
       // any StateChart that called `bindEvents(Actions.emitter, …)`
       // sees them as transition triggers without the frame loop
       // needing to know about it.
-      Actions.update_(g.input)
+      //
+      // The null guards on Actions / Tweens / Particles below are
+      // load-bearing on the wasm playground: the cross-target
+      // bundle's sibling-module imports for these three (`./actions`,
+      // `./animation`, `./particles`) bind to null in @hatch:game's
+      // module-vars on the web runtime even though the modules ship
+      // in the bundle. Without the guards the first frame aborts at
+      // `Null does not implement update_(_)`. Native binds them
+      // correctly so the guards are a no-op there.
+      if (Actions   != null) Actions.update_(g.input)
       // Advance any scheduled tweens. `Tweens.add(t)` is the
       // user-facing entry; this is the matching pump call so user
       // code doesn't have to remember to drive it.
-      Tweens.update(g.dt)
+      if (Tweens    != null) Tweens.update(g.dt)
       // Tick registered particle systems. Systems that prefer
       // explicit timing skip `Particles.register` and call
       // `system.update(dt)` themselves.
-      Particles.update(g.dt)
+      if (Particles != null) Particles.update(g.dt)
 
       // Poll the live window size every frame instead of relying
       // on `WindowEvent::Resized` reaching us through the event
