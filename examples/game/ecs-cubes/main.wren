@@ -17,7 +17,7 @@
 import "@hatch:game"    for Game, Transform, GlobalTransform, MeshRenderer, RigidBody, Collider,
                             PhysicsSystem3D, TransformPropagation, SceneRenderer3D,
                             DirectionalLight, AmbientLight
-import "@hatch:gpu"     for Renderer3D, Camera3D, Mesh, Material
+import "@hatch:gpu"     for Renderer3D, Camera3D, Frustum, Mesh, Material
 import "@hatch:ecs"     for World
 import "@hatch:math"    for Vec3, Vec4, Mat4, Quat
 import "@hatch:physics" for World3D, Collider3D
@@ -208,9 +208,16 @@ class EcsCubes is Game {
     // `_cubePalette` map (populated at spawn) — no per-frame
     // 5-material identity scan. Anything else (the ground plane)
     // takes the per-entity draw path.
+    //
+    // Each cube is frustum-culled against its bounding sphere.
+    // For a 0.9-unit cube the circumscribed radius is 0.45·√3 ≈
+    // 0.78; rounded up to 0.8 for conservative coverage. Culled
+    // instances skip the writeInstance call entirely.
     var cubeMesh = _cubeMesh
     var floats = _instanceFloats
     var palette = _cubePalette
+    var planes = _camera.frustumPlanes
+    var radius = 0.8
     for (e in _world.query(MeshRenderer)) {
       var mr = _world.get(e, MeshRenderer)
       if (!mr.visible) continue
@@ -218,6 +225,9 @@ class EcsCubes is Game {
       var gt = _world.get(e, GlobalTransform)
       var model = (gt == null) ? Mat4.identity : gt.matrix
       if (mr.mesh == cubeMesh) {
+        // Mat4.translation packs xyz into row-major slots 3, 7, 11.
+        var md = model.data
+        if (!Frustum.sphereVisible(planes, md[3], md[7], md[11], radius)) continue
         var bucket = palette[e]
         if (bucket != null) {
           Renderer3D.writeInstance(floats[bucket], counts[bucket], model)
