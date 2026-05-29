@@ -1,7 +1,7 @@
 // `@hatch:ecs`: entity-component-system for Wren.
 //
 // ```wren
-// import "@hatch:ecs" for World, Schedule
+// import "@hatch:ecs" for World, Schedule, SaveSystem
 //
 // class Position { construct new(x, y) { _x = x; _y = y; }; ... }
 // class Velocity { construct new(x, y) { _x = x; _y = y; }; ... }
@@ -63,6 +63,10 @@
 //   `world.childrenOf(parent)`. Backed by built-in `Parent` and
 //   `Children` components so queries can include or exclude them
 //   like any other.
+
+// Snapshot + restore lives in a sibling module so callers that
+// don't need save/load can skip importing it.
+import "./save" for SaveSystem
 
 // ---------------------------------------------------------------
 /// Built-in components for the hierarchy layer. Plain classes;
