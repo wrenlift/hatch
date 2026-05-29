@@ -31,14 +31,14 @@ native_search_paths = ["libs"]
 # bundle via `hatch publish`.
 [plugin_source]
 repo      = "https://github.com/wrenlift/WrenLift.git"
-# Bump tracks WrenLift's bundle-side `topo_sort_wren_files_by_imports`
-# (commit 8a65fa0). Without it the published bundle listed
-# `gpu_renderer3d` *before* `gpu_shader`, so when the runtime
-# installed gpu_renderer3d it imported a not-yet-loaded sibling
-# and `Shader` resolved to null. The plugin C surface is unchanged
-# from e52ba41 — this rev only affects how `wlift` orders modules
-# inside the .hatch bundle.
-rev       = "05cbc54"
+# Bump picks up the plugin compute + storage readback + buffer-to-
+# buffer copy surface: wlift_gpu_compute_pipeline_create / _destroy,
+# wlift_gpu_encoder_record_compute_pass,
+# wlift_gpu_buffer_read_into_typed_array, and
+# wlift_gpu_encoder_copy_buffer_to_buffer. The Wren wrappers in
+# gpu_native.wren / gpu_web.wren depend on these exports being
+# present in the cdylib.
+rev       = "ce8fc78"
 crate     = "wlift_gpu"
 # Wasm-only companion cdylib used when the bundle runs in a
 # browser. Built from the same `repo`/`rev`; produces
