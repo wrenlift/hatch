@@ -22,6 +22,7 @@ import "@hatch:ecs"     for World
 import "@hatch:math"    for Vec3, Vec4, Mat4, Quat
 import "@hatch:physics" for World3D, Collider3D
 import "@hatch:random"  for Rand
+import "@hatch:time"    for Clock
 
 class EcsCubes is Game {
   construct new() {}
@@ -98,6 +99,17 @@ class EcsCubes is Game {
       _instanceCounts.add(0)
     }
 
+    // Rolling per-frame timing accumulator. Reports every 60
+    // frames (~1 s at vsync) so a single line in the console
+    // tracks where the budget actually goes. Comment the print
+    // line out to silence; remove the wrappers once the budget
+    // shape stabilises.
+    _profUpdateMs  = 0
+    _profDrawMs    = 0
+    _profVisible   = 0
+    _profCulled    = 0
+    _profFrames    = 0
+
     // Lights: brighter ambient + key sun + fill light. The
     // renderer collects them off the world via SceneRenderer3D's
     // per-frame walk. Without the fill light, sides facing away
@@ -149,6 +161,8 @@ class EcsCubes is Game {
   }
 
   update(g) {
+    var t0 = Clock.mono * 1000
+
     if (g.input.justPressed("Escape")) g.requestQuit
     if (g.input.mouseJustPressed("left")) dropCubeAtCursor_(g)
 
@@ -170,9 +184,14 @@ class EcsCubes is Game {
       _frameCounter = 0
       System.gc()
     }
+
+    _profUpdateMs = _profUpdateMs + (Clock.mono * 1000 - t0)
   }
 
   draw(g) {
+    var t0 = Clock.mono * 1000
+    var visible = 0
+    var culled = 0
     var renderer = _renderer
     renderer.beginFrame(g.pass, _camera)
 
@@ -227,13 +246,18 @@ class EcsCubes is Game {
       if (mr.mesh == cubeMesh) {
         // Mat4.translation packs xyz into row-major slots 3, 7, 11.
         var md = model.data
-        if (!Frustum.sphereVisible(planes, md[3], md[7], md[11], radius)) continue
+        if (!Frustum.sphereVisible(planes, md[3], md[7], md[11], radius)) {
+          culled = culled + 1
+          continue
+        }
         var bucket = palette[e]
         if (bucket != null) {
           Renderer3D.writeInstance(floats[bucket], counts[bucket], model)
           counts[bucket] = counts[bucket] + 1
+          visible = visible + 1
         } else {
           renderer.draw(mr.mesh, mr.material, model)
+          visible = visible + 1
         }
       } else {
         renderer.draw(mr.mesh, mr.material, model)
@@ -250,6 +274,23 @@ class EcsCubes is Game {
     }
 
     renderer.endFrame()
+
+    _profDrawMs  = _profDrawMs + (Clock.mono * 1000 - t0)
+    _profVisible = _profVisible + visible
+    _profCulled  = _profCulled + culled
+    _profFrames  = _profFrames + 1
+    if (_profFrames >= 60) {
+      var fU = _profUpdateMs / 60
+      var fD = _profDrawMs / 60
+      var fV = (_profVisible / 60).floor
+      var fC = (_profCulled / 60).floor
+      System.print("[profile] cubes=%(_cubes.count) | update %(fU) ms | draw %(fD) ms | visible %(fV) | culled %(fC)")
+      _profUpdateMs = 0
+      _profDrawMs   = 0
+      _profVisible  = 0
+      _profCulled   = 0
+      _profFrames   = 0
+    }
   }
 
   // Ground material — desaturated dielectric, slightly rough.
