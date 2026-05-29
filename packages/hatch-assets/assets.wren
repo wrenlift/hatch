@@ -19,3 +19,8 @@ import "assets_native" for Asset, Assets
 
 #!wasm
 import "assets_web" for Asset, Assets
+
+// Target-agnostic frame-amortised loader. Holds a queue of
+// `(name, loadFn)` closures and drains one per `update(dt)` so
+// loading-scene progress bars stay responsive.
+import "loader" for AssetLoader
