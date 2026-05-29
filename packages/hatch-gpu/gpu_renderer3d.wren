@@ -1220,11 +1220,13 @@ class Renderer3D {
     return bg
   }
 
-  /// Append one instance's (model, normalMat) to a Float32Array-
-  /// shaped scratchpad (32 floats per instance). Pass `normalMat`
-  /// explicitly when the transform isn't orthonormal (non-uniform
-  /// scale, shears); otherwise leave it off and the model matrix
-  /// doubles as the normal matrix.
+  /// Append one instance's (model, normalMat) to a List-shaped
+  /// scratchpad (32 floats per instance). Convenient for one-off
+  /// tests; the hot path should use `writeInstance` with a
+  /// pre-allocated `Float32Array` instead — every `.add` on a
+  /// growing List hits the allocator, and a 200-cube frame is
+  /// 6400 entries vs. a single indexed-write loop into a typed
+  /// array.
   ///
   /// @param {List} floats. Scratchpad. The 32 f32 of this instance
   ///   are appended to the end.
@@ -1236,10 +1238,103 @@ class Renderer3D {
   /// @param {Mat4} model
   /// @param {Mat4} normalMat
   static appendInstance(floats, model, normalMat) {
-    var md = model.data
-    for (i in 0...16) floats.add(md[i])
-    var nd = normalMat.data
-    for (i in 0...16) floats.add(nd[i])
+    // Mat4.data is row-major; WGSL mat4x4<f32> reads 16 floats as
+    // column-major. Transpose at the upload boundary so the shader's
+    // M*v reads the rows as expected. Unrolled to match the
+    // appendMat4_ note: looped form miscompiled under tiered.
+    var d = model.data
+    floats.add(d[0])
+    floats.add(d[4])
+    floats.add(d[8])
+    floats.add(d[12])
+    floats.add(d[1])
+    floats.add(d[5])
+    floats.add(d[9])
+    floats.add(d[13])
+    floats.add(d[2])
+    floats.add(d[6])
+    floats.add(d[10])
+    floats.add(d[14])
+    floats.add(d[3])
+    floats.add(d[7])
+    floats.add(d[11])
+    floats.add(d[15])
+    var n = normalMat.data
+    floats.add(n[0])
+    floats.add(n[4])
+    floats.add(n[8])
+    floats.add(n[12])
+    floats.add(n[1])
+    floats.add(n[5])
+    floats.add(n[9])
+    floats.add(n[13])
+    floats.add(n[2])
+    floats.add(n[6])
+    floats.add(n[10])
+    floats.add(n[14])
+    floats.add(n[3])
+    floats.add(n[7])
+    floats.add(n[11])
+    floats.add(n[15])
+  }
+
+  /// Hot-path instance write. Stores one instance's transposed
+  /// (model, normalMat) at slot `slot` of a pre-allocated
+  /// `Float32Array` — 32 floats per slot, indexed directly. No
+  /// per-element allocation, no method dispatch on the inner
+  /// loop. Pair with `buffer.writeFloatsN(0, scratch, count * 32)`
+  /// to upload just the live tail.
+  ///
+  /// `scratch.length >= (slot + 1) * 32` must hold. The transpose
+  /// pattern mirrors `appendInstance` (Mat4.data is row-major,
+  /// WGSL `mat4x4<f32>` reads column-major).
+  ///
+  /// @param {Float32Array} scratch
+  /// @param {Num} slot
+  /// @param {Mat4} model
+  static writeInstance(scratch, slot, model) {
+    writeInstance(scratch, slot, model, model)
+  }
+  /// @param {Float32Array} scratch
+  /// @param {Num} slot
+  /// @param {Mat4} model
+  /// @param {Mat4} normalMat
+  static writeInstance(scratch, slot, model, normalMat) {
+    var off = slot * 32
+    var d = model.data
+    scratch[off]      = d[0]
+    scratch[off + 1]  = d[4]
+    scratch[off + 2]  = d[8]
+    scratch[off + 3]  = d[12]
+    scratch[off + 4]  = d[1]
+    scratch[off + 5]  = d[5]
+    scratch[off + 6]  = d[9]
+    scratch[off + 7]  = d[13]
+    scratch[off + 8]  = d[2]
+    scratch[off + 9]  = d[6]
+    scratch[off + 10] = d[10]
+    scratch[off + 11] = d[14]
+    scratch[off + 12] = d[3]
+    scratch[off + 13] = d[7]
+    scratch[off + 14] = d[11]
+    scratch[off + 15] = d[15]
+    var n = normalMat.data
+    scratch[off + 16] = n[0]
+    scratch[off + 17] = n[4]
+    scratch[off + 18] = n[8]
+    scratch[off + 19] = n[12]
+    scratch[off + 20] = n[1]
+    scratch[off + 21] = n[5]
+    scratch[off + 22] = n[9]
+    scratch[off + 23] = n[13]
+    scratch[off + 24] = n[2]
+    scratch[off + 25] = n[6]
+    scratch[off + 26] = n[10]
+    scratch[off + 27] = n[14]
+    scratch[off + 28] = n[3]
+    scratch[off + 29] = n[7]
+    scratch[off + 30] = n[11]
+    scratch[off + 31] = n[15]
   }
 
   // Reserve the next free per-draw slot. Grows the parallel
