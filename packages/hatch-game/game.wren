@@ -82,6 +82,29 @@ import "./scene" for
 // `chart.bindEvents(Actions.emitter, [...])`.
 import "./actions" for Actions
 
+// Tweens + keyframe clips. `Tweens.add(...)` schedules a property
+// animator that ticks every frame; `AnimationPlayer` drives one
+// or more `Clip`s with optional crossfade and FSM-statechart
+// binding. Game.run pumps the tween manager once per frame so
+// user code only writes the `Tween.new` call.
+import "./animation" for Tween, Tweens, Clip, AnimationPlayer, Behaviors
+
+// CPU particle systems. `ParticleSystem.new({...})` configures one
+// system; `Particles.register(sys)` opts it into Game.run's per-
+// frame tick (or call `sys.update(dt)` manually). Output routes
+// through `Renderer2D.drawSpriteTinted` so particles share the
+// existing batch pipeline.
+import "./particles" for ParticleSystem, Particles
+
+// Fullscreen post-processing chain. Setting `g.postFX = PostFX.new(g)`
+// in `setup` re-routes the scene render through an offscreen
+// target; the chain then runs each `PostPass` in order, ending
+// with a write to the swap chain. The chain primitive lives here;
+// concrete effects (tonemap, bloom, FXAA, ...) ship in the
+// separate `@hatch:postfx` package so the engine doesn't grow as
+// the effect catalogue does.
+import "./chain" for PostFX, PostPass
+
 // On web, the main fiber holds the JS thread until it parks on
 // an async bridge. The frame loop yields with
 // `Browser.nextFrame.await` (vsync-paced via requestAnimationFrame
@@ -267,6 +290,8 @@ class GameState {
     _viewport = Viewport.new_(0, 0)
     _lastTime  = 0
     _startTime = 0
+    _encoder   = null
+    _postFX    = null
   }
 
   /// Aggregated keyboard / mouse state for this frame.
@@ -368,6 +393,30 @@ class GameState {
   /// @param {String} key
   /// @returns {Bool}
   has(key)        { _userData.containsKey(key) }
+
+  /// Active `CommandEncoder` for this frame. Set by `Game.run`
+  /// each iteration before `update` / `draw`, cleared after the
+  /// frame's `submit`. Surfaced primarily for `PostFX` and other
+  /// chains that need to record their own passes alongside the
+  /// user's `draw(g)` work.
+  /// @returns {CommandEncoder}
+  encoder       { _encoder }
+  encoder=(e)   { _encoder = e }
+
+  /// Optional `PostFX` chain. When set, `Game.run` re-routes
+  /// `g.pass` to the chain's offscreen scene target, drives the
+  /// chain after `draw(g)` returns, and writes the final output
+  /// into the swap chain. Set in `setup(g)`:
+  ///
+  /// ```wren
+  /// g.postFX = PostFX.new(g)
+  /// g.postFX.add(TonemapPass.new())
+  /// ```
+  ///
+  /// `null` (the default) keeps the direct-to-swap-chain path.
+  /// @returns {PostFX}
+  postFX        { _postFX }
+  postFX=(p)    { _postFX = p }
 
   /// Mark the loop for shutdown. `Game.run` returns at the next
   /// frame boundary.
@@ -600,6 +649,14 @@ class Game {
       // sees them as transition triggers without the frame loop
       // needing to know about it.
       Actions.update_(g.input)
+      // Advance any scheduled tweens. `Tweens.add(t)` is the
+      // user-facing entry; this is the matching pump call so user
+      // code doesn't have to remember to drive it.
+      Tweens.update(g.dt)
+      // Tick registered particle systems. Systems that prefer
+      // explicit timing skip `Particles.register` and call
+      // `system.update(dt)` themselves.
+      Particles.update(g.dt)
 
       // Poll the live window size every frame instead of relying
       // on `WindowEvent::Resized` reaching us through the event
@@ -661,17 +718,33 @@ class Game {
 
       var frame = surface.acquire()
       var encoder = device.createCommandEncoder()
+      g.encoder = encoder
+
+      // PostFX chain: scene render goes to the chain's offscreen
+      // colour target instead of the swap chain, and a final
+      // chain-end pass writes the processed result into `frame.view`.
+      // When no PostFX is configured, the scene draws directly to
+      // the swap chain (the unchanged fast path).
+      var post = g.postFX
+      var sceneColorView = frame.view
+      var sceneDepthView = depthView
+      if (post != null) {
+        post.resize_(g.width, g.height)
+        sceneColorView = post.sceneView_
+        if (post.sceneDepthView_ != null) sceneDepthView = post.sceneDepthView_
+      }
+
       var passDesc = {
         "colorAttachments": [{
-          "view":       frame.view,
+          "view":       sceneColorView,
           "loadOp":     "clear",
           "clearValue": c["clearColor"],
           "storeOp":    "store"
         }]
       }
-      if (depthView != null) {
+      if (sceneDepthView != null) {
         passDesc["depthStencilAttachment"] = {
-          "view":            depthView,
+          "view":            sceneDepthView,
           "depthLoadOp":     "clear",
           "depthClearValue": 1.0,
           "depthStoreOp":    "store"
@@ -683,6 +756,9 @@ class Game {
       g.pass = null
       pass.end
       pass = null
+
+      if (post != null) post.runChain(encoder, frame.view)
+
       encoder.finish
       device.submit([encoder])
       // submit already removed the encoder from the registry; the
@@ -691,6 +767,7 @@ class Game {
       // waiting for the frame-loop iteration to drop the local.
       encoder.destroy
       encoder = null
+      g.encoder = null
       frame.present
       frame = null
       passDesc = null

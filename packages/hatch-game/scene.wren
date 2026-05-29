@@ -610,10 +610,11 @@ class AudioListener {
 /// world.attach(sun, DirectionalLight.new(Vec3.new(1, 0.95, 0.85), 3.0))
 /// ```
 class DirectionalLight {
-  /// Default light: white, intensity 1.0.
+  /// Default light: white, intensity 1.0, no shadows.
   construct new() {
     _color = Vec3.new(1, 1, 1)
     _intensity = 1.0
+    _castsShadows = false
   }
 
   /// Explicit color + intensity.
@@ -625,6 +626,7 @@ class DirectionalLight {
   construct new(color, intensity) {
     _color = color
     _intensity = intensity
+    _castsShadows = false
   }
 
   /// Linear-space RGB. Same axis order as `Vec3`.
@@ -638,6 +640,19 @@ class DirectionalLight {
   /// @returns {Num}
   intensity     { _intensity }
   intensity=(v) { _intensity = v }
+
+  /// When `true`, the renderer will render the scene from this
+  /// light's perspective into a depth-only shadow map and sample
+  /// it during PBR shading to produce shadow attenuation. Today
+  /// only the *first* shadow-casting directional light is
+  /// honoured per frame; additional flagged lights silently fall
+  /// back to non-shadow contribution.
+  ///
+  /// Requires `Renderer3D.enableShadows({...})` at setup time —
+  /// without that, the flag is read but no shadow pass runs.
+  /// @returns {Bool}
+  castsShadows     { _castsShadows }
+  castsShadows=(v) { _castsShadows = v }
 
   toString { "DirectionalLight(color=%(_color), i=%(_intensity))" }
 }

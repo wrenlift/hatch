@@ -225,6 +225,19 @@ Test.describe("Light components") {
     Expect.that(l.intensity).toBe(3.0)
   }
 
+  Test.it("DirectionalLight castsShadows defaults to false") {
+    var l = DirectionalLight.new()
+    Expect.that(l.castsShadows).toBe(false)
+    var l2 = DirectionalLight.new(Vec3.new(1, 1, 1), 5.0)
+    Expect.that(l2.castsShadows).toBe(false)
+  }
+
+  Test.it("DirectionalLight castsShadows setter flips the flag") {
+    var l = DirectionalLight.new()
+    l.castsShadows = true
+    Expect.that(l.castsShadows).toBe(true)
+  }
+
   Test.it("PointLight defaults to unbounded range") {
     var l = PointLight.new()
     Expect.that(l.range).toBe(0.0)
