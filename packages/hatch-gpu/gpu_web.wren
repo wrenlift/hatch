@@ -271,6 +271,12 @@ class GpuCore {
   }
   static bufferWriteQuats(id, offset, quats) { bufferWriteVec4s(id, offset, quats) }
   static bufferReadBytes(id) { Fiber.abort("GpuCore.bufferReadBytes: not yet supported on the web backend.") }
+  static bufferReadInto(id, typedArray) {
+    Fiber.abort("GpuCore.bufferReadInto: not yet supported on the web backend.")
+  }
+  static encoderCopyBufferToBuffer(encoderId, srcId, dstId, srcOffset, dstOffset, size) {
+    Fiber.abort("GpuCore.encoderCopyBufferToBuffer: not yet supported on the web backend.")
+  }
 
   /// -- Shader --------------------------------------------------
   static shaderCreate(deviceId, descriptor) {
@@ -422,6 +428,18 @@ class GpuCore {
     return h
   }
   static renderPipelineDestroy(id) { GpuWeb_.destroy(id) }
+
+  /// -- Compute pipeline ---------------------------------------
+  /// Web compute support is planned; for now the surface is
+  /// declared so Wren-side authoring stays portable. Calling
+  /// either fn aborts cleanly with a "not supported" message.
+  static computePipelineCreate(deviceId, descriptor) {
+    Fiber.abort("GpuCore.computePipelineCreate: not yet supported on the web backend.")
+  }
+  static computePipelineDestroy(id) {}
+  static encoderRecordComputePass(encoderId, descriptor) {
+    Fiber.abort("GpuCore.encoderRecordComputePass: not yet supported on the web backend.")
+  }
 
   /// -- Encoder + render pass ----------------------------------
   /// Web has no explicit encoder; "begin frame" creates one
@@ -755,6 +773,17 @@ class Device {
     return RenderPipeline.new_(pid)
   }
 
+  /// Compile a [ComputePipeline]. Web support lands when the
+  /// JS bridge exposes WebGPU compute; until then the call aborts.
+  ///
+  /// @param {Map} descriptor
+  /// @returns {ComputePipeline}
+  createComputePipeline(descriptor) {
+    var dec = ComputePipeline.normalize_(descriptor)
+    var pid = GpuCore.computePipelineCreate(_id, dec)
+    return ComputePipeline.new_(pid)
+  }
+
   /// Build a fresh [CommandEncoder] for this frame.
   /// @returns {CommandEncoder}
   createCommandEncoder() { createCommandEncoder({}) }
@@ -830,6 +859,7 @@ class Buffer {
   }
 
   readBytes() { GpuCore.bufferReadBytes(_id) }
+  readInto(typedArray) { GpuCore.bufferReadInto(_id, typedArray) }
 
   destroy {
     GpuCore.bufferDestroy(_id)
@@ -963,6 +993,31 @@ class RenderPipeline {
   }
 }
 
+/// Web parity wrapper for compute pipelines. The construct + Wren
+/// surface mirror `gpu_native`; the foreign side aborts until the
+/// JS WebGPU bridge grows a compute pass.
+class ComputePipeline {
+  construct new_(id) { _id = id }
+  id { _id }
+  destroy {
+    GpuCore.computePipelineDestroy(_id)
+    _id = -1
+  }
+
+  static normalize_(d) {
+    var out = {
+      "module":     d["module"].id,
+      "entryPoint": d["entryPoint"]
+    }
+    if (d.containsKey("label")) out["label"] = d["label"]
+    if (d.containsKey("layout")) {
+      var l = d["layout"]
+      out["layout"] = (l is String) ? l : l.id
+    }
+    return out
+  }
+}
+
 /// Records GPU commands. Build one per frame via
 /// [Device.createCommandEncoder], open a render pass with
 /// [CommandEncoder.beginRenderPass], record draws, call `finish`,
@@ -1008,6 +1063,16 @@ class CommandEncoder {
   /// @returns {RenderPass}
   beginRenderPass(descriptor) { return RenderPass.new_(this, descriptor) }
 
+  /// Open a compute pass. Returns a [ComputePass] that accumulates
+  /// commands; `pass.end` flushes them into the encoder.
+  ///
+  /// @param {Map} descriptor
+  /// @returns {ComputePass}
+  beginComputePass(descriptor) { return ComputePass.new_(this, descriptor) }
+  /// Same as `beginComputePass({})`.
+  /// @returns {ComputePass}
+  beginComputePass() { return ComputePass.new_(this, {}) }
+
   /// Copy texels from a [Texture] into a [Buffer].
   ///
   /// @param {Texture} texture
@@ -1015,6 +1080,19 @@ class CommandEncoder {
   /// @param {Map} descriptor
   copyTextureToBuffer(texture, buffer, descriptor) {
     GpuCore.encoderCopyTextureToBuffer(_id, texture.id, buffer.id, descriptor)
+  }
+
+  /// Copy bytes from `src@srcOffset` into `dst@dstOffset`. Web
+  /// stub aborts until the JS bridge grows a buffer-to-buffer
+  /// path; native uses it as the compute readback plumbing.
+  ///
+  /// @param {Buffer} src
+  /// @param {Buffer} dst
+  copyBufferToBuffer(src, dst, srcOffset, dstOffset, size) {
+    GpuCore.encoderCopyBufferToBuffer(_id, src.id, dst.id, srcOffset, dstOffset, size)
+  }
+  copyBufferToBuffer(src, dst, size) {
+    copyBufferToBuffer(src, dst, 0, 0, size)
   }
 
   /// Close recording. Returns `this` so callers can chain
@@ -1102,6 +1180,41 @@ class RenderPass {
       out["depthStencilAttachment"] = rec
     }
     return out
+  }
+}
+
+/// Web parity wrapper for compute passes. Records commands
+/// client-side then flushes them with `end`; the foreign call
+/// itself aborts until the JS bridge grows a compute path.
+class ComputePass {
+  construct new_(encoder, descriptor) {
+    _encoder = encoder
+    _desc    = descriptor
+    _cmds    = []
+  }
+
+  setPipeline(p) {
+    _cmds.add({ "op": "setPipeline", "pipeline": p.id })
+    return this
+  }
+  setBindGroup(index, group) {
+    _cmds.add({ "op": "setBindGroup", "index": index, "group": group.id })
+    return this
+  }
+  dispatchWorkgroups(x) { dispatchWorkgroups(x, 1, 1) }
+  dispatchWorkgroups(x, y) { dispatchWorkgroups(x, y, 1) }
+  dispatchWorkgroups(x, y, z) {
+    _cmds.add({ "op": "dispatch", "x": x, "y": y, "z": z })
+    return this
+  }
+
+  end {
+    var dec = { "commands": _cmds }
+    if (_desc.containsKey("label")) dec["label"] = _desc["label"]
+    GpuCore.encoderRecordComputePass(_encoder.frameHandle_, dec)
+    _cmds = null
+    _desc = null
+    _encoder = null
   }
 }
 

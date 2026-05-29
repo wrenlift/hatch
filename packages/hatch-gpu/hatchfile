@@ -1,7 +1,7 @@
 name        = "@hatch:gpu"
-version     = "0.3.4"
+version     = "0.3.5"
 entry       = "gpu"
-description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, CommandEncoder, RenderPass on the bottom; Camera2D/3D, Renderer2D (sprite batcher), Renderer3D (Cook-Torrance / GGX PBR with multi-light + textured metallic-roughness workflow), Shader factory, Mesh, Material on top. Same shared source drives wgpu on native and WebGPU on web."
+description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, ComputePipeline, CommandEncoder, RenderPass, ComputePass on the bottom; Camera2D/3D, Renderer2D (sprite batcher), Renderer3D (Cook-Torrance / GGX PBR with multi-light + textured metallic-roughness workflow), Shader factory, Mesh, Material on top. Storage buffers + compute dispatch + fast typed-array readback for general-purpose GPU work. Same shared source drives wgpu on native and WebGPU on web."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:gpu"
 readme   = "README.md"
 
@@ -63,6 +63,9 @@ wasm             = "libs/wlift_gpu_web.wasm"
 [spec-dependencies]
 "@hatch:test" = "0.2.1"
 "@hatch:assert" = "0.2.3"
+# Compute microbench in gpu_compute.spec.wren uses Clock.mono for
+# the exit-gate timing readout.
+"@hatch:time" = "0.1.2"
 # `gpu.spec.wren` exercises the LivePipeline path — it imports
 # `@hatch:assets` directly. Declared here (not in [dependencies])
 # so the runtime package stays minimal: users who never touch
