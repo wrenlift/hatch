@@ -1439,6 +1439,7 @@ class Renderer2D {
     _curTexture  = null
     _curBindGroup = null
     _bindGroups   = {}
+    _pendingPass = null
   }
 
   /// Reset the per-frame batch and upload `camera.viewProj`'s
@@ -1469,7 +1470,19 @@ class Renderer2D {
     _spriteCount = 0
     _curTexture = null
     _curBindGroup = null
+    _pendingPass = null
   }
+
+  /// Bind a render pass for the current batch. While bound, a
+  /// texture-id change inside `drawSprite_` / `drawSpriteRotated_`
+  /// triggers an implicit `flush(pass)` instead of aborting.
+  ///
+  /// @param {RenderPass} pass
+  beginPass(pass) { _pendingPass = pass }
+
+  /// Unbind the current pass. After this, a texture-id change
+  /// aborts (as before) unless a new pass is bound.
+  endPass() { _pendingPass = null }
 
   /// Queue an axis-aligned, full-texture sprite at `(x, y)` with
   /// the given size. Position is the top-left corner.
@@ -1521,7 +1534,11 @@ class Renderer2D {
 
   drawSprite_(texture, x, y, w, h, u0, v0, u1, v1, r, g, b, a) {
     if (_curTexture != null && _curTexture.id != texture.id) {
-      Fiber.abort("Renderer2D: texture switches require an explicit flush(pass).")
+      if (_pendingPass != null) {
+        flush(_pendingPass)
+      } else {
+        Fiber.abort("Renderer2D: texture switches require an explicit flush(pass).")
+      }
     }
     _curTexture = texture
     if (_spriteCount >= Renderer2D.MAX_SPRITES_) {
@@ -1547,7 +1564,11 @@ class Renderer2D {
   // the same flush call.
   drawSpriteRotated_(texture, cx, cy, w, h, rot, u0, v0, u1, v1, r, g, b, a) {
     if (_curTexture != null && _curTexture.id != texture.id) {
-      Fiber.abort("Renderer2D: texture switches require an explicit flush(pass).")
+      if (_pendingPass != null) {
+        flush(_pendingPass)
+      } else {
+        Fiber.abort("Renderer2D: texture switches require an explicit flush(pass).")
+      }
     }
     _curTexture = texture
     if (_spriteCount >= Renderer2D.MAX_SPRITES_) {

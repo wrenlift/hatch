@@ -196,7 +196,7 @@ class HUD {
       "usage":  ["texture-binding", "copy-dst"],
       "label":  "hatch-hud-white-pixel"
     })
-    device.queueWriteTexture(tex, [255, 255, 255, 255], { "width": 1, "height": 1 })
+    device.writeTexture(tex, [255, 255, 255, 255], { "width": 1, "height": 1, "bytesPerRow": 4 })
     return tex
   }
 

@@ -1,15 +1,15 @@
 name        = "@hatch:hud"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "hud"
 description = "Immediate-mode HUD overlay for the WrenLift game framework. `HUD.new(g)` gives you `hud.label`, `hud.rect`, `hud.button` — drawn through `@hatch:gpu`'s Renderer2D, with click + hover state tracked across frames. Ships a built-in 5×7 procedural font (digits + uppercase + common punctuation) so HUD essentials (`SCORE: 100`, `LIVES: 3`, `PAUSE`) work without bringing an asset font."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:hud"
 readme      = "README.md"
 
-# Path during development against the in-tree refactor; flip to
-# the registry pin at publish time.
+# `@hatch:gpu` comes through `@hatch:game` transitively — listing
+# it here too creates a module-name collision (Renderer2D /
+# Texture appear twice) when any consumer pulls both packages.
 [dependencies]
-"@hatch:gpu"  = { path = "../hatch-gpu" }
-"@hatch:game" = { path = "../hatch-game" }
+"@hatch:game" = "0.3.5"
 
 [spec-dependencies]
 "@hatch:test"   = "0.2.1"

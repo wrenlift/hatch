@@ -751,12 +751,21 @@ class Game {
       }
       var pass = encoder.beginRenderPass(passDesc)
       g.pass = pass
-      instance.draw(g)
+      // Run the user draw in a child fiber so the GPU teardown
+      // below ALWAYS executes. If draw aborts mid-frame the
+      // SurfaceTexture and open CommandEncoder would otherwise
+      // stay live in @hatch:gpu's registries; on process exit the
+      // cdylib's static-OnceLock drop order is unspecified and the
+      // leaked SurfaceTexture's Drop would dereference a freed
+      // Surface. We capture the error, finish the frame, and
+      // re-raise after the device has been told to submit.
+      var drawFiber = Fiber.new { instance.draw(g) }
+      var drawErr = drawFiber.try()
       g.pass = null
       pass.end
       pass = null
 
-      if (post != null) post.runChain(encoder, frame.view)
+      if (post != null && drawErr == null) post.runChain(encoder, frame.view)
 
       encoder.finish
       device.submit([encoder])
@@ -770,6 +779,8 @@ class Game {
       frame.present
       frame = null
       passDesc = null
+
+      if (drawErr != null) Fiber.abort(drawErr)
 
       g.tick = g.tick + 1
 
