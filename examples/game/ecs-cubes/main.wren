@@ -14,12 +14,12 @@
 // mutates; lights live as `(Transform, DirectionalLight)` /
 // `AmbientLight` entities and the bridge collects them per frame.
 
-import "@hatch:game"    for Game, Transform, MeshRenderer, RigidBody, Collider,
+import "@hatch:game"    for Game, Transform, GlobalTransform, MeshRenderer, RigidBody, Collider,
                             PhysicsSystem3D, TransformPropagation, SceneRenderer3D,
                             DirectionalLight, AmbientLight
 import "@hatch:gpu"     for Renderer3D, Camera3D, Mesh, Material
 import "@hatch:ecs"     for World
-import "@hatch:math"    for Vec3, Vec4, Quat
+import "@hatch:math"    for Vec3, Vec4, Mat4, Quat
 import "@hatch:physics" for World3D, Collider3D
 import "@hatch:random"  for Rand
 
@@ -64,10 +64,32 @@ class EcsCubes is Game {
       buildCubeMaterial_(Vec4.new(0.80, 0.55, 0.95, 1.0)),
     ]
     // FIFO of dynamic cube entity ids — bounded so the simulation
-    // stays smooth as the user spams clicks.
+    // stays smooth as the user spams clicks. The limit was 200
+    // when each cube was its own draw call; instanced rendering
+    // collapses that to one drawIndexed per palette so the limit
+    // can scale with the physics simulator instead of the renderer.
     _cubes      = []
-    _cubeLimit  = 200
+    _cubeLimit  = 1000
     _frameCounter = 0
+
+    // Instanced-draw plumbing. One persistent storage buffer +
+    // Float32Array scratchpad per palette material. Each frame
+    // every cube of that colour writes its transposed model
+    // matrix at its slot in the scratchpad — `writeInstance` does
+    // indexed stores, no allocation. The whole tail uploads via
+    // `writeFloatsN(0, scratch, n * 32)`, then one
+    // `drawMeshInstanced` covers the whole bucket.
+    _instanceBufs   = []
+    _instanceFloats = []
+    var perBucket = _cubeLimit
+    for (i in 0..._materials.count) {
+      _instanceBufs.add(g.device.createBuffer({
+        "size":  perBucket * 32 * 4,
+        "usage": ["storage", "copy-dst"],
+        "label": "ecs-cubes-instances-%(i)"
+      }))
+      _instanceFloats.add(Float32Array.new(perBucket * 32))
+    }
 
     // Lights: brighter ambient + key sun + fill light. The
     // renderer collects them off the world via SceneRenderer3D's
@@ -144,7 +166,75 @@ class EcsCubes is Game {
   }
 
   draw(g) {
-    SceneRenderer3D.run(_world, _camera, _renderer, g.pass)
+    var renderer = _renderer
+    renderer.beginFrame(g.pass, _camera)
+
+    // Lights — same logic SceneRenderer3D.run drives, inlined so
+    // we can bypass its per-entity draw loop in favour of
+    // instanced dispatches below.
+    var ambColor = Vec3.zero
+    var ambSum = 0
+    for (e in _world.query(AmbientLight)) {
+      var a = _world.get(e, AmbientLight)
+      ambColor = Vec3.new(
+        ambColor.x + a.color.x * a.intensity,
+        ambColor.y + a.color.y * a.intensity,
+        ambColor.z + a.color.z * a.intensity)
+      ambSum = ambSum + 1
+    }
+    renderer.setAmbient(ambColor, ambSum > 0 ? 1.0 : 0.0)
+    var lightForward = Vec3.new(0, 0, -1)
+    for (e in _world.query(DirectionalLight)) {
+      var light = _world.get(e, DirectionalLight)
+      var t = _world.get(e, Transform)
+      var dir = (t == null) ? lightForward : t.rotation.rotateVec3(lightForward)
+      renderer.addDirectional(dir, light.color, light.intensity)
+    }
+
+    // Per-palette live-instance counters. The scratchpads keep
+    // their backing storage; only the head pointer resets.
+    var instanceCounts = [0, 0, 0, 0, 0]
+
+    // Walk drawables. Cubes (anything sharing _cubeMesh) batch
+    // into their palette's instance scratchpad; everything else
+    // (the ground plane) draws with the legacy per-entity path.
+    for (e in _world.query(MeshRenderer)) {
+      var mr = _world.get(e, MeshRenderer)
+      if (!mr.visible) continue
+      if (mr.mesh == null) continue
+      var gt = _world.get(e, GlobalTransform)
+      var model = (gt == null) ? Mat4.identity : gt.matrix
+      if (mr.mesh == _cubeMesh) {
+        var bucket = -1
+        for (i in 0..._materials.count) {
+          if (mr.material == _materials[i]) {
+            bucket = i
+            break
+          }
+        }
+        if (bucket >= 0) {
+          Renderer3D.writeInstance(_instanceFloats[bucket], instanceCounts[bucket], model)
+          instanceCounts[bucket] = instanceCounts[bucket] + 1
+        } else {
+          renderer.draw(mr.mesh, mr.material, model)
+        }
+      } else {
+        renderer.draw(mr.mesh, mr.material, model)
+      }
+    }
+
+    // One drawIndexed per palette bucket with any live cubes.
+    // writeFloatsN bounds the upload at exactly the live tail —
+    // a 4 MB scratchpad at 10 % full uploads 400 KB, not the full
+    // pad.
+    for (i in 0..._instanceFloats.count) {
+      var n = instanceCounts[i]
+      if (n == 0) continue
+      _instanceBufs[i].writeFloatsN(0, _instanceFloats[i], n * 32)
+      renderer.drawMeshInstanced(_cubeMesh, _materials[i], _instanceBufs[i], n)
+    }
+
+    renderer.endFrame()
   }
 
   // Ground material — desaturated dielectric, slightly rough.
