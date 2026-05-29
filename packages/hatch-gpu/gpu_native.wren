@@ -1223,7 +1223,12 @@ class Renderer2D {
       },
       "fragment": {
         "module": shader, "entryPoint": "fs_main",
-        "targets": [{ "format": surfaceFormat }]
+        // Alpha blending so transparent texels (bitmap font
+        // glyphs, soft-edged sprites, particle textures with
+        // gradients) composite correctly. Opaque sprites
+        // (`tint.a == 1.0`) still write at full intensity, so
+        // this is strictly an additive feature.
+        "targets": [{ "format": surfaceFormat, "blend": "alpha" }]
       },
       "primitive": { "topology": "triangle-list", "cullMode": "none" },
       "label": "renderer2d-pipeline"
