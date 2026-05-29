@@ -1294,6 +1294,10 @@ class Renderer2D {
     _curTexture  = null
     _curBindGroup = null
     _bindGroups   = {}    // texture id -> BindGroup (lazy cache)
+    // When non-null, drawSprite_ auto-flushes into this pass on a
+    // texture switch or full batch instead of aborting. Set by
+    // beginPass(pass) / cleared by endPass().
+    _pendingPass = null
   }
 
   /// Reset the per-frame batch and upload `camera.viewProj`'s
@@ -1332,7 +1336,21 @@ class Renderer2D {
     _spriteCount = 0
     _curTexture = null
     _curBindGroup = null
+    _pendingPass = null
   }
+
+  /// Bind `pass` as the auto-flush target. While bound, a texture
+  /// switch or full batch inside `drawSprite_` flushes into `pass`
+  /// and continues with the new state instead of aborting. Pair
+  /// with [endPass] once the pass is finished.
+  ///
+  /// @param {RenderPass} pass
+  beginPass(pass) { _pendingPass = pass }
+
+  /// Clear the auto-flush pass set by [beginPass]. After this,
+  /// texture switches and full batches abort again until the next
+  /// [beginPass].
+  endPass() { _pendingPass = null }
 
   /// Queue an axis-aligned, full-texture sprite at `(x, y)`
   /// with the given size. Position is the top-left corner.
@@ -1387,11 +1405,20 @@ class Renderer2D {
   // colour interpolation correct without an index buffer.
   drawSprite_(texture, x, y, w, h, u0, v0, u1, v1, r, g, b, a) {
     if (_curTexture != null && _curTexture.id != texture.id) {
-      Fiber.abort("Renderer2D: texture switches require an explicit flush(pass).")
+      if (_pendingPass != null) {
+        flush(_pendingPass)
+      } else {
+        Fiber.abort("Renderer2D: texture switches require an explicit flush(pass).")
+      }
     }
     _curTexture = texture
     if (_spriteCount >= Renderer2D.MAX_SPRITES_) {
-      Fiber.abort("Renderer2D: batch full (%(_spriteCount) sprites). Call flush(pass) sooner.")
+      if (_pendingPass != null) {
+        flush(_pendingPass)
+        _curTexture = texture
+      } else {
+        Fiber.abort("Renderer2D: batch full (%(_spriteCount) sprites). Call flush(pass) sooner.")
+      }
     }
     var x1 = x + w
     var y1 = y + h

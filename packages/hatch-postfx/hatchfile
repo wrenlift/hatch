@@ -6,14 +6,9 @@ homepage    = "https://hatch.wrenlift.com/packages/@hatch:postfx"
 readme      = "README.md"
 
 # `@hatch:game` provides the chain primitive (`PostFX` + `PostPass`)
-# that every effect here subclasses. Path-dep during dev so the
-# spec suite picks up the local refactor before publish; CI swaps
-# to the registry version on release.
+# that every effect here subclasses.
 [dependencies]
-# Path during development against the in-tree refactor; flip to
-# `"@hatch:game" = "0.3.4"` at publish time so registry consumers
-# resolve the bundled artifact.
-"@hatch:game" = { path = "../hatch-game" }
+"@hatch:game" = "0.3.5"
 
 [spec-dependencies]
 "@hatch:test"   = "0.2.1"

@@ -1,0 +1,11 @@
+name        = "fruit-slicer"
+version     = "0.1.0"
+entry       = "main"
+description = "Fruit-Ninja-style swipe game wired through @hatch:assets/AssetLoader (frame-amortised atlas + manifest loading with progress callbacks) and @hatch:fsm/StateChart (splash → loading → ready → playing → gameover scene flow). Click + drag to swipe through fruits — 3 misses ends the run."
+
+[dependencies]
+"@hatch:game"   = "0.3.5"
+"@hatch:json"   = "0.1.4"
+"@hatch:assets" = "0.2.3"
+"@hatch:fsm"    = "0.1.1"
+"@hatch:hud"    = "0.1.1"

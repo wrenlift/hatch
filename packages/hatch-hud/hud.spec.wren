@@ -17,7 +17,7 @@ class MockTexture {
 class MockDevice {
   construct new() {}
   createTexture(desc) { MockTexture.new() }
-  queueWriteTexture(tex, bytes, desc) {}
+  writeTexture(tex, bytes, desc) {}
 }
 
 class MockInput {
