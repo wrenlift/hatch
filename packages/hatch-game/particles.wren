@@ -158,6 +158,7 @@ class ParticleSystem {
   /// | `drag`         | `Num`     |   | Per-second velocity damping. Default `0`. |
   /// | `size`         | `[start,end]` |  | Sprite side length over life. Default `[8, 8]`. |
   /// | `color`        | `[[r,g,b,a],[r,g,b,a]]` |  | Tint over life. Default `[[1,1,1,1],[1,1,1,1]]`. |
+  /// | `blend`        | `String`  |   | `"alpha"` (default), `"additive"` (canonical for fire / sparks / glow), or `"premultiplied"`. Forwarded to `Renderer2D.setBlend` at draw time. |
   /// | `playing`      | `Bool`    |   | Start emitting on construct. Default `true`. |
   ///
   /// @param {Map} opts
@@ -182,6 +183,7 @@ class ParticleSystem {
     var color = opts.containsKey("color") ? opts["color"] : [[1, 1, 1, 1], [1, 1, 1, 1]]
     _colorStart = color[0]
     _colorEnd   = color[1]
+    _blend        = opts.containsKey("blend") ? opts["blend"] : "alpha"
     _playing      = opts.containsKey("playing") ? opts["playing"] : true
 
     // Pre-allocate the slot pool. `_count` is the number of slots
@@ -328,6 +330,7 @@ class ParticleSystem {
   ///
   /// @param {Renderer2D} renderer
   draw(renderer) {
+    renderer.setBlend(_blend)
     var i = 0
     while (i < _pool.count) {
       var p = _pool[i]

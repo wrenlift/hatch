@@ -16,8 +16,13 @@ class MockTexture {
 // Captures every drawSpriteTinted call so specs can assert
 // position / size / color land where expected.
 class MockRenderer {
-  construct new() { _calls = [] }
+  construct new() {
+    _calls = []
+    _blendLog = []
+  }
   calls { _calls }
+  blendLog { _blendLog }
+  setBlend(mode) { _blendLog.add(mode) }
   drawSprite(tex, x, y, w, h) {
     _calls.add({
       "tex": tex, "x": x, "y": y, "w": w, "h": h,
@@ -159,6 +164,37 @@ Test.describe("ParticleSystem.update") {
 }
 
 Test.describe("ParticleSystem.draw") {
+  Test.it("calls renderer.setBlend with the configured blend (default alpha)") {
+    var sys = ParticleSystem.new({
+      "texture":  MockTexture.new(1),
+      "capacity": 2,
+      "playing":  false,
+      "lifetime": [10, 10]
+    })
+    sys.burst(1)
+    sys.update(0.001)
+    var r = MockRenderer.new()
+    sys.draw(r)
+    Expect.that(r.blendLog.count).toBe(1)
+    Expect.that(r.blendLog[0]).toBe("alpha")
+  }
+
+  Test.it("forwards `blend: \"additive\"` to renderer.setBlend") {
+    var sys = ParticleSystem.new({
+      "texture":  MockTexture.new(1),
+      "capacity": 1,
+      "playing":  false,
+      "lifetime": [10, 10],
+      "blend":    "additive"
+    })
+    sys.burst(1)
+    sys.update(0.001)
+    var r = MockRenderer.new()
+    sys.draw(r)
+    Expect.that(r.blendLog.count).toBe(1)
+    Expect.that(r.blendLog[0]).toBe("additive")
+  }
+
   Test.it("queues one drawSpriteTinted per live particle") {
     var sys = ParticleSystem.new({
       "texture":  MockTexture.new(7),
