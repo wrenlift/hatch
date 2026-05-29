@@ -185,6 +185,9 @@ class Parser_ {
       if (atEnd_ || _s[_i] != "\"") {
         Fiber.abort("JSON: expected string key at offset %(_i)")
       }
+      // String.intern dedupes N copies of "name" / repeated keys
+      // down to one ObjString + one map-bucket — load-bearing on
+      // the AOT site where JSON keys repeat heavily per request.
       var key = parseString_.intern
       skipWs_
       if (atEnd_ || _s[_i] != ":") {
@@ -571,3 +574,4 @@ class Encoder_ {
     return " " * n
   }
 }
+
