@@ -12,7 +12,7 @@
 // pipeline layout, per-frame light bookkeeping, per-Material
 // BindGroup cache, and the WGSL pipeline-specific code.
 
-import "@hatch:math"    for Vec3
+import "@hatch:math"    for Vec3, Mat4
 import "./gpu_shader"   for Shader
 
 /// Cook-Torrance / GGX PBR renderer. One pipeline, three bind
@@ -66,11 +66,13 @@ class Renderer3D {
   // Uniform block sizes. Computed from the WGSL structs.
   //
   // Scene = vp(64) + camera(16) + ambient(16) + counts(16)
+  //       + light_vp(64) + shadow_params(16)
   //       + dir × 32 + point × 32 + spot × 64
-  //       = 112 + 128 + 256 + 256 = 752 bytes.
-  static SCENE_UBO_BYTES_ { 752 }
-  static DRAW_UBO_BYTES_  { 128 }       // model(64) + normal_mat(64)
-  static MAT_UBO_BYTES_   { 64 }        // 4 vec4s
+  //       = 112 + 80 + 128 + 256 + 256 = 832 bytes.
+  static SCENE_UBO_BYTES_  { 832 }
+  static DRAW_UBO_BYTES_   { 128 }       // model(64) + normal_mat(64)
+  static MAT_UBO_BYTES_    { 64 }        // 4 vec4s
+  static SHADOW_UBO_BYTES_ { 128 }       // light_vp(64) + model(64) per draw
 
   // Pipeline-specific WGSL — structs, bindings, and entry points.
   // Composed with the `Shader` factory library that supplies
@@ -78,13 +80,23 @@ class Renderer3D {
   static PBR_WGSL_ {
     return "
       struct SceneUniforms {
-        vp:           mat4x4<f32>,
-        camera_pos:   vec4<f32>,
-        ambient:      vec4<f32>,
-        counts:       vec4<f32>,
-        dir_lights:   array<DirLight,   4>,
-        point_lights: array<PointLight, 8>,
-        spot_lights:  array<SpotLight,  4>,
+        vp:            mat4x4<f32>,
+        camera_pos:    vec4<f32>,
+        ambient:       vec4<f32>,
+        // counts.x = dir light count, .y = point, .z = spot,
+        // .w = shadows_enabled (1.0 means light_vp + shadow_tex are
+        // populated and the first dir light is the shadow caster).
+        counts:        vec4<f32>,
+        // World-space → light clip-space matrix for the shadow
+        // caster. Zero when shadows are disabled.
+        light_vp:      mat4x4<f32>,
+        // .x = depth bias (slope-scaled component multiplier),
+        // .y = PCF texel-space radius (used for 3×3 jittering),
+        // .z/.w = reserved.
+        shadow_params: vec4<f32>,
+        dir_lights:    array<DirLight,   4>,
+        point_lights:  array<PointLight, 8>,
+        spot_lights:   array<SpotLight,  4>,
       };
       struct DrawUniforms {
         model:      mat4x4<f32>,
@@ -98,6 +110,11 @@ class Renderer3D {
       };
 
       @group(0) @binding(0) var<uniform> scene: SceneUniforms;
+      // Bound to a 1×1 fallback when shadows aren't enabled; the
+      // shader gates sampling on `counts.w` so the fallback's
+      // (undefined) contents never surface.
+      @group(0) @binding(1) var shadow_tex:  texture_depth_2d;
+      @group(0) @binding(2) var shadow_samp: sampler_comparison;
       @group(1) @binding(0) var<uniform> draw_u: DrawUniforms;
       @group(2) @binding(0) var<uniform> mat: MaterialUniforms;
       @group(2) @binding(1) var albedo_tex:    texture_2d<f32>;
@@ -106,6 +123,43 @@ class Renderer3D {
       @group(2) @binding(4) var occlusion_tex: texture_2d<f32>;
       @group(2) @binding(5) var emissive_tex:  texture_2d<f32>;
       @group(2) @binding(6) var samp:          sampler;
+
+      // Shadow attenuation for the primary shadow-casting
+      // directional light. Returns 1.0 when shadows are disabled
+      // or the fragment lies outside the shadow map's clip
+      // extents, otherwise a PCF-blurred 0..1 occlusion factor.
+      fn shadow_factor(world_pos: vec3<f32>, N: vec3<f32>, L: vec3<f32>) -> f32 {
+        if (scene.counts.w < 0.5) {
+          return 1.0;
+        }
+        let pos_light = scene.light_vp * vec4<f32>(world_pos, 1.0);
+        let proj      = pos_light.xyz / pos_light.w;
+        // NDC -1..1 → texture 0..1 (with Y flip).
+        let uv = vec2<f32>(proj.x * 0.5 + 0.5, -proj.y * 0.5 + 0.5);
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || proj.z > 1.0) {
+          return 1.0;
+        }
+        // Slope-scaled bias to suppress self-shadow acne on
+        // surfaces nearly parallel to the light direction.
+        let cos_theta = clamp(dot(N, L), 0.0, 1.0);
+        let bias      = scene.shadow_params.x * (1.0 - cos_theta) + 0.0005;
+        let depth     = proj.z - bias;
+        // 3×3 PCF via the hardware comparison sampler. Step size
+        // shrinks at glancing angles so the kernel covers fewer
+        // pixels in heavily-foreshortened regions.
+        let r = scene.shadow_params.y;
+        var acc = 0.0;
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>(-r, -r), depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>( 0.0, -r), depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>( r, -r), depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>(-r,  0.0), depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv, depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>( r,  0.0), depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>(-r,  r), depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>( 0.0,  r), depth);
+        acc = acc + textureSampleCompare(shadow_tex, shadow_samp, uv + vec2<f32>( r,  r), depth);
+        return acc / 9.0;
+      }
 
       struct VsIn  {
         @location(0) pos:    vec3<f32>,
@@ -166,7 +220,13 @@ class Renderer3D {
         for (var i: u32 = 0u; i < dir_count; i = i + 1u) {
           let dl = scene.dir_lights[i];
           let L = normalize(-dl.dir_intensity.xyz);
-          let radiance = dl.color.rgb * dl.dir_intensity.w;
+          var radiance = dl.color.rgb * dl.dir_intensity.w;
+          // Apply shadow attenuation to the primary shadow caster
+          // (always index 0 — the renderer reorders the dir-light
+          // list so the shadow caster lands first).
+          if (i == 0u) {
+            radiance = radiance * shadow_factor(in.world, N, L);
+          }
           Lo = Lo + pbr_direct(N, V, L, base_color.rgb, metallic, roughness, radiance);
         }
 
@@ -215,6 +275,31 @@ class Renderer3D {
     "
   }
 
+  // Vertex-only shader for the shadow pass. Reads `pos` out of
+  // the shared mesh vertex layout (normal + uv are present but
+  // unused — keeps mesh buffers reusable between main and
+  // shadow passes without re-binding).
+  static SHADOW_WGSL_ {
+    return "
+      struct ShadowUniforms {
+        light_vp: mat4x4<f32>,
+        model:    mat4x4<f32>,
+      };
+      @group(0) @binding(0) var<uniform> u: ShadowUniforms;
+
+      struct VsIn {
+        @location(0) pos:    vec3<f32>,
+        @location(1) normal: vec3<f32>,
+        @location(2) uv:     vec2<f32>,
+      };
+
+      @vertex
+      fn vs_main(in: VsIn) -> @builtin(position) vec4<f32> {
+        return u.light_vp * u.model * vec4<f32>(in.pos, 1.0);
+      }
+    "
+  }
+
   /// Build a renderer against `device`. Pre-creates the three
   /// bind-group layouts, the PBR pipeline, the scene + draw
   /// uniform buffers, the default 1×1 fallback textures, and the
@@ -240,7 +325,14 @@ class Renderer3D {
 
     _sceneBgl = device.createBindGroupLayout({
       "entries": [
-        { "binding": 0, "visibility": ["vertex", "fragment"], "kind": "uniform" }
+        { "binding": 0, "visibility": ["vertex", "fragment"], "kind": "uniform" },
+        // Shadow map is always declared in the layout so the PBR
+        // pipeline doesn't need to know whether shadows are active.
+        // When disabled, a 1×1 fallback depth texture binds here
+        // and the shader's `counts.w == 0` early-out skips the
+        // sample.
+        { "binding": 1, "visibility": ["fragment"], "kind": "texture", "sampleType": "depth" },
+        { "binding": 2, "visibility": ["fragment"], "kind": "sampler", "samplerType": "comparison" }
       ],
       "label": "renderer3d-scene-bgl"
     })
@@ -298,9 +390,41 @@ class Renderer3D {
       "usage": ["uniform", "copy-dst"],
       "label": "renderer3d-scene-ubo"
     })
+
+    // Fallback shadow map: a 1×1 depth texture bound when shadows
+    // aren't enabled. The shader gates sampling on `counts.w`, so
+    // the fallback's (undefined) contents never reach output.
+    _shadowFallbackTex = device.createTexture({
+      "width":  1,
+      "height": 1,
+      "format": "depth32float",
+      "usage":  ["render-attachment", "texture-binding"],
+      "label":  "renderer3d-shadow-fallback"
+    })
+    _shadowFallbackView = _shadowFallbackTex.createView()
+
+    // Comparison sampler — `textureSampleCompare` returns a 0..1
+    // hardware-PCF result. `less` matches the depth pass's
+    // `depthCompare: less` so a stored depth less than the test
+    // depth means "the fragment is behind something" → 0
+    // (shadowed); 1 means "lit".
+    _shadowCmpSampler = device.createSampler({
+      "magFilter":   "linear",
+      "minFilter":   "linear",
+      "addressModeU":"clamp-to-edge",
+      "addressModeV":"clamp-to-edge",
+      "compare":     "less",
+      "label":       "renderer3d-shadow-cmp-sampler"
+    })
+
+    _shadowView = _shadowFallbackView      // active view, switched by enableShadows
     _sceneBindGroup = device.createBindGroup({
       "layout":  _sceneBgl,
-      "entries": [{ "binding": 0, "buffer": _sceneUbo, "size": Renderer3D.SCENE_UBO_BYTES_ }]
+      "entries": [
+        { "binding": 0, "buffer":  _sceneUbo, "size": Renderer3D.SCENE_UBO_BYTES_ },
+        { "binding": 1, "view":    _shadowView },
+        { "binding": 2, "sampler": _shadowCmpSampler }
+      ]
     })
 
     // Per-draw UBO pool. `queue.write_buffer` doesn't sync with
@@ -346,9 +470,32 @@ class Renderer3D {
     _pass    = null
     _ambient = Vec3.new(0.0, 0.0, 0.0)
     _ambientIntensity = 0.0
-    _dirLights   = []   // each: { dir: Vec3, color: Vec3, intensity: Num }
+    _dirLights   = []   // each: { dir, color, intensity, castsShadows }
     _pointLights = []   // each: { pos, color, intensity, range }
     _spotLights  = []   // each: { pos, dir, color, intensity, range, innerCos, outerCos }
+
+    // Shadow infrastructure — null until `enableShadows(...)` is
+    // called. The PBR shader's `counts.w == 0` early-out leaves
+    // the fallback bind path completely passive when shadows
+    // aren't configured.
+    _shadowsEnabled    = false
+    _shadowSize        = 0
+    _shadowExtent      = 50.0
+    _shadowNear        = 0.1
+    _shadowFar         = 100.0
+    _shadowBias        = 0.005
+    _shadowPcfRadius   = 0.0015
+    _shadowDepthFormat = "depth32float"
+    _shadowTex         = null
+    _shadowPipeline    = null
+    _shadowBgl         = null
+    _shadowLayout      = null
+    _shadowUboPool     = []   // List of per-draw UBO (light_vp + model)
+    _shadowBgPool      = []   // List of BindGroup keyed off pool index
+    _shadowDrawIndex   = 0
+    _shadowPass        = null
+    _shadowLightVP     = null  // Mat4 computed by beginShadowPass
+    _shadowUboFloats   = []
   }
 
   // 1×1 RGBA texture filled with (r, g, b, a) bytes. Used for the
@@ -427,15 +574,294 @@ class Renderer3D {
   /// @param {Vec3} color. Linear-space RGB.
   /// @param {Num} intensity. Scalar multiplier.
   addDirectional(direction, color, intensity) {
+    addDirectional(direction, color, intensity, false)
+  }
+
+  /// As `addDirectional(direction, color, intensity)` but with an
+  /// explicit shadow-caster flag. Shadow-casting lights are
+  /// reordered to slot 0 of the per-frame dir-light list so the
+  /// PBR shader's `i == 0` shadow-application path stays
+  /// stable; only the *first* shadow-casting light is honoured —
+  /// additional flagged lights light the scene as normal but
+  /// don't cast shadows.
+  ///
+  /// Effective only when `Renderer3D.enableShadows({...})` was
+  /// called at setup; otherwise the flag is recorded but no
+  /// shadow pass runs.
+  ///
+  /// @param {Vec3} direction
+  /// @param {Vec3} color
+  /// @param {Num}  intensity
+  /// @param {Bool} castsShadows
+  addDirectional(direction, color, intensity, castsShadows) {
     if (_dirLights.count >= Renderer3D.MAX_DIR_LIGHTS_) {
       _overflow = (_overflow == null ? 0 : _overflow) + 1
       return
     }
-    _dirLights.add({
-      "dir":       direction,
-      "color":     color,
-      "intensity": intensity,
+    var entry = {
+      "dir":          direction,
+      "color":        color,
+      "intensity":    intensity,
+      "castsShadows": castsShadows
+    }
+    // Keep shadow caster at index 0 so the shader always applies
+    // the shadow factor to dir_lights[0] without branching.
+    if (castsShadows && _dirLights.count > 0 && !_dirLights[0]["castsShadows"]) {
+      _dirLights.insert(0, entry)
+    } else {
+      _dirLights.add(entry)
+    }
+  }
+
+  /// Allocate a shadow render target + pipeline so subsequent
+  /// frames can run a depth-only pass from a directional light's
+  /// viewpoint. Call once at setup; calling again replaces the
+  /// existing infrastructure with fresh sizes.
+  ///
+  /// | Key | Type | Default | Notes |
+  /// |---|---|---|---|
+  /// | `size`     | `Num` | `1024` | Shadow-map resolution per side. Power-of-2 preferred. |
+  /// | `extent`   | `Num` | `50`   | Half-extent of the orthographic projection (world units). |
+  /// | `near`     | `Num` | `0.1`  | Near plane in light space. |
+  /// | `far`      | `Num` | `100`  | Far plane in light space. |
+  /// | `bias`     | `Num` | `0.005`| Slope-scaled depth bias to suppress shadow acne. |
+  /// | `pcfRadius`| `Num` | `0.0015` | PCF kernel step in uv space. |
+  ///
+  /// @param {Map} opts
+  enableShadows(opts) {
+    if (opts == null) opts = {}
+    _shadowSize       = Renderer3D.intOr_(opts, "size",      1024)
+    _shadowExtent     = Renderer3D.numOr_(opts, "extent",    50.0)
+    _shadowNear       = Renderer3D.numOr_(opts, "near",      0.1)
+    _shadowFar        = Renderer3D.numOr_(opts, "far",       100.0)
+    _shadowBias       = Renderer3D.numOr_(opts, "bias",      0.005)
+    _shadowPcfRadius  = Renderer3D.numOr_(opts, "pcfRadius", 0.0015)
+
+    if (_shadowTex != null) {
+      _shadowTex.destroy
+      _shadowTex = null
+    }
+    _shadowTex = _device.createTexture({
+      "width":  _shadowSize,
+      "height": _shadowSize,
+      "format": _shadowDepthFormat,
+      "usage":  ["render-attachment", "texture-binding"],
+      "label":  "renderer3d-shadow-map"
     })
+    _shadowView = _shadowTex.createView()
+
+    // Re-bind the scene group so the PBR pipeline samples the real
+    // shadow map instead of the 1×1 fallback.
+    _sceneBindGroup = _device.createBindGroup({
+      "layout":  _sceneBgl,
+      "entries": [
+        { "binding": 0, "buffer":  _sceneUbo, "size": Renderer3D.SCENE_UBO_BYTES_ },
+        { "binding": 1, "view":    _shadowView },
+        { "binding": 2, "sampler": _shadowCmpSampler }
+      ]
+    })
+
+    if (_shadowPipeline == null) {
+      buildShadowPipeline_()
+    }
+    _shadowsEnabled = true
+  }
+
+  // Build the depth-only pipeline + bind-group layout used by
+  // every shadow draw. Layout takes a single per-draw UBO with
+  // `light_vp` + `model`. Cull front faces to push shadow acne
+  // onto the back side of every caster.
+  buildShadowPipeline_() {
+    _shadowBgl = _device.createBindGroupLayout({
+      "entries": [
+        { "binding": 0, "visibility": ["vertex"], "kind": "uniform" }
+      ],
+      "label": "renderer3d-shadow-bgl"
+    })
+    _shadowLayout = _device.createPipelineLayout({
+      "bindGroupLayouts": [_shadowBgl]
+    })
+    var shader = _device.createShaderModule({
+      "code":  Renderer3D.SHADOW_WGSL_,
+      "label": "renderer3d-shadow-shader"
+    })
+    _shadowPipeline = _device.createRenderPipeline({
+      "layout": _shadowLayout,
+      "vertex": {
+        "module": shader, "entryPoint": "vs_main",
+        "buffers": [{
+          "arrayStride": Renderer3D.FLOATS_PER_VERTEX_ * 4,
+          "stepMode":    "vertex",
+          "attributes": [
+            { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
+            { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
+            { "shaderLocation": 2, "offset": 24, "format": "float32x2" }
+          ]
+        }]
+      },
+      // No fragment block — depth-only pass writes nothing to
+      // colour attachments (there are none on the shadow pass).
+      "primitive":    { "topology": "triangle-list", "cullMode": "front" },
+      "depthStencil": {
+        "format": _shadowDepthFormat,
+        "depthWriteEnabled": true,
+        "depthCompare": "less"
+      },
+      "label": "renderer3d-shadow-pipeline"
+    })
+  }
+
+  /// True after a successful `enableShadows(...)` call.
+  /// @returns {Bool}
+  shadowsEnabled  { _shadowsEnabled }
+
+  /// Internal view bound into the scene bind group. Exposed for
+  /// debug overlays + shadow-map preview UIs.
+  /// @returns {TextureView}
+  shadowMapView_  { _shadowView }
+
+  static numOr_(opts, key, fallback) {
+    if (!opts.containsKey(key)) return fallback
+    return opts[key]
+  }
+
+  static intOr_(opts, key, fallback) {
+    return Renderer3D.numOr_(opts, key, fallback).floor
+  }
+
+  /// Open a depth-only render pass for shadow casting. Compute
+  /// the light view-projection from the configured extent +
+  /// near/far, walking the orthographic frustum centred on
+  /// `lightCenter` and looking along `lightDir`.
+  ///
+  /// Call this before `beginFrame(...)` — the shadow pass must
+  /// complete before the main PBR pass reads from the shadow map.
+  ///
+  /// ```wren
+  /// renderer.beginShadowPass(g.encoder, sunDir, Vec3.zero)
+  /// for (e in shadowCasters) renderer.drawShadow(e.mesh, e.transform)
+  /// renderer.endShadowPass
+  /// ```
+  ///
+  /// @param {CommandEncoder} encoder
+  /// @param {Vec3} lightDir.    Direction the light travels (sun-to-ground).
+  /// @param {Vec3} lightCenter. World-space focus point the shadow box centres on.
+  beginShadowPass(encoder, lightDir, lightCenter) {
+    if (!_shadowsEnabled) {
+      Fiber.abort("Renderer3D.beginShadowPass: call enableShadows({...}) first.")
+    }
+    _shadowLightVP   = Renderer3D.computeLightVP_(lightDir, lightCenter,
+        _shadowExtent, _shadowNear, _shadowFar)
+    _shadowDrawIndex = 0
+
+    _shadowPass = encoder.beginRenderPass({
+      "colorAttachments": [],
+      "depthStencilAttachment": {
+        "view":            _shadowView,
+        "depthLoadOp":     "clear",
+        "depthClearValue": 1.0,
+        "depthStoreOp":    "store"
+      },
+      "label": "renderer3d-shadow-pass"
+    })
+    _shadowPass.setPipeline(_shadowPipeline)
+  }
+
+  /// Issue a shadow draw. Only the mesh's vertex positions are
+  /// consumed (normal + uv are present in the layout but the
+  /// shadow vertex shader ignores them).
+  ///
+  /// @param {Mesh} mesh
+  /// @param {Mat4} model. World-space transform.
+  drawShadow(mesh, model) {
+    if (_shadowPass == null) {
+      Fiber.abort("Renderer3D.drawShadow: call beginShadowPass first.")
+    }
+    var slot = reserveShadowSlot_()
+    _shadowUboFloats.clear()
+    appendMat4_(_shadowUboFloats, _shadowLightVP)
+    appendMat4_(_shadowUboFloats, model)
+    _shadowUboPool[slot].writeFloats(0, _shadowUboFloats)
+
+    _shadowPass.setBindGroup(0, _shadowBgPool[slot])
+    _shadowPass.setVertexBuffer(0, mesh.vertexBuffer)
+    _shadowPass.setIndexBuffer(mesh.indexBuffer, "uint32")
+    _shadowPass.drawIndexed(mesh.indexCount)
+  }
+
+  reserveShadowSlot_() {
+    if (_shadowDrawIndex >= _shadowUboPool.count) {
+      var ubo = _device.createBuffer({
+        "size":  Renderer3D.SHADOW_UBO_BYTES_,
+        "usage": ["uniform", "copy-dst"],
+        "label": "renderer3d-shadow-ubo"
+      })
+      var bg = _device.createBindGroup({
+        "layout":  _shadowBgl,
+        "entries": [{ "binding": 0, "buffer": ubo, "size": Renderer3D.SHADOW_UBO_BYTES_ }]
+      })
+      _shadowUboPool.add(ubo)
+      _shadowBgPool.add(bg)
+    }
+    var i = _shadowDrawIndex
+    _shadowDrawIndex = _shadowDrawIndex + 1
+    return i
+  }
+
+  /// Close the shadow render pass. Subsequent `beginFrame` /
+  /// `draw` calls bind the populated shadow map automatically.
+  endShadowPass {
+    if (_shadowPass == null) {
+      Fiber.abort("Renderer3D.endShadowPass: no shadow pass is open.")
+    }
+    _shadowPass.end
+    _shadowPass = null
+  }
+
+  // Build a row-major view-projection matrix for a directional
+  // shadow caster. Ortho box centred at `centre`, half-extents
+  // `extent` × `extent`, depth range [near, far] along
+  // `-lightDir`. Returns a Mat4 row-major (the renderer's wire
+  // format; transposed at upload time inside appendMat4_).
+  static computeLightVP_(lightDir, centre, extent, near, far) {
+    // Normalised forward = the light's travel direction.
+    var f = Renderer3D.normalize_(lightDir)
+    // Pick up vector — avoid degeneracy when light is straight
+    // down (or up): swap to world-Z up if the light's vertical.
+    var up = (f.y.abs > 0.999) ? Vec3.new(0, 0, 1) : Vec3.new(0, 1, 0)
+    // Right = forward × up.
+    var r = Renderer3D.cross_(f, up)
+    r = Renderer3D.normalize_(r)
+    // Recompute up so the basis is orthonormal: up = right × forward.
+    up = Renderer3D.cross_(r, f)
+    up = Renderer3D.normalize_(up)
+
+    // Eye = centre stepped back along -lightDir by the half-depth
+    // so the box's near plane lies just in front of the eye.
+    var halfDepth = (far - near) * 0.5
+    var eye = Vec3.new(
+      centre.x - f.x * halfDepth,
+      centre.y - f.y * halfDepth,
+      centre.z - f.z * halfDepth
+    )
+
+    var view = Mat4.lookAt(eye, centre, up)
+    var proj = Mat4.ortho(-extent, extent, -extent, extent, near, far)
+    return proj * view
+  }
+
+  static normalize_(v) {
+    var len = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt
+    if (len < 0.000001) return Vec3.new(0, 0, 1)
+    return Vec3.new(v.x / len, v.y / len, v.z / len)
+  }
+
+  static cross_(a, b) {
+    return Vec3.new(
+      a.y * b.z - a.z * b.y,
+      a.z * b.x - a.x * b.z,
+      a.x * b.y - a.y * b.x
+    )
   }
 
   /// Queue a point light. `range == 0` means unbounded
@@ -570,10 +996,30 @@ class Renderer3D {
     _sceneUboFloats.add(_ambient.y * _ambientIntensity)
     _sceneUboFloats.add(_ambient.z * _ambientIntensity)
     _sceneUboFloats.add(0)
-    // counts (dir, point, spot, pad)
+    // counts (dir, point, spot, shadows_enabled). The shadow flag
+    // is `1.0` only when (a) `enableShadows` ran and (b) the
+    // primary dir light has its `castsShadows` flag set — that's
+    // what makes the PBR shader's `shadow_factor` actually sample
+    // the shadow map.
+    var shadowsActive = _shadowsEnabled &&
+        _dirLights.count > 0 &&
+        _dirLights[0]["castsShadows"] &&
+        _shadowLightVP != null
     _sceneUboFloats.add(_dirLights.count)
     _sceneUboFloats.add(_pointLights.count)
     _sceneUboFloats.add(_spotLights.count)
+    _sceneUboFloats.add(shadowsActive ? 1 : 0)
+    // light_vp — populated when shadowsActive; zeroed otherwise so
+    // an unused slot doesn't carry stale matrix bits across frames.
+    if (shadowsActive) {
+      appendMat4_(_sceneUboFloats, _shadowLightVP)
+    } else {
+      appendZeros_(_sceneUboFloats, 16)
+    }
+    // shadow_params: x = depth bias, y = PCF radius, z/w reserved.
+    _sceneUboFloats.add(_shadowBias)
+    _sceneUboFloats.add(_shadowPcfRadius)
+    _sceneUboFloats.add(0)
     _sceneUboFloats.add(0)
     // dir_lights[0..MAX]; pad slots after the live count with zeros
     // so the shader's loop bound (`scene.counts.x`) governs reads.
