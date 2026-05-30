@@ -1,0 +1,14 @@
+name        = "procedural-world"
+version     = "0.1.0"
+entry       = "main"
+description = "Procedural terrain + animated water + instanced foliage with live HUD controls. Composes every phase shipped on the procedural-world parity track: @hatch:noise drives terrain heights and foliage density, Terrain.fromNoise builds the ground mesh, Foliage.scatter picks placement points, ClusterGrid + Frustum.sphereVisible + Lod.select3 cull and bucket the visible subset, Renderer3D.drawMeshInstanced renders each LOD in one drawIndexed, WaterPipeline paints the lake with animated displacement, and HUDPanel exposes every knob (water amplitude, wind gust, foliage density, fov) at runtime."
+
+# Path deps double-resolve shared modules (the @hatch:hud copy of
+# @hatch:gpu collides with the @hatch:game copy). Registry deps
+# share resolved modules at the bundle level, so we pin to the
+# published versions here and pick up workspace edits the next
+# round of publishes.
+[dependencies]
+"@hatch:game"    = "0.3.15"
+"@hatch:hud"     = "0.1.3"
+"@hatch:spatial" = "0.1.0"
