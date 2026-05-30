@@ -1,7 +1,7 @@
 name        = "@hatch:game"
-version     = "0.3.12"
+version     = "0.3.13"
 entry       = "game"
-description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering — subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web. Scene-level constructs: Transform / GlobalTransform, MeshRenderer, ParticleSystem, lights, physics bridges, SceneRenderer3D, Terrain (heightmap-driven mesh from @hatch:noise + @hatch:gpu), and Foliage — jittered-grid instanced scatter with optional density threshold, output as parallel Float32Array columns ready to feed ClusterGrid + writeInstance."
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering — subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web. Scene-level constructs: Transform / GlobalTransform, MeshRenderer, ParticleSystem, lights, physics bridges, SceneRenderer3D, Terrain (heightmap-driven mesh from @hatch:noise + @hatch:gpu), Foliage (jittered-grid scatter with optional density threshold), and Wind — deterministic 3D vector field driven by simplex3 with caller-controlled base direction, gust amplitude, and time evolution; drop into particle integrators, foliage sway, or any environmental force pipeline."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:game"
 readme   = "README.md"
 

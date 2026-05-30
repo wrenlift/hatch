@@ -115,6 +115,11 @@ import "./terrain" for Terrain
 // loop is the caller's.
 import "./foliage" for Foliage
 
+// Environmental forces. Today: Wind — noise-driven 3D vector
+// field with time evolution. Drop into particle integrators,
+// foliage sway, water surface ripples.
+import "./weather" for Wind
+
 // On web, the main fiber holds the JS thread until it parks on
 // an async bridge. The frame loop yields with
 // `Browser.nextFrame.await` (vsync-paced via requestAnimationFrame
