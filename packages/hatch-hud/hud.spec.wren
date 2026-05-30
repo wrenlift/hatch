@@ -3,7 +3,7 @@
 // (the real drawSpriteTinted calls) are exercised by a running
 // game.
 
-import "./hud"         for HUD, BuiltinFont
+import "./hud"         for HUD, HUDPanel, BuiltinFont
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -327,6 +327,123 @@ Test.describe("HUD.button hit-testing") {
     // Press wasn't registered as hovering → release returns false.
     Expect.that(c1).toBe(false)
     Expect.that(c2).toBe(false)
+  }
+}
+
+// ── HUDPanel ───────────────────────────────────────────────────
+
+Test.describe("HUDPanel slider") {
+  Test.it("mutates obj[key] when the track is clicked + dragged") {
+    var g = MockGameState.new()
+    var r = MockRenderer.new()
+    var hud = HUD.new(g)
+    var panel = HUDPanel.new(hud, { "x": 0, "y": 0, "width": 240 })
+    var state = { "amp": 0.0 }
+
+    // Mouse at the *middle* of the slider track. With width 240,
+    // pad 8, labelW 80, pad 8: trackX = 0 + 8 + 80 + 8 = 96;
+    // trackW = 0 + 240 - 8 - 96 = 136. Midpoint = 96 + 68 = 164.
+    // Slider row sits at y = PAD_ (8) of the first row (no title).
+    g.mockInput.moveTo(164, 18)
+    g.mockInput.pressLeft
+    hud.beginFrame(g, r)
+    panel.beginFrame()
+    panel.slider("amp", state, "amp", 0.0, 1.0)
+    hud.endFrame
+
+    // 50%% of [0, 1] → 0.5.
+    Expect.that(state["amp"] > 0.45 && state["amp"] < 0.55).toBe(true)
+
+    // Drag to the right edge: should clamp to max.
+    g.mockInput.beginFrame
+    g.mockInput.moveTo(9999, 18)
+    hud.beginFrame(g, r)
+    panel.beginFrame()
+    panel.slider("amp", state, "amp", 0.0, 1.0)
+    hud.endFrame
+    Expect.that(state["amp"]).toBe(1.0)
+
+    // Release outside the track: subsequent frames stop mutating
+    // because the active-slider state cleared.
+    g.mockInput.beginFrame
+    g.mockInput.releaseLeft
+    g.mockInput.moveTo(-1, -1)
+    hud.beginFrame(g, r)
+    panel.beginFrame()
+    panel.slider("amp", state, "amp", 0.0, 1.0)
+    hud.endFrame
+    Expect.that(state["amp"]).toBe(1.0)
+  }
+}
+
+Test.describe("HUDPanel toggle") {
+  Test.it("flips obj[key] on click") {
+    var g = MockGameState.new()
+    var r = MockRenderer.new()
+    var hud = HUD.new(g)
+    var panel = HUDPanel.new(hud, { "x": 0, "y": 0, "width": 200 })
+    var state = { "shadows": false }
+
+    g.mockInput.moveTo(100, 18)   // anywhere inside the row
+    g.mockInput.pressLeft
+    hud.beginFrame(g, r)
+    panel.beginFrame()
+    panel.toggle("shadows", state, "shadows")
+    hud.endFrame
+    Expect.that(state["shadows"]).toBe(true)
+
+    // Second press flips it back.
+    g.mockInput.beginFrame
+    g.mockInput.releaseLeft
+    g.mockInput.beginFrame
+    g.mockInput.pressLeft
+    hud.beginFrame(g, r)
+    panel.beginFrame()
+    panel.toggle("shadows", state, "shadows")
+    hud.endFrame
+    Expect.that(state["shadows"]).toBe(false)
+  }
+}
+
+Test.describe("HUDPanel button") {
+  Test.it("invokes the callback on a click cycle") {
+    var g = MockGameState.new()
+    var r = MockRenderer.new()
+    var hud = HUD.new(g)
+    var panel = HUDPanel.new(hud, { "x": 0, "y": 0, "width": 200 })
+    var pressed = [false]
+
+    g.mockInput.moveTo(100, 18)
+    g.mockInput.pressLeft
+    hud.beginFrame(g, r)
+    panel.beginFrame()
+    panel.button("reset", Fn.new { pressed[0] = true })
+    hud.endFrame
+    // Press alone doesn't fire — needs the matching release.
+    Expect.that(pressed[0]).toBe(false)
+
+    g.mockInput.beginFrame
+    g.mockInput.releaseLeft
+    hud.beginFrame(g, r)
+    panel.beginFrame()
+    panel.button("reset", Fn.new { pressed[0] = true })
+    hud.endFrame
+    Expect.that(pressed[0]).toBe(true)
+  }
+}
+
+Test.describe("HUDPanel text + divider") {
+  Test.it("text renders without aborting + accepts a Num value") {
+    var g = MockGameState.new()
+    var r = MockRenderer.new()
+    var hud = HUD.new(g)
+    var panel = HUDPanel.new(hud, { "x": 0, "y": 0, "width": 200 })
+    hud.beginFrame(g, r)
+    panel.beginFrame()
+    panel.text("FPS", 60)
+    panel.divider()
+    panel.text("cubes", "1234")
+    hud.endFrame
   }
 }
 
