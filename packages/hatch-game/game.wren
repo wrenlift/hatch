@@ -120,6 +120,12 @@ import "./foliage" for Foliage
 // foliage sway, water surface ripples.
 import "./weather" for Wind
 
+// Water surfaces. Subdivided plane mesh + a noise-driven wave
+// height sampler that's shared between CPU buoyancy queries and
+// vertex-shader displacement (sample at the same world point in
+// both paths to keep them consistent).
+import "./water" for Water
+
 // On web, the main fiber holds the JS thread until it parks on
 // an async bridge. The frame loop yields with
 // `Browser.nextFrame.await` (vsync-paced via requestAnimationFrame
