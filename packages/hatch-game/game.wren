@@ -104,6 +104,11 @@ import "./particles" for ParticleSystem, Particles
 // the effect catalogue does.
 import "./chain" for PostFX, PostPass
 
+// Heightmap-driven terrain mesh generation. Composes @hatch:noise
+// + @hatch:gpu's Mesh path; lives here because procedural worlds
+// are a scene-level concern, not a pure-algorithm one.
+import "./terrain" for Terrain
+
 // On web, the main fiber holds the JS thread until it parks on
 // an async bridge. The frame loop yields with
 // `Browser.nextFrame.await` (vsync-paced via requestAnimationFrame
