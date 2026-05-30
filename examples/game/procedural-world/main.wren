@@ -116,13 +116,48 @@ class ProceduralWorld is Game {
     _terrainMat = Material.new(Vec4.new(0.30, 0.42, 0.22, 1.0))   // mossy green
 
     // ── Water lake ──────────────────────────────────────────────
-    // Smaller than the terrain so the camera frames both.
-    _waterMesh   = Water.makePlane(g.device, {
-      "size":         _terrainSize * 0.7,
+    // A constrained pond sits in the lowest noise basin we can
+    // find within a small search region around the origin. The
+    // mesh is 20 m on a side so the shoreline (terrain rising
+    // above water y) wraps the full mesh; if we used the full
+    // terrain footprint the water would read as a sheet
+    // spanning the world rather than a body.
+    var pondCx = 0
+    var pondCz = 0
+    var minNoise = 1
+    var search = 18
+    var step = 6
+    var sy = -search
+    while (sy <= search) {
+      var sx = -search
+      while (sx <= search) {
+        var n = Noise.simplex2(sx * 0.06, sy * 0.06, _seed)
+        if (n < minNoise) {
+          minNoise = n
+          pondCx = sx
+          pondCz = sy
+        }
+        sx = sx + step
+      }
+      sy = sy + step
+    }
+    // Anchor the water surface a touch above the basin floor so
+    // there's a visible shoreline where the surrounding terrain
+    // crosses through.
+    var pondY = minNoise * _terrainAmp + 0.4
+    _waterY = pondY
+    _waterMesh = Water.makePlane(g.device, {
+      "size":         20,
       "subdivisions": 48,
-      "y":            -1.5
+      "y":            pondY,
+      "originX":      pondCx - 10,
+      "originZ":      pondCz - 10
     })
     _waterModel = Mat4.identity
+    // Aim the camera at the pond instead of the world origin so
+    // the orbit framing is naturally lake-centred.
+    _target = Vec3.new(pondCx, 0, pondCz)
+    rebuildCameraView_()
 
     // ── Foliage ─────────────────────────────────────────────────
     // Cube stand-ins for grass. One mesh, five palette materials
