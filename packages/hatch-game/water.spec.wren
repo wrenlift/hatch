@@ -1,10 +1,11 @@
 // @hatch:game/water acceptance tests. Mesh size math + the
 // noise-driven wave-height sampler.
 
-import "./water"      for Water
-import "@hatch:gpu"   for Gpu
-import "@hatch:test"   for Test
-import "@hatch:assert" for Expect
+import "./water"        for Water, WaterPipeline
+import "@hatch:gpu"     for Gpu, Camera3D
+import "@hatch:math"    for Vec3, Mat4
+import "@hatch:test"    for Test
+import "@hatch:assert"  for Expect
 
 Test.describe("Water.makePlane construction") {
   Test.it("produces a Mesh with the expected index count") {
@@ -70,6 +71,72 @@ Test.describe("Water.waveHeight") {
       Water.waveHeight({ "octaves": 0 }, 0, 0, 0)
     }.try()
     Expect.that(e).toContain("octaves")
+  }
+}
+
+Test.describe("WaterPipeline shader source") {
+  Test.it("declares the wave_height + vs_main + fs_main entries") {
+    var wgsl = WaterPipeline.SHADER_WGSL_
+    Expect.that(wgsl.contains("fn wave_height")).toBe(true)
+    Expect.that(wgsl.contains("@vertex")).toBe(true)
+    Expect.that(wgsl.contains("@fragment")).toBe(true)
+    Expect.that(wgsl.contains("fn vs_main")).toBe(true)
+    Expect.that(wgsl.contains("fn fs_main")).toBe(true)
+  }
+
+  Test.it("samples wave_height twice in vs_main to derive the normal gradient") {
+    var wgsl = WaterPipeline.SHADER_WGSL_
+    // The vertex shader needs at least three wave_height samples
+    // (centre + two offset for the gradient). The function
+    // definition counts as the first, so >=4 total.
+    var count = 0
+    var i = 0
+    while (i < wgsl.count) {
+      var hit = wgsl.indexOf("wave_height", i)
+      if (hit < 0) break
+      count = count + 1
+      i = hit + 1
+    }
+    Expect.that(count >= 4).toBe(true)
+  }
+
+  Test.it("uses the Schlick fresnel term and Blinn-Phong specular") {
+    var wgsl = WaterPipeline.SHADER_WGSL_
+    Expect.that(wgsl.contains("pow(1.0 - NdotV")).toBe(true)
+    Expect.that(wgsl.contains("normalize(L + V)")).toBe(true)
+    Expect.that(wgsl.contains("pow(NdotH")).toBe(true)
+  }
+}
+
+Test.describe("WaterPipeline construction") {
+  Test.it("builds + destroys cleanly against a real device") {
+    var device = Gpu.requestDevice()
+    var pipe = WaterPipeline.new(device, "rgba8unorm", "depth32float")
+    pipe.destroy
+    device.destroy
+  }
+
+  Test.it("setSun / setWave / setColors / setAmbient all mutate without aborting") {
+    var device = Gpu.requestDevice()
+    var pipe = WaterPipeline.new(device, "rgba8unorm", "depth32float")
+    pipe.setSun([-0.2, -1.0, 0.0], [1.0, 0.95, 0.8], 4.0)
+    pipe.setWave(0.6, 0.15, 0.3)
+    pipe.setColors([0.02, 0.10, 0.18, 0.9], [0.6, 0.8, 0.95], 4.0)
+    pipe.setAmbient([0.05, 0.10, 0.15])
+    pipe.destroy
+    device.destroy
+  }
+}
+
+Test.describe("WaterPipeline draw lifecycle") {
+  Test.it("draw before beginFrame aborts cleanly") {
+    var device = Gpu.requestDevice()
+    var pipe = WaterPipeline.new(device, "rgba8unorm", "depth32float")
+    var mesh = Water.makePlane(device, { "subdivisions": 2 })
+    var e = Fiber.new { pipe.draw(mesh, Mat4.identity) }.try()
+    Expect.that(e).toContain("beginFrame")
+    pipe.destroy
+    device.destroy
   }
 }
 

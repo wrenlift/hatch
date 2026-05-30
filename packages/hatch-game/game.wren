@@ -123,8 +123,10 @@ import "./weather" for Wind
 // Water surfaces. Subdivided plane mesh + a noise-driven wave
 // height sampler that's shared between CPU buoyancy queries and
 // vertex-shader displacement (sample at the same world point in
-// both paths to keep them consistent).
-import "./water" for Water
+// both paths to keep them consistent). WaterPipeline is the
+// self-contained render pipeline that displaces + fresnels +
+// speculars the water mesh on the GPU.
+import "./water" for Water, WaterPipeline
 
 // On web, the main fiber holds the JS thread until it parks on
 // an async bridge. The frame loop yields with
