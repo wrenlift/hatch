@@ -459,7 +459,8 @@ class HUD {
   input_ { _input }
 }
 
-/// Three.js-style debug panel. Stacks `slider` / `toggle` /
+/// Immediate-mode debug panel for runtime configuration. Stacks
+/// `slider` / `toggle` /
 /// `button` / `text` / `divider` rows top-down inside a fixed-
 /// width box so a procedural-world demo can expose every knob
 /// (wind strength, water amplitude, sun angle, terrain seed) at

@@ -1,7 +1,7 @@
 name        = "@hatch:hud"
 version     = "0.1.4"
 entry       = "hud"
-description = "Immediate-mode HUD overlay for the WrenLift game framework. `HUD.new(g)` gives you `hud.label`, `hud.rect`, `hud.button` — drawn through `@hatch:gpu`'s Renderer2D, with click + hover state tracked across frames. Ships a built-in 5×7 procedural font (digits + uppercase + common punctuation) so HUD essentials (`SCORE: 100`, `LIVES: 3`, `PAUSE`) work without bringing an asset font. Adds HUDPanel — a Three.js-style debug control panel that stacks slider / toggle / button / text / divider rows top-down inside a fixed-width box so procedural-world demos can expose every knob (wind strength, water amplitude, sun angle, terrain seed) at runtime without rebuilding the bundle."
+description = "Immediate-mode HUD overlay for the WrenLift game framework. `HUD.new(g)` gives you `hud.label`, `hud.rect`, `hud.button` — drawn through `@hatch:gpu`'s Renderer2D, with click + hover state tracked across frames. Ships a built-in 5×7 procedural font (digits + uppercase + common punctuation) so HUD essentials (`SCORE: 100`, `LIVES: 3`, `PAUSE`) work without bringing an asset font. Adds HUDPanel — an immediate-mode debug control panel that stacks slider / toggle / button / text / divider rows top-down inside a fixed-width box so procedural-world demos can expose every knob (wind strength, water amplitude, sun angle, terrain seed) at runtime without rebuilding the bundle."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:hud"
 readme      = "README.md"
 
