@@ -601,6 +601,32 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-05-28T05:57:05.004444+00:00"
 updated_at = "2026-05-28T05:57:05.004444+00:00"
 
+[packages."@hatch:game-0.3.10"]
+name = "@hatch:game"
+version = "0.3.10"
+git = "https://github.com/wrenlift/hatch"
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering \u2014 subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:game"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/game/0.3.10/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/game/0.3.10/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T21:00:28.769244+00:00"
+updated_at = "2026-05-29T21:00:28.769244+00:00"
+
+[packages."@hatch:game-0.3.9"]
+name = "@hatch:game"
+version = "0.3.9"
+git = "https://github.com/wrenlift/hatch"
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering \u2014 subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:game"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/game/0.3.9/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/game/0.3.9/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T20:30:22.103362+00:00"
+updated_at = "2026-05-29T20:30:22.103362+00:00"
+
 [packages."@hatch:game-0.3.8"]
 name = "@hatch:game"
 version = "0.3.8"
@@ -776,6 +802,18 @@ readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-05-28T19:04:06.713635+00:00"
 updated_at = "2026-05-28T19:04:06.713635+00:00"
+
+[packages."@hatch:gpu-0.3.8"]
+name = "@hatch:gpu"
+version = "0.3.8"
+git = "https://github.com/wrenlift/hatch"
+description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, ComputePipeline, CommandEncoder, RenderPass, ComputePass on the bottom; Camera2D/3D, Frustum, Lod, Renderer2D (sprite batcher), Renderer3D (Cook-Torrance / GGX PBR with multi-light + textured metallic-roughness workflow, plus drawMeshInstanced for storage-buffer-driven instanced meshes), Shader factory, Mesh, Material on top. Storage buffers + compute dispatch + fast typed-array readback for general-purpose GPU work. Camera3D.frustumPlanes + Frustum.sphereVisible for CPU-side frustum culling; Lod.select3 for distance-based level-of-detail bucketing \u2014 together they keep per-instance CPU cost flat in total scene size for the procedural-world performance target. Same shared source drives wgpu on native and WebGPU on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:gpu"
+readme = "README.md"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/gpu/0.3.8/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T20:53:35.999342+00:00"
+updated_at = "2026-05-29T20:53:35.999342+00:00"
 
 [packages."@hatch:gpu-0.3.7"]
 name = "@hatch:gpu"
@@ -1402,6 +1440,19 @@ description = "Vector + matrix + quaternion math \u2014 Vec2 / Vec3 / Vec4 / Mat
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-23T22:18:18.505131+00:00"
 updated_at = "2026-04-23T22:18:18.505131+00:00"
+
+[packages."@hatch:noise-0.1.0"]
+name = "@hatch:noise"
+version = "0.1.0"
+git = "https://github.com/wrenlift/hatch"
+description = "Procedural noise primitives \u2014 2D + 3D Simplex / Perlin / Value scalars, fractal Brownian motion octave-sum, and a batched Float32Array heightmap sampler. Backed by the `noise` crate so terrain generators, foliage scatter, weather simulations, and texture authoring all share the same deterministic, seeded implementations."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:noise"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/noise/0.1.0/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/noise/0.1.0/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-05-29T21:29:09.249527+00:00"
+updated_at = "2026-05-29T21:29:09.249527+00:00"
 
 [packages."@hatch:os-0.1.2"]
 name = "@hatch:os"
