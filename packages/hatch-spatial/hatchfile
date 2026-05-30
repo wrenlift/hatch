@@ -1,0 +1,10 @@
+name        = "@hatch:spatial"
+version     = "0.1.0"
+entry       = "spatial"
+description = "Spatial acceleration structures — uniform cluster grid and adaptive octree for 3D worlds. Insert millions of points, then query by radius or AABB in single-digit microseconds. Pure Wren, no plugin; composes with @hatch:gpu's Frustum + Lod for cull and LOD pipelines, and with @hatch:noise for procedural density sampling."
+homepage    = "https://hatch.wrenlift.com/packages/@hatch:spatial"
+readme      = "README.md"
+
+[spec-dependencies]
+"@hatch:test"   = "0.2.1"
+"@hatch:assert" = "0.2.3"
