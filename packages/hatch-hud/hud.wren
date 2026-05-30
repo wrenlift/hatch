@@ -442,6 +442,302 @@ class HUD {
   pointInside_(px, py, x, y, w, h) {
     return px >= x && px < x + w && py >= y && py < y + h
   }
+
+  /// Exposed for HUDPanel + custom widgets that need the same
+  /// box hit test the built-in widgets use.
+  pointInside(px, py, x, y, w, h) {
+    return pointInside_(px, py, x, y, w, h)
+  }
+
+  /// Internal access to the live `Input` snapshot taken at
+  /// `beginFrame`. HUDPanel reads `mouseX` / `mouseY` /
+  /// `mouseIsPressed` / `mouseJustPressed` / `mouseJustReleased`
+  /// here so it can resolve slider drag + checkbox click without
+  /// the consumer threading the input object through every call.
+  /// Returns `null` between frames.
+  /// @returns {Input}
+  input_ { _input }
+}
+
+/// Three.js-style debug panel. Stacks `slider` / `toggle` /
+/// `button` / `text` / `divider` rows top-down inside a fixed-
+/// width box so a procedural-world demo can expose every knob
+/// (wind strength, water amplitude, sun angle, terrain seed) at
+/// runtime without rebuilding the bundle.
+///
+/// Layout is immediate-mode: each row is added in the order the
+/// caller invokes the method, the panel auto-advances its
+/// internal cursor, and the next `beginFrame` resets to the top.
+/// State that has to live across frames (slider drag, hover
+/// highlight) is keyed by row label + position string so the same
+/// label at the same coordinate keeps its identity frame-to-
+/// frame.
+///
+/// ## Example
+///
+/// ```wren
+/// // setup
+/// _panel = HUDPanel.new(_hud, {
+///   "x": 16, "y": 16, "width": 240, "title": "WORLD"
+/// })
+/// _waveOpts = { "amplitude": 0.4, "scale": 0.2, "timeScale": 0.5 }
+///
+/// // draw, called from your Game.draw via the HUD beginFrame/end pair
+/// _panel.beginFrame()
+/// _panel.text("FPS", g.fps.round.toString)
+/// _panel.divider()
+/// _panel.slider("amplitude", _waveOpts, "amplitude", 0,   2)
+/// _panel.slider("scale",     _waveOpts, "scale",     0.05, 1)
+/// _panel.slider("timeScale", _waveOpts, "timeScale", 0,   2)
+/// _panel.toggle("show wind", _state, "showWind")
+/// _panel.button("reset camera") {|| _camera.lookAt(...) }
+/// ```
+class HUDPanel {
+  static ROW_HEIGHT_ { 20 }
+  static ROW_GAP_    { 4 }
+  static TITLE_H_    { 22 }
+  static LABEL_W_    { 80 }
+  static PAD_        { 8 }
+
+  /// Build a panel against `hud`. `opts` keys:
+  ///   - `"x"` (Num, default 16) — left edge in screen pixels.
+  ///   - `"y"` (Num, default 16) — top edge.
+  ///   - `"width"` (Num, default 240) — panel width.
+  ///   - `"title"` (String, default null) — when set, a title bar
+  ///     renders at the top of the panel.
+  ///   - `"theme"` (Map, optional) — `{ "bg", "row", "rowHover",
+  ///     "track", "thumb", "thumbActive", "text", "muted",
+  ///     "accent" }`, all `[r, g, b, a]` colours; defaults are a
+  ///     muted dark-blue theme tuned for readability on a
+  ///     procedural-world background.
+  ///
+  /// @param {HUD} hud
+  /// @param {Map} opts
+  construct new(hud, opts) {
+    _hud   = hud
+    _x     = opts.containsKey("x")     ? opts["x"]     : 16
+    _y0    = opts.containsKey("y")     ? opts["y"]     : 16
+    _w     = opts.containsKey("width") ? opts["width"] : 240
+    _title = opts.containsKey("title") ? opts["title"] : null
+    _theme = HUDPanel.mergeTheme_(opts.containsKey("theme") ? opts["theme"] : null)
+    _cursor = 0
+    // Slider grab persists across frames: id of the active slider
+    // plus the (min, max, obj, key) it's mutating. Null when no
+    // slider is being dragged.
+    _activeSlider = null
+  }
+
+  static mergeTheme_(override) {
+    var base = HUDPanel.DEFAULT_THEME_
+    if (override == null) return base
+    var out = {}
+    for (k in base.keys) out[k] = override.containsKey(k) ? override[k] : base[k]
+    return out
+  }
+
+  static DEFAULT_THEME_ {
+    if (PANEL_THEME_CACHE_[0] != null) return PANEL_THEME_CACHE_[0]
+    PANEL_THEME_CACHE_[0] = {
+      "bg":          [0.06, 0.08, 0.12, 0.88],
+      "titleBg":     [0.10, 0.14, 0.20, 0.95],
+      "row":         [0.10, 0.13, 0.18, 0.60],
+      "rowHover":    [0.16, 0.20, 0.28, 0.75],
+      "track":       [0.04, 0.05, 0.07, 1.0],
+      "thumb":       [0.55, 0.70, 0.95, 1.0],
+      "thumbActive": [0.85, 0.95, 1.00, 1.0],
+      "checkOff":    [0.04, 0.05, 0.07, 1.0],
+      "checkOn":     [0.55, 0.70, 0.95, 1.0],
+      "text":        [0.90, 0.92, 0.96, 1.0],
+      "muted":       [0.55, 0.60, 0.68, 1.0],
+      "accent":      [0.55, 0.70, 0.95, 1.0]
+    }
+    return PANEL_THEME_CACHE_[0]
+  }
+
+  /// Start a frame. Resets the row cursor to the top of the panel
+  /// and draws the background + title bar. Call between
+  /// `hud.beginFrame(...)` and `hud.endFrame`.
+  beginFrame() {
+    _cursor = _y0
+    // Background panel + optional title bar. Body height grows
+    // with each row; we draw the background after the rows in
+    // endFrame... but immediate-mode means rows are drawn on top
+    // of a pre-rendered background. Compromise: draw a "tall"
+    // background that the row content overdraws. A more precise
+    // background pass needs a deferred draw queue and isn't worth
+    // the complexity for an MVP.
+    var hud = _hud
+    hud.rect(_x, _cursor, _w, HUDPanel.TITLE_H_ + 8, _theme["bg"])
+    if (_title != null) {
+      hud.rect(_x, _cursor, _w, HUDPanel.TITLE_H_, _theme["titleBg"])
+      hud.label(_title, _x + HUDPanel.PAD_, _cursor + 6, 2, _theme["text"])
+      _cursor = _cursor + HUDPanel.TITLE_H_ + HUDPanel.ROW_GAP_
+    } else {
+      _cursor = _cursor + HUDPanel.PAD_
+    }
+  }
+
+  /// Numeric slider. The track is split between a `LABEL_W_`
+  /// label column on the left and a track + thumb on the right.
+  /// Click anywhere on the track to jump the thumb; drag to scrub.
+  ///
+  /// Mutates `obj[key]` in place. Returns the current value for
+  /// callers that want to read it without a second map lookup.
+  ///
+  /// @param {String} label
+  /// @param {Map} obj
+  /// @param {String} key
+  /// @param {Num} min
+  /// @param {Num} max
+  /// @returns {Num}
+  slider(label, obj, key, min, max) {
+    var hud = _hud
+    var y = _cursor
+    var rowH = HUDPanel.ROW_HEIGHT_
+
+    var pad = HUDPanel.PAD_
+    var labelW = HUDPanel.LABEL_W_
+    var trackX = _x + pad + labelW + pad
+    var trackW = _x + _w - pad - trackX
+
+    var input = hud.input_
+    var mx = input == null ? -1 : input.mouseX
+    var my = input == null ? -1 : input.mouseY
+    var trackHover = hud.pointInside(mx, my, trackX, y, trackW, rowH)
+
+    var id = "%(_x):%(y):slider:%(label)"
+    if (trackHover && input != null && input.mouseJustPressed("left")) {
+      _activeSlider = id
+    }
+    if (input != null && input.mouseJustReleased("left")) {
+      if (_activeSlider == id) _activeSlider = null
+    }
+
+    var v = obj[key]
+    if (_activeSlider == id) {
+      var clamped = mx
+      if (clamped < trackX) clamped = trackX
+      if (clamped > trackX + trackW) clamped = trackX + trackW
+      var frac = (clamped - trackX) / trackW
+      v = min + frac * (max - min)
+      obj[key] = v
+    }
+    var frac = (v - min) / (max - min)
+    if (frac < 0) frac = 0
+    if (frac > 1) frac = 1
+
+    // Row body + label.
+    hud.rect(_x + pad / 2, y, _w - pad, rowH, _theme["row"])
+    hud.label(label, _x + pad, y + 6, 1, _theme["text"])
+
+    // Track + thumb.
+    var trackH = 4
+    var trackY = y + ((rowH - trackH) / 2).floor
+    hud.rect(trackX, trackY, trackW, trackH, _theme["track"])
+    var thumbW = 6
+    var thumbX = (trackX + frac * (trackW - thumbW)).floor
+    var thumbColor = (_activeSlider == id) ? _theme["thumbActive"] : _theme["thumb"]
+    hud.rect(thumbX, y + 3, thumbW, rowH - 6, thumbColor)
+
+    // Numeric readout, right-aligned within the track column.
+    var readout = HUDPanel.formatNum_(v)
+    var size = HUD.measure(readout, 1)
+    hud.label(readout, trackX + trackW - size[0], y + rowH - size[1] - 2, 1, _theme["muted"])
+
+    _cursor = _cursor + rowH + HUDPanel.ROW_GAP_
+    return v
+  }
+
+  /// Boolean toggle. Click the checkbox to flip `obj[key]`.
+  /// Returns the current value.
+  ///
+  /// @param {String} label
+  /// @param {Map} obj
+  /// @param {String} key
+  /// @returns {Bool}
+  toggle(label, obj, key) {
+    var hud = _hud
+    var y = _cursor
+    var rowH = HUDPanel.ROW_HEIGHT_
+    var pad = HUDPanel.PAD_
+    var boxSize = 14
+    var boxX = _x + _w - pad - boxSize
+    var boxY = y + ((rowH - boxSize) / 2).floor
+
+    var input = hud.input_
+    var mx = input == null ? -1 : input.mouseX
+    var my = input == null ? -1 : input.mouseY
+    var rowHover = hud.pointInside(mx, my, _x, y, _w, rowH)
+    if (rowHover && input != null && input.mouseJustPressed("left")) {
+      obj[key] = !obj[key]
+    }
+    var v = obj[key]
+
+    hud.rect(_x + pad / 2, y, _w - pad, rowH,
+      rowHover ? _theme["rowHover"] : _theme["row"])
+    hud.label(label, _x + pad, y + 6, 1, _theme["text"])
+    hud.rect(boxX, boxY, boxSize, boxSize, _theme["checkOff"])
+    if (v) {
+      hud.rect(boxX + 3, boxY + 3, boxSize - 6, boxSize - 6, _theme["checkOn"])
+    }
+    _cursor = _cursor + rowH + HUDPanel.ROW_GAP_
+    return v
+  }
+
+  /// Pushbutton row. `cb` is invoked once when the button is
+  /// clicked (mouse-down inside, mouse-up inside the same frame
+  /// boundary as the host HUD's own `button`).
+  ///
+  /// @param {String} text
+  /// @param {Fn} cb
+  /// @returns {Bool}
+  button(text, cb) {
+    var hud = _hud
+    var y = _cursor
+    var rowH = HUDPanel.ROW_HEIGHT_
+    var pad = HUDPanel.PAD_
+    var pressed = hud.button(text, _x + pad / 2, y, _w - pad, rowH)
+    if (pressed && cb != null) cb.call()
+    _cursor = _cursor + rowH + HUDPanel.ROW_GAP_
+    return pressed
+  }
+
+  /// Read-only text row. Use for FPS, entity counts, cull rate —
+  /// values the consumer computes once a frame and wants to
+  /// display alongside the inputs.
+  ///
+  /// @param {String} label
+  /// @param {String|Num} value
+  text(label, value) {
+    var hud = _hud
+    var y = _cursor
+    var rowH = HUDPanel.ROW_HEIGHT_
+    var pad = HUDPanel.PAD_
+    hud.rect(_x + pad / 2, y, _w - pad, rowH, _theme["row"])
+    hud.label(label, _x + pad, y + 6, 1, _theme["text"])
+    var v = value.toString
+    var size = HUD.measure(v, 1)
+    hud.label(v, _x + _w - pad - size[0], y + 6, 1, _theme["muted"])
+    _cursor = _cursor + rowH + HUDPanel.ROW_GAP_
+  }
+
+  /// Horizontal divider for visual grouping. One-pixel line plus
+  /// a row's worth of padding.
+  divider() {
+    var hud = _hud
+    var pad = HUDPanel.PAD_
+    hud.rect(_x + pad, _cursor + 4, _w - 2 * pad, 1, _theme["muted"])
+    _cursor = _cursor + HUDPanel.ROW_GAP_ + 6
+  }
+
+  /// Format a number for the slider readout. Two decimal places
+  /// is the sweet spot for the typical [0, 10] knobs games tweak;
+  /// integers print without a decimal point.
+  static formatNum_(n) {
+    if (n == n.floor) return n.toString
+    var rounded = (n * 100).round / 100
+    return rounded.toString
+  }
 }
 
 // Module-private one-cell caches. Same pattern as `ACTION_REGISTRY_`
@@ -450,3 +746,4 @@ class HUD {
 // the issue. One-element Lists keep the slot mutable.
 var GLYPH_CACHE_ = [null]
 var THEME_CACHE_ = [null]
+var PANEL_THEME_CACHE_ = [null]
