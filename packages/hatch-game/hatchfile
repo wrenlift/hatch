@@ -1,7 +1,7 @@
 name        = "@hatch:game"
-version     = "0.3.10"
+version     = "0.3.11"
 entry       = "game"
-description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering — subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web."
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering — subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web. Scene-level constructs: Transform / GlobalTransform, MeshRenderer, ParticleSystem, lights, physics bridges, SceneRenderer3D, and now Terrain — heightmap-driven mesh generation that composes @hatch:noise + @hatch:gpu for procedural-world surfaces."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:game"
 readme   = "README.md"
 
@@ -17,6 +17,10 @@ readme   = "README.md"
 # `chart.bindEvents(Actions.emitter, [...])` — same shape every
 # @hatch:fsm consumer already speaks.
 "@hatch:events" = "0.2.2"
+# Terrain module wraps @hatch:noise's batched fillSimplex2 to
+# produce heightmap Meshes; everything else in @hatch:game can
+# still be used without ever touching Terrain.
+"@hatch:noise"  = "0.1.0"
 
 [spec-dependencies]
 "@hatch:test"   = "0.2.1"
