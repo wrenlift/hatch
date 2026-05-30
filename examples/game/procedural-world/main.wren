@@ -139,7 +139,7 @@ class ProceduralWorld is Game {
     // ── HUD ─────────────────────────────────────────────────────
     _hud      = HUD.new(g)
     _hudCamera = Camera2D.new(g.width, g.height)
-    _hudRenderer = Renderer2D.new(g.device, g.surfaceFormat)
+    _hudRenderer = Renderer2D.new(g.device, g.surfaceFormat, g.depthFormat)
     _panel    = HUDPanel.new(_hud, {
       "x": 16, "y": 16, "width": 260, "title": "WORLD"
     })
@@ -188,19 +188,23 @@ class ProceduralWorld is Game {
   // the threshold or seed.
   rescatterFoliage_() {
     var half = _terrainSize / 2
-    var seed = _seed + 9999
-    var density = _foliageDensity
+    // Locals so the Fn.new threshold closure captures stable
+    // values instead of trying to read instance fields off the
+    // enclosing class.
+    var seedLocal     = _seed
+    var densityLocal  = _foliageDensity
+    var terrainAmpLocal = _terrainAmp
     var sites = Foliage.scatter({
       "bounds":  [-half * 0.9, -half * 0.9, half * 0.9, half * 0.9],
       "spacing": 0.9,
       "jitter":  0.45,
-      "seed":    seed,
+      "seed":    seedLocal + 9999,
       "threshold": Fn.new {|x, z|
         // Same simplex2 field we used for terrain; foliage
         // grows where the field is positive (raised ground)
         // and density modulates the cutoff.
-        var n = Noise.simplex2(x * 0.06, z * 0.06, _seed) * 0.5 + 0.5
-        return n * density
+        var n = Noise.simplex2(x * 0.06, z * 0.06, seedLocal) * 0.5 + 0.5
+        return n * densityLocal
       }
     })
     _foliageSites = sites
@@ -212,11 +216,11 @@ class ProceduralWorld is Game {
     for (i in 0...count) {
       var x = sites["xs"][i]
       var z = sites["zs"][i]
-      var y = Noise.simplex2(x * 0.06, z * 0.06, _seed) * _terrainAmp
+      var y = Noise.simplex2(x * 0.06, z * 0.06, seedLocal) * terrainAmpLocal
       _foliageYs[i] = y
       // Bucket palette by quintile of the noise field so
       // neighbouring foliage shares a tint.
-      var p = (Noise.simplex2(x * 0.04 + 11, z * 0.04 - 7, _seed + 3) * 0.5 + 0.5) * 5
+      var p = (Noise.simplex2(x * 0.04 + 11, z * 0.04 - 7, seedLocal + 3) * 0.5 + 0.5) * 5
       var slot = p.floor
       if (slot < 0) slot = 0
       if (slot > 4) slot = 4
