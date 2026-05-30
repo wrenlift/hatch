@@ -109,6 +109,12 @@ import "./chain" for PostFX, PostPass
 // are a scene-level concern, not a pure-algorithm one.
 import "./terrain" for Terrain
 
+// Jittered-grid instanced scatter for grass / trees / rocks /
+// asteroids. Returns parallel Float32Array columns ready to feed
+// a ClusterGrid + writeInstance pipeline; the cull / LOD / draw
+// loop is the caller's.
+import "./foliage" for Foliage
+
 // On web, the main fiber holds the JS thread until it parks on
 // an async bridge. The frame loop yields with
 // `Browser.nextFrame.await` (vsync-paced via requestAnimationFrame
