@@ -163,14 +163,6 @@ class PostPass {
   /// custom pipelines (multiple per pass for multi-step effects).
   /// @param {PostFX} orchestrator
   onAdded_(orchestrator) {
-    // Defensive re-init. wlift's class-field codegen can let a
-    // subclass field stomp a base-class slot under inheritance, so
-    // `_pipelines` reads back as the subclass's scalar instead of
-    // the empty list our constructor set. Reinitialising here gives
-    // us a consistent List handle before the .add() call.
-    if (!(_pipelines is List))    _pipelines = []
-    if (!(_bindGroups is List))   _bindGroups = []
-    if (!(_intermediates is List)) _intermediates = []
     var pipe = orchestrator.buildFragmentPipeline_(this)
     _pipelines.add(pipe)
     if (uniformBytes > 0) {
@@ -428,7 +420,7 @@ class PostFX {
     })
   }
 
-  // Pick the right pipeline layout for a pass based on its
+  // Pick the right PIPELINE layout for a pass based on its
   // uniform + depth needs. Four combinations, four layouts.
   pickLayout_(pass) {
     var hasU = pass.uniformBytes > 0
@@ -437,6 +429,20 @@ class PostFX {
     if (hasU)           return _layoutUniform
     if (hasD)           return _layoutPlainDepth
     return _layoutPlain
+  }
+
+  // Pick the right BIND-GROUP layout for a pass. `createBindGroup`
+  // takes a BindGroupLayout, not a PipelineLayout — pickLayout_
+  // gives back the latter (the wrapper used at pipeline build),
+  // and feeding it to createBindGroup fails with "unknown layout
+  // id" because the GPU plugin's bind-group registry never saw it.
+  pickBindGroupLayout_(pass) {
+    var hasU = pass.uniformBytes > 0
+    var hasD = pass.wantsDepth
+    if (hasU && hasD)   return _bglUniformDepth
+    if (hasU)           return _bglUniform
+    if (hasD)           return _bglPlainDepth
+    return _bglPlain
   }
 
   /// Run one fullscreen-quad pass for `pass` against `pipelineIdx`
@@ -499,7 +505,7 @@ class PostFX {
       entries.add({ "binding": 3, "view": depthView })
     }
     var bg = _device.createBindGroup({
-      "layout":  pickLayout_(pass),
+      "layout":  pickBindGroupLayout_(pass),
       "entries": entries,
       "label":   "postfx-" + pass.name + "-bg-" + pipelineIdx.toString
     })
