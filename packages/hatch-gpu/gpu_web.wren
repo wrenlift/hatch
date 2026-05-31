@@ -1497,11 +1497,17 @@ class Renderer2D {
     var vboBytes = Renderer2D.MAX_SPRITES_ *
                    Renderer2D.VERTS_PER_SPRITE_ *
                    Renderer2D.FLOATS_PER_VERTEX_ * 4
-    _vbo = device.createBuffer({
+    // VBO ring — one buffer per `flush()` call inside a single
+    // render pass. See gpu_native.wren for the rationale (two
+    // `write_buffer(0, …)` uploads in one pass alias at submit
+    // and the first draw reads the second batch's bytes).
+    _vboBytes = vboBytes
+    _vbos     = [device.createBuffer({
       "size":  vboBytes,
       "usage": ["vertex", "copy-dst"],
-      "label": "renderer2d-vbo"
-    })
+      "label": "renderer2d-vbo-0"
+    })]
+    _vboIndex = 0
     _ubo = device.createBuffer({
       "size":  64,
       "usage": ["uniform", "copy-dst"],
@@ -1527,6 +1533,8 @@ class Renderer2D {
   ///
   /// @param {Camera2D} camera
   beginFrame(camera) {
+    // Rewind VBO ring; see gpu_native.wren beginFrame for rationale.
+    _vboIndex = 0
     var d = camera.viewProj.data
     _cameraScratch[0]  = d[0]
     _cameraScratch[1]  = d[4]
@@ -1785,11 +1793,20 @@ class Renderer2D {
   /// @param {RenderPass} pass
   flush(pass) {
     if (_spriteCount == 0) return
-    _vbo.writeFloats(0, _floats)
+    if (_vboIndex >= _vbos.count) {
+      _vbos.add(_device.createBuffer({
+        "size":  _vboBytes,
+        "usage": ["vertex", "copy-dst"],
+        "label": "renderer2d-vbo-%(_vboIndex)"
+      }))
+    }
+    var vbo = _vbos[_vboIndex]
+    _vboIndex = _vboIndex + 1
+    vbo.writeFloats(0, _floats)
     var bg = bindGroupFor_(_curTexture)
     pass.setPipeline(_pipeline)
     pass.setBindGroup(0, bg)
-    pass.setVertexBuffer(0, _vbo)
+    pass.setVertexBuffer(0, vbo)
     pass.draw(_spriteCount * Renderer2D.VERTS_PER_SPRITE_)
     _floats.clear()
     _spriteCount = 0
@@ -1800,7 +1817,7 @@ class Renderer2D {
   /// uniform buffers, sampler, pipelines, layouts). Call when the
   /// renderer goes out of scope; not called automatically.
   destroy {
-    _vbo.destroy
+    for (b in _vbos) b.destroy
     _ubo.destroy
     _sampler.destroy
     for (p in _pipelines.values) p.destroy

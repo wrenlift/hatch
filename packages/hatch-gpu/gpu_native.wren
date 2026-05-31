@@ -1404,11 +1404,22 @@ class Renderer2D {
     var vboBytes = Renderer2D.MAX_SPRITES_ *
                    Renderer2D.VERTS_PER_SPRITE_ *
                    Renderer2D.FLOATS_PER_VERTEX_ * 4
-    _vbo = device.createBuffer({
+    // VBO ring — one buffer per `flush()` call that fires inside a
+    // single render pass. A single shared VBO breaks because both
+    // `writeFloatsN(0, …)` calls land at the same offset before the
+    // GPU submits, so the first `pass.draw` reads the second batch's
+    // bytes and the earliest sprites visually vanish (the WORLD
+    // panel title / FPS / count rows in the two-panel HUD layout).
+    // Pool grows lazily; rotated by `_vboIndex` per flush; reset
+    // each `beginFrame` so steady-state size is bounded by the
+    // peak flush count of any one frame.
+    _vboBytes = vboBytes
+    _vbos     = [device.createBuffer({
       "size":  vboBytes,
       "usage": ["vertex", "copy-dst"],
-      "label": "renderer2d-vbo"
-    })
+      "label": "renderer2d-vbo-0"
+    })]
+    _vboIndex = 0
     _ubo = device.createBuffer({
       "size":  64,            // one mat4
       "usage": ["uniform", "copy-dst"],
@@ -1462,6 +1473,11 @@ class Renderer2D {
   ///
   /// @param {Camera2D} camera
   beginFrame(camera) {
+    // Rewind the VBO ring so the first `flush` of this frame
+    // reuses `_vbos[0]`. Buffers allocated during peak-flush
+    // frames are kept around for the next frame — the ring grows
+    // to the high-water mark and stops.
+    _vboIndex = 0
     // Mat4 stores row-major; WGSL's mat4x4 reads 16 floats as
     // column-major. Transpose at the upload boundary so the
     // ortho's translation column lands where the shader expects.
@@ -1698,15 +1714,27 @@ class Renderer2D {
   /// @param {RenderPass} pass
   flush(pass) {
     if (_spriteCount == 0) return
+    // Pick the next VBO from the per-frame ring. Each flush gets
+    // its own buffer so two batches inside one render pass don't
+    // alias to offset 0 of the same VBO at submit time.
+    if (_vboIndex >= _vbos.count) {
+      _vbos.add(_device.createBuffer({
+        "size":  _vboBytes,
+        "usage": ["vertex", "copy-dst"],
+        "label": "renderer2d-vbo-%(_vboIndex)"
+      }))
+    }
+    var vbo = _vbos[_vboIndex]
+    _vboIndex = _vboIndex + 1
     // Partial upload: only the floats actually written this
     // frame. Sends `_floatHead * 4` bytes; the plugin path is
     // a single `queue.write_buffer` of that slice — no per-
     // element walk.
-    _vbo.writeFloatsN(0, _floats, _floatHead)
+    vbo.writeFloatsN(0, _floats, _floatHead)
     var bg = bindGroupFor_(_curTexture)
     pass.setPipeline(_pipeline)
     pass.setBindGroup(0, bg)
-    pass.setVertexBuffer(0, _vbo)
+    pass.setVertexBuffer(0, vbo)
     pass.draw(_spriteCount * Renderer2D.VERTS_PER_SPRITE_)
     _floatHead   = 0
     _spriteCount = 0
@@ -1717,7 +1745,7 @@ class Renderer2D {
   /// uniform buffers, sampler, pipelines, layouts). Call when the
   /// renderer goes out of scope; not called automatically.
   destroy {
-    _vbo.destroy
+    for (b in _vbos) b.destroy
     _ubo.destroy
     _sampler.destroy
     for (p in _pipelines.values) p.destroy
