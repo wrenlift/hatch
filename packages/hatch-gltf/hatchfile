@@ -5,13 +5,17 @@ description = "Pure-Wren glTF 2.0 / .glb loader. Parses the binary container int
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:gltf"
 readme   = "README.md"
 
+# WORKSPACE OVERRIDE: @hatch:gpu + @hatch:game are on path deps so
+# the in-tree edits (water pipeline, plugins) propagate without
+# cache restaging. Revert to matching version pins before publishing
+# @hatch:gltf — path deps don't resolve for downstream consumers.
 [dependencies]
-"@hatch:json" = "0.1.4"
+"@hatch:json" = "0.1.5"
 "@hatch:math" = "0.1.5"
-"@hatch:ecs" = "0.2.3"
-"@hatch:gpu" = "0.3.0"
-"@hatch:image" = "0.1.7"
-"@hatch:game" = "0.3.0"
+"@hatch:ecs" = "0.2.4"
+"@hatch:gpu" = { path = "../hatch-gpu" }
+"@hatch:image" = { path = "../hatch-image" }
+"@hatch:game" = { path = "../hatch-game" }
 
 [spec-dependencies]
 "@hatch:test" = "0.2.1"

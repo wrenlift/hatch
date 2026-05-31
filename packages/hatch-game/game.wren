@@ -164,16 +164,21 @@ class Input {
     _mouseRel   = {}
     _mouseX     = 0
     _mouseY     = 0
+    _scrollX    = 0     // edge-triggered scroll delta for this frame
+    _scrollY    = 0
   }
 
   // Begin a new frame: clear edge-triggered sets. `down` /
   // mouseDown persist across frames so `isDown` keeps reading
-  // true while the key is held.
+  // true while the key is held. Scroll deltas reset to zero so
+  // each frame sees only its own wheel input.
   beginFrame_ {
     _pressed = {}
     _released = {}
     _mouseHit = {}
     _mouseRel = {}
+    _scrollX = 0
+    _scrollY = 0
   }
 
   // Apply one event from the window's pollEvents list.
@@ -198,6 +203,12 @@ class Input {
     } else if (t == "mouseMoved") {
       _mouseX = e["x"]
       _mouseY = e["y"]
+    } else if (t == "mouseWheel") {
+      // Deltas accumulate within a frame so multiple wheel events
+      // (typical on a trackpad) sum into one scrubbed value the
+      // consumer reads once per frame.
+      _scrollX = _scrollX + e["dx"]
+      _scrollY = _scrollY + e["dy"]
     }
   }
 
@@ -260,6 +271,20 @@ class Input {
   ///
   /// @returns {Num}
   mouseY { _mouseY }
+
+  /// Mouse-wheel horizontal delta this frame. Sums every
+  /// `MouseWheel` event since the previous `beginFrame_`.
+  /// Trackpad horizontal swipes and tilt-wheels both feed in.
+  ///
+  /// @returns {Num}
+  scrollX { _scrollX }
+
+  /// Mouse-wheel vertical delta this frame. Positive when the
+  /// content under the cursor moves down (typical scroll-up). Use
+  /// for camera zoom: `_distance = _distance - g.input.scrollY * k`.
+  ///
+  /// @returns {Num}
+  scrollY { _scrollY }
 }
 
 /// Render-target dimensions in pixels.
@@ -302,6 +327,7 @@ class GameState {
     _surfaceFormat = surfaceFormat
     _depthFormat = null
     _depthView   = null
+    _colorView   = null
     _pass    = null
     _events  = []
     _dt      = 0
@@ -331,6 +357,13 @@ class GameState {
   /// Bound depth `TextureView` for this frame. Framework-managed.
   depthView         { _depthView }
   depthView=(v)     { _depthView = v }
+  /// Active colour `TextureView` for this frame. Framework-set
+  /// before user `draw`; useful when ending the active pass and
+  /// opening a follow-up that needs to load the same attachment
+  /// (e.g. water sampling the depth buffer with a read-only depth
+  /// attachment).
+  colorView         { _colorView }
+  colorView=(v)     { _colorView = v }
 
   /// The active `Window`.
   window        { _window }
@@ -630,7 +663,11 @@ class Game {
       depthTexture = device.createTexture({
         "width":  sw, "height": sh,
         "format": depthFormat,
-        "usage":  ["render-attachment"]
+        // `texture-binding` lets a downstream pipeline sample the
+        // depth attachment in a fragment shader (with a read-only
+        // depth attachment on the sampling pass). Cost is zero when
+        // no shader reads it.
+        "usage":  ["render-attachment", "texture-binding"]
       })
       depthView = depthTexture.createView()
     }
@@ -732,7 +769,7 @@ class Game {
           depthTexture = device.createTexture({
             "width":  aw, "height": ah,
             "format": depthFormat,
-            "usage":  ["render-attachment"]
+            "usage":  ["render-attachment", "texture-binding"]
           })
           depthView = depthTexture.createView()
           g.depthView = depthView
@@ -784,6 +821,11 @@ class Game {
       }
       var pass = encoder.beginRenderPass(passDesc)
       g.pass = pass
+      // Stash the active colour view on `g` so a user draw can
+      // end this pass and open a follow-up pass that loads the same
+      // attachment (needed for depth-as-sampled-texture in shore
+      // foam / refraction effects).
+      g.colorView = sceneColorView
       // Run the user draw in a child fiber so the GPU teardown
       // below ALWAYS executes. If draw aborts mid-frame the
       // SurfaceTexture and open CommandEncoder would otherwise
@@ -793,9 +835,26 @@ class Game {
       // Surface. We capture the error, finish the frame, and
       // re-raise after the device has been told to submit.
       var drawFiber = Fiber.new { instance.draw(g) }
-      var drawErr = drawFiber.try()
+      var drawErrRaw = drawFiber.try()
+      // Workaround for a wlift codegen bug: `Fiber.try()` on a
+      // cleanly-returning fiber occasionally returns whatever was
+      // last in the result slot (a stale String / Num / Object) in
+      // place of `null`. A genuine `Fiber.abort(...)` always passes
+      // a String message, so we accept only Strings as real errors.
+      // Anything else (Num, Map, instance, etc.) we treat as a
+      // clean exit. If we ever start using non-string abort values
+      // intentionally, switch this to a sentinel match instead.
+      var drawErr = drawErrRaw is String ? drawErrRaw : null
+      // End whichever pass is currently active on `g`. If the user
+      // ended `pass` (the framework-opened one) and started their
+      // own follow-up, `g.pass` now references the follow-up; we
+      // end that. If they didn't swap, `g.pass == pass` and we end
+      // the original. Either way the encoder lands at zero open
+      // passes before submit.
+      var finalPass = g.pass
       g.pass = null
-      pass.end
+      g.colorView = null
+      if (finalPass != null) finalPass.end
       pass = null
 
       if (post != null && drawErr == null) post.runChain(encoder, frame.view)

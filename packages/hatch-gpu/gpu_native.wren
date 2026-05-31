@@ -1058,6 +1058,11 @@ class RenderPass {
       if (ds.containsKey("depthLoadOp"))     rec["depthLoadOp"]     = ds["depthLoadOp"]
       if (ds.containsKey("depthClearValue")) rec["depthClearValue"] = ds["depthClearValue"]
       if (ds.containsKey("depthStoreOp"))    rec["depthStoreOp"]    = ds["depthStoreOp"]
+      // `depthReadOnly: true` marks the depth attachment as
+      // read-only so a fragment shader of the same pass can sample
+      // it (e.g. shore-foam in water). load/store ops are ignored
+      // by the plugin when this flag is set.
+      if (ds.containsKey("depthReadOnly"))   rec["depthReadOnly"]   = ds["depthReadOnly"]
       out["depthStencilAttachment"] = rec
     }
     return out

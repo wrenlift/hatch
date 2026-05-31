@@ -7,8 +7,11 @@ readme      = "README.md"
 
 # `@hatch:game` provides the chain primitive (`PostFX` + `PostPass`)
 # that every effect here subclasses.
+# Workspace path dep — keeps the postfx chain locked to the same
+# `@hatch:game` workspace copy the consumer demo also pulls. Revert
+# to a registry pin before publish.
 [dependencies]
-"@hatch:game" = "0.3.5"
+"@hatch:game" = { path = "../hatch-game" }
 
 [spec-dependencies]
 "@hatch:test"   = "0.2.1"

@@ -521,6 +521,17 @@ class HUDPanel {
     _w     = opts.containsKey("width") ? opts["width"] : 240
     _title = opts.containsKey("title") ? opts["title"] : null
     _theme = HUDPanel.mergeTheme_(opts.containsKey("theme") ? opts["theme"] : null)
+    // Integer multiplier on every row size + font scale. The
+    // bitmap font is on a 5×7 grid; only integer multiples land on
+    // whole pixels. Default 1 keeps callers source-compatible.
+    var s = opts.containsKey("scale") ? opts["scale"] : 1
+    if (s < 1) s = 1
+    _scale   = s.floor
+    _rowH    = (HUDPanel.ROW_HEIGHT_ * _scale).floor
+    _rowGap  = (HUDPanel.ROW_GAP_    * _scale).floor
+    _titleH  = (HUDPanel.TITLE_H_    * _scale).floor
+    _labelW  = (HUDPanel.LABEL_W_    * _scale).floor
+    _pad     = (HUDPanel.PAD_        * _scale).floor
     _cursor = 0
     // Slider grab persists across frames: id of the active slider
     // plus the (min, max, obj, key) it's mutating. Null when no
@@ -568,13 +579,13 @@ class HUDPanel {
     // background pass needs a deferred draw queue and isn't worth
     // the complexity for an MVP.
     var hud = _hud
-    hud.rect(_x, _cursor, _w, HUDPanel.TITLE_H_ + 8, _theme["bg"])
+    hud.rect(_x, _cursor, _w, _titleH + 8 * _scale, _theme["bg"])
     if (_title != null) {
-      hud.rect(_x, _cursor, _w, HUDPanel.TITLE_H_, _theme["titleBg"])
-      hud.label(_title, _x + HUDPanel.PAD_, _cursor + 6, 2, _theme["text"])
-      _cursor = _cursor + HUDPanel.TITLE_H_ + HUDPanel.ROW_GAP_
+      hud.rect(_x, _cursor, _w, _titleH, _theme["titleBg"])
+      hud.label(_title, _x + _pad, _cursor + 6 * _scale, 2 * _scale, _theme["text"])
+      _cursor = _cursor + _titleH + _rowGap
     } else {
-      _cursor = _cursor + HUDPanel.PAD_
+      _cursor = _cursor + _pad
     }
   }
 
@@ -594,10 +605,10 @@ class HUDPanel {
   slider(label, obj, key, min, max) {
     var hud = _hud
     var y = _cursor
-    var rowH = HUDPanel.ROW_HEIGHT_
+    var rowH = _rowH
 
-    var pad = HUDPanel.PAD_
-    var labelW = HUDPanel.LABEL_W_
+    var pad = _pad
+    var labelW = _labelW
     var trackX = _x + pad + labelW + pad
     var trackW = _x + _w - pad - trackX
 
@@ -629,23 +640,23 @@ class HUDPanel {
 
     // Row body + label.
     hud.rect(_x + pad / 2, y, _w - pad, rowH, _theme["row"])
-    hud.label(label, _x + pad, y + 6, 1, _theme["text"])
+    hud.label(label, _x + pad, y + 6 * _scale, _scale, _theme["text"])
 
     // Track + thumb.
-    var trackH = 4
+    var trackH = 4 * _scale
     var trackY = y + ((rowH - trackH) / 2).floor
     hud.rect(trackX, trackY, trackW, trackH, _theme["track"])
-    var thumbW = 6
+    var thumbW = 6 * _scale
     var thumbX = (trackX + frac * (trackW - thumbW)).floor
     var thumbColor = (_activeSlider == id) ? _theme["thumbActive"] : _theme["thumb"]
-    hud.rect(thumbX, y + 3, thumbW, rowH - 6, thumbColor)
+    hud.rect(thumbX, y + 3 * _scale, thumbW, rowH - 6 * _scale, thumbColor)
 
     // Numeric readout, right-aligned within the track column.
     var readout = HUDPanel.formatNum_(v)
-    var size = HUD.measure(readout, 1)
-    hud.label(readout, trackX + trackW - size[0], y + rowH - size[1] - 2, 1, _theme["muted"])
+    var size = HUD.measure(readout, _scale)
+    hud.label(readout, trackX + trackW - size[0], y + rowH - size[1] - 2 * _scale, _scale, _theme["muted"])
 
-    _cursor = _cursor + rowH + HUDPanel.ROW_GAP_
+    _cursor = _cursor + rowH + _rowGap
     return v
   }
 
@@ -659,9 +670,9 @@ class HUDPanel {
   toggle(label, obj, key) {
     var hud = _hud
     var y = _cursor
-    var rowH = HUDPanel.ROW_HEIGHT_
-    var pad = HUDPanel.PAD_
-    var boxSize = 14
+    var rowH = _rowH
+    var pad = _pad
+    var boxSize = 14 * _scale
     var boxX = _x + _w - pad - boxSize
     var boxY = y + ((rowH - boxSize) / 2).floor
 
@@ -676,12 +687,13 @@ class HUDPanel {
 
     hud.rect(_x + pad / 2, y, _w - pad, rowH,
       rowHover ? _theme["rowHover"] : _theme["row"])
-    hud.label(label, _x + pad, y + 6, 1, _theme["text"])
+    hud.label(label, _x + pad, y + 6 * _scale, _scale, _theme["text"])
     hud.rect(boxX, boxY, boxSize, boxSize, _theme["checkOff"])
     if (v) {
-      hud.rect(boxX + 3, boxY + 3, boxSize - 6, boxSize - 6, _theme["checkOn"])
+      var inset = 3 * _scale
+      hud.rect(boxX + inset, boxY + inset, boxSize - 2 * inset, boxSize - 2 * inset, _theme["checkOn"])
     }
-    _cursor = _cursor + rowH + HUDPanel.ROW_GAP_
+    _cursor = _cursor + rowH + _rowGap
     return v
   }
 
@@ -695,12 +707,28 @@ class HUDPanel {
   button(text, cb) {
     var hud = _hud
     var y = _cursor
-    var rowH = HUDPanel.ROW_HEIGHT_
-    var pad = HUDPanel.PAD_
-    var pressed = hud.button(text, _x + pad / 2, y, _w - pad, rowH)
+    var rowH = _rowH
+    var pad = _pad
+    var pressed = hud.button(text, _x + pad / 2, y, _w - pad, rowH, HUDPanel.scaledButtonTheme_(_scale))
     if (pressed && cb != null) cb.call()
-    _cursor = _cursor + rowH + HUDPanel.ROW_GAP_
+    _cursor = _cursor + rowH + _rowGap
     return pressed
+  }
+
+  // Default button theme with `scale` baked into the font size so
+  // the label inside a panel button matches the surrounding row
+  // labels' scale.
+  static scaledButtonTheme_(scale) {
+    var t = HUD.DEFAULT_BUTTON_THEME_
+    return {
+      "bg":       t["bg"],
+      "bgHover":  t["bgHover"],
+      "bgActive": t["bgActive"],
+      "fg":       t["fg"],
+      "fgActive": t["fgActive"],
+      "border":   t["border"],
+      "scale":    scale
+    }
   }
 
   /// Read-only text row. Use for FPS, entity counts, cull rate —
@@ -712,23 +740,23 @@ class HUDPanel {
   text(label, value) {
     var hud = _hud
     var y = _cursor
-    var rowH = HUDPanel.ROW_HEIGHT_
-    var pad = HUDPanel.PAD_
+    var rowH = _rowH
+    var pad = _pad
     hud.rect(_x + pad / 2, y, _w - pad, rowH, _theme["row"])
-    hud.label(label, _x + pad, y + 6, 1, _theme["text"])
+    hud.label(label, _x + pad, y + 6 * _scale, _scale, _theme["text"])
     var v = value.toString
-    var size = HUD.measure(v, 1)
-    hud.label(v, _x + _w - pad - size[0], y + 6, 1, _theme["muted"])
-    _cursor = _cursor + rowH + HUDPanel.ROW_GAP_
+    var size = HUD.measure(v, _scale)
+    hud.label(v, _x + _w - pad - size[0], y + 6 * _scale, _scale, _theme["muted"])
+    _cursor = _cursor + rowH + _rowGap
   }
 
   /// Horizontal divider for visual grouping. One-pixel line plus
   /// a row's worth of padding.
   divider() {
     var hud = _hud
-    var pad = HUDPanel.PAD_
-    hud.rect(_x + pad, _cursor + 4, _w - 2 * pad, 1, _theme["muted"])
-    _cursor = _cursor + HUDPanel.ROW_GAP_ + 6
+    var pad = _pad
+    hud.rect(_x + pad, _cursor + 4 * _scale, _w - 2 * pad, _scale, _theme["muted"])
+    _cursor = _cursor + _rowGap + 6 * _scale
   }
 
   /// Format a number for the slider readout. Two decimal places

@@ -47,6 +47,7 @@ class Material {
     _alphaMode               = "opaque"
     _alphaCutoff             = 0.5
     _doubleSided             = false
+    _sway                    = 0.0
     _revision                = 0
   }
 
@@ -70,7 +71,19 @@ class Material {
     _alphaMode               = "opaque"
     _alphaCutoff             = 0.5
     _doubleSided             = false
+    _sway                    = 0.0
     _revision                = 0
+  }
+
+  /// Wind-sway response factor. 0 = static (terrain, trunks); 1 =
+  /// full sway (grass tips, leaves). The renderer multiplies this
+  /// by the scene's wind strength and a per-vertex height factor,
+  /// so model parts low in local Y bend less than tips.
+  /// @returns {Num}
+  sway     { _sway }
+  sway=(v) {
+    _sway = v
+    _revision = _revision + 1
   }
 
   /// Linear-space RGBA albedo. Multiplied with `albedoTexture`'s
@@ -243,7 +256,9 @@ class Material {
     out.add(modeIdx)
     out.add(_alphaCutoff)
     out.add(_doubleSided ? 1.0 : 0.0)
-    out.add(0)
+    // `alpha.w` repurposed as the wind-sway factor — the renderer's
+    // vertex shader uses it to bend the mesh with the scene's wind.
+    out.add(_sway)
   }
 
   /// Legacy compatibility — `color` was the only knob on the
