@@ -20,12 +20,15 @@
 // wheel zooms. Controls live in a top-left panel.
 
 import "@hatch:game"    for Game,
-                            Terrain, Foliage, Wind,
+                            Terrain, Foliage,
                             Water, WaterPipeline,
                             SkyboxPipeline,
                             Fog,
                             PostFX
-import "@hatch:postfx"  for Tonemap, Vignette, ColorGrade
+import "./knobs"        for Knobs
+import "./wind"         for Wind
+import "./sun"          for Sun
+import "./postfx_setup" for PostFxSetup
 import "@hatch:gpu"     for Gpu, Renderer3D, Renderer2D,
                             Camera3D, Camera2D,
                             Frustum, Lod, Mesh, Material
@@ -90,40 +93,16 @@ class ProceduralWorld is Game {
     _water    = WaterPipeline.new(g.device, g.surfaceFormat, g.depthFormat)
     _sky      = SkyboxPipeline.new(g.device, g.surfaceFormat, g.depthFormat)
 
-    // ── Post-process chain ──────────────────────────────────────
-    g.postFX = PostFX.new(g)
-    g.postFX.add(Tonemap.new({ "exposure": 1.15 }))
-    g.postFX.add(Vignette.new({
-      "strength": 0.28,
-      "radius":   0.70,
-      "softness": 0.45
-    }))
-
-    // Low-angle golden-hour sun. Direction is steep from one side
-    // rather than overhead, so shadows lengthen and the specular
-    // path on water lights up a wedge across the surface (the
-    // classic ocean-sun glitter). Colour shifts from warm-white to
-    // a saturated amber so the diffuse term reads as sun rays,
-    // not a soft-box. Ambient is cooled to sky-blue so areas in
-    // shadow keep a believable bounce-light tint instead of going
-    // grey.
-    _sunDir       = Vec3.new(-0.55, -0.42, -0.72)
-    _sunColor     = Vec3.new(1.00, 0.78, 0.55)
-    _sunIntensity = 3.2
-    _ambient      = Vec3.new(0.55, 0.62, 0.74)
-    _ambientInt   = 0.95
-    _water.setSun([_sunDir.x, _sunDir.y, _sunDir.z],
-                  [_sunColor.x, _sunColor.y, _sunColor.z],
-                  _sunIntensity)
-    // Water ambient picks up the cooler sky tint so the body
-    // colour doesn't read as flat black where the sun isn't.
-    _water.setAmbient([0.10, 0.16, 0.22])
-    // Sky palette tuned to the warm amber sun: saturated zenith,
-    // pale-cyan mid, sandy horizon haze so the band where the sky
-    // meets the water reads as warm air, not a cold backdrop.
-    _sky.setSun([_sunDir.x, _sunDir.y, _sunDir.z],
-                [_sunColor.x, _sunColor.y, _sunColor.z],
-                _sunIntensity)
+    // Post-process + sun + wind + scene knobs live in sibling
+    // modules so this `setup` stays focused on resource wiring
+    // rather than constant tuning. Edit those files to change
+    // the look.
+    PostFxSetup.apply(g)
+    _sun      = Sun.build()
+    _knobs    = Knobs.make()
+    _windOpts = Wind.make()
+    _flags    = _knobs["flags"]
+    Sun.applyToScene(_water, _sky, _sun)
     _sky.setSkyGradient([0.30, 0.52, 0.92],   // zenith — saturated blue
                         [0.62, 0.80, 0.98],   // mid    — pale cyan
                         [0.96, 0.86, 0.72])   // horizon — warm sand haze
@@ -147,8 +126,7 @@ class ProceduralWorld is Game {
     // the coastline. Near/far must match the camera's perspective
     // params below; bandMeters is how deep the terrain can be
     // beneath the water surface before foam fully fades.
-    _shoreBandRef = { "v": 0.4 }
-    _water.setShore(g.depthView, 0.5, 600, _shoreBandRef["v"])
+    _water.setShore(g.depthView, 0.5, 600, _knobs["shoreBand"]["v"])
     _lastShoreDepthView_ = g.depthView
     // Allocate the planar-reflection target sized to the surface.
     _water.resize(g.width, g.height)
@@ -180,36 +158,6 @@ class ProceduralWorld is Game {
       "amplitude": 0.18,
       "scale":     0.45,
       "timeScale": 0.7
-    }
-    // Translucency, crest foam threshold, and flow direction live
-    // here so the HUD sliders mutate them in place each frame.
-    _waterAlphaRef  = { "v": 0.91 }
-    _foamThreshRef  = { "v": 1.0 }
-    _flowStrengthRef = { "v": 0.0 }
-    // HUD-controlled scene knobs. Camera FOV and fog ranges live
-    // here so the panel can mutate them in place each frame; the
-    // draw loop re-applies them onto the camera / sky / fog before
-    // building the per-frame UBOs.
-    _fovRef         = { "v": 55.0 }
-    _fogStartRef    = { "v": 60.0 }
-    _fogEndRef      = { "v": 130.0 }
-    _fogDensityRef  = { "v": 0.020 }
-    _cloudCoverRef  = { "v": 0.42 }
-    _fogFlags       = { "expCurve": false }
-    _windOpts = {
-      "baseX":        1,
-      "baseY":        0,
-      "baseZ":        0,
-      "baseStrength": 1.0,
-      "gust":         0.09,
-      "scale":        0.04,
-      "timeScale":    0.3,
-      "seed":         7
-    }
-    _flags = {
-      "showFoliage": true,
-      "pauseWater":  false,
-      "reflection":  false
     }
     _seed = 1337
 
@@ -430,13 +378,11 @@ class ProceduralWorld is Game {
     // Build the water plane centred on y=0 and translate at draw
     // time so the HUD slider can move the ocean up/down without
     // rebuilding the mesh. Land-to-water ratio is driven by
-    // `_waterYRef["v"]` (live) and `_terrainAmpRef["v"]` (terrain
+    // `_knobs["waterY"]["v"]` (live) and `_knobs["terrainAmp"]["v"]` (terrain
     // gets Y-scaled in its model matrix), both wired to the HUD
     // panel below.
     _terrainAmpBase = _terrainAmp
-    _terrainAmpRef  = { "v": _terrainAmp }
-    _waterYRef      = { "v": -1.5 }
-    _waterY         = _waterYRef["v"]
+    _waterY         = _knobs["waterY"]["v"]
     // High subdivision so wave_h interpolation reads smooth at
     // close zoom. 192 cells × 1.6m terrainSize gives ~0.8 m
     // faces — well under the wavelength so curved peaks survive
@@ -528,17 +474,13 @@ class ProceduralWorld is Game {
     // The base scatter pre-filter (gates which sites survive the
     // water/cliff/peak thresholds at all). Bucket-specific density
     // is applied on top of this at rebuild time so grass can be
-    // dense while bushes/trees stay sparse.
-    _densityRef = { "v": 0.07 }
-    _foliageDensity = _densityRef["v"]
-    // Per-class dropout applied during matrix rebuild — separate
-    // sliders for grass vs everything else so the user can dial
-    // a thick lawn without flooding the island with bushes.
-    _grassDensityRef = { "v": 0.95 }
-    _otherDensityRef = { "v": 0.60 }
-    _bakedGrassDensity = _grassDensityRef["v"]
-    _bakedOtherDensity = _otherDensityRef["v"]
-    _bakedScatterDensity = _densityRef["v"]
+    // dense while bushes/trees stay sparse. Defaults for these
+    // sliders ship with `Knobs.make()`; cache the initial values
+    // so we know when a slider changes and a re-scatter is owed.
+    _foliageDensity      = _knobs["scatter"]["v"]
+    _bakedGrassDensity   = _knobs["grassDens"]["v"]
+    _bakedOtherDensity   = _knobs["otherDens"]["v"]
+    _bakedScatterDensity = _knobs["scatter"]["v"]
 
     // ── Stats ───────────────────────────────────────────────────
     _fpsCounter   = 0
@@ -787,12 +729,12 @@ class ProceduralWorld is Game {
     var caps     = _foliageCapacity
     var buckets  = _foliageFloats
     var counts   = _foliageCounts
-    var grassDensity   = _grassDensityRef["v"]
-    var otherDensity   = _otherDensityRef["v"]
-    var scatterDensity = _densityRef["v"]
+    var grassDensity   = _knobs["grassDens"]["v"]
+    var otherDensity   = _knobs["otherDens"]["v"]
+    var scatterDensity = _knobs["scatter"]["v"]
     // Pre-multiplied non-grass keep rate. Avoids repeated map
     // indexing in the hot loop (and skirts whatever upvalue path
-    // was tripping when we read `_densityRef["v"]` per iteration).
+    // was tripping when we read `_knobs["scatter"]["v"]` per iteration).
     var nonGrassKeep = otherDensity * scatterDensity
     var seedLocal    = _seed
     var i = 0
@@ -870,7 +812,7 @@ class ProceduralWorld is Game {
     _foliageBakedAmpScale = ampScale
     _bakedGrassDensity = grassDensity
     _bakedOtherDensity = otherDensity
-    _bakedScatterDensity = _densityRef["v"]
+    _bakedScatterDensity = _knobs["scatter"]["v"]
   }
 
   resize(g, w, h) {
@@ -1015,8 +957,8 @@ class ProceduralWorld is Game {
     // Live HUD knobs: scale terrain Y by the slider ratio and
     // resync the foliage-height lookup amplitude so cubes stay
     // pinned to the surface as the user dials terrain amp.
-    _terrainAmp     = _terrainAmpRef["v"]
-    _waterY         = _waterYRef["v"]
+    _terrainAmp     = _knobs["terrainAmp"]["v"]
+    _waterY         = _knobs["waterY"]["v"]
     var ampScale    = _terrainAmp / _terrainAmpBase
     var terrainModel = Mat4.scale(1, ampScale, 1)
     var waterModel  = Mat4.translation(0, _waterY, 0)
@@ -1036,12 +978,12 @@ class ProceduralWorld is Game {
     // Pick up HUD-driven FOV + cloud edits before the camera and
     // sky UBOs upload this frame. Camera projection rebuilds are
     // cheap (one Mat4); sky cloud coverage is a single uniform.
-    if (_fovRef["v"] != _fovY) {
-      _fovY = _fovRef["v"]
+    if (_knobs["fov"]["v"] != _fovY) {
+      _fovY = _knobs["fov"]["v"]
       _camera.setPerspective(_fovY, g.width / g.height, 0.5, 600)
       _sky.setProjection(_fovY, g.width / g.height)
     }
-    _sky.setClouds(_cloudCoverRef["v"], 320.0, 1.4, [1.00, 0.96, 0.88])
+    _sky.setClouds(_knobs["cloudCover"]["v"], 320.0, 1.4, [1.00, 0.96, 0.88])
 
     // Sky first — clip.z=1 + depthCompare="less-equal" means every
     // terrain/foliage fragment overwrites the sky in pass 1, so the
@@ -1052,8 +994,7 @@ class ProceduralWorld is Game {
 
     // Terrain through Renderer3D's PBR pipeline.
     _renderer.beginFrame(pass, _camera)
-    _renderer.setAmbient(_ambient, _ambientInt)
-    _renderer.addDirectional(_sunDir, _sunColor, _sunIntensity, false)
+    Sun.applyTo(_renderer, _sun)
     // Wind: base direction + base strength + gust modulation. Gust
     // adds extra punch on top of the base; both feed the foliage
     // sway in the vertex shader.
@@ -1073,9 +1014,9 @@ class ProceduralWorld is Game {
       } else {
         var needsRebuild = _foliageDirty ||
           (ampScale - _foliageBakedAmpScale).abs > 0.001 ||
-          (_grassDensityRef["v"] - _bakedGrassDensity).abs > 0.005 ||
-          (_otherDensityRef["v"] - _bakedOtherDensity).abs > 0.005 ||
-          (_densityRef["v"]      - _bakedScatterDensity).abs > 0.005
+          (_knobs["grassDens"]["v"] - _bakedGrassDensity).abs > 0.005 ||
+          (_knobs["otherDens"]["v"] - _bakedOtherDensity).abs > 0.005 ||
+          (_knobs["scatter"]["v"]      - _bakedScatterDensity).abs > 0.005
         if (needsRebuild) rebuildFoliageMatrices_(ampScale)
       }
       var bi = 0
@@ -1136,8 +1077,8 @@ class ProceduralWorld is Game {
     // Quaternius nature-kit palette better than the previous near-
     // black navy. At high alpha the body now reads as tropical
     // water, not a dark hole.
-    _water.setColors([0.22, 0.58, 0.65, _waterAlphaRef["v"]], [0.60, 0.82, 0.92], 3.5)
-    _water.setFoam([0.95, 0.98, 1.0], _foamThreshRef["v"])
+    _water.setColors([0.22, 0.58, 0.65, _knobs["waterAlpha"]["v"]], [0.60, 0.82, 0.92], 3.5)
+    _water.setFoam([0.95, 0.98, 1.0], _knobs["foamThresh"]["v"])
     _water.setFlow(_windOpts["baseX"], _windOpts["baseZ"], _windOpts["baseStrength"] * 0.08)
     // Rebind shore depth to the live pass-1 attachment. `g.depthView`
     // is only the framework's scene-depth INSIDE the user draw block;
@@ -1148,17 +1089,17 @@ class ProceduralWorld is Game {
       _water.setShore(g.depthView, 0.5, 600, _shoreBand)
       _lastShoreDepthView_ = g.depthView
     }
-    _water.setShoreBand(_shoreBandRef["v"])
+    _water.setShoreBand(_knobs["shoreBand"]["v"])
     // Pick up HUD slider edits before the per-frame UBO upload.
     // Guard `end > start + ε` so the FS's `1 / (end-start)` term
     // doesn't blow up if the user drags the two sliders past each
     // other.
-    _fog.start   = _fogStartRef["v"]
-    var fogEnd   = _fogEndRef["v"]
+    _fog.start   = _knobs["fogStart"]["v"]
+    var fogEnd   = _knobs["fogEnd"]["v"]
     if (fogEnd < _fog.start + 1.0) fogEnd = _fog.start + 1.0
     _fog.end     = fogEnd
-    _fog.density = _fogDensityRef["v"]
-    _fog.curve   = _fogFlags["expCurve"] ? 1 : 0
+    _fog.density = _knobs["fogDensity"]["v"]
+    _fog.curve   = _knobs["fogFlags"]["expCurve"] ? 1 : 0
     _water.setFog(_fog)
     _water.beginFrame(pass, _camera, _waterTime)
     _water.draw(_waterMesh, waterModel)
@@ -1183,13 +1124,13 @@ class ProceduralWorld is Game {
     _panel.slider("water amp",  _waveOpts, "amplitude", 0.0, 0.3)
     _panel.slider("water freq", _waveOpts, "scale",     0.1, 1.5)
     _panel.slider("water time", _waveOpts, "timeScale", 0.0, 2.0)
-    _panel.slider("alpha",      _waterAlphaRef,   "v",  0.0, 1.0)
+    _panel.slider("alpha",      _knobs["waterAlpha"],   "v",  0.0, 1.0)
     // Foam threshold is opt-in: at 1.0 the crest smoothstep never
     // fires (clean water + just specular highlights). Drop the
     // slider toward 0.4 only when you want chop foam on the open
     // surface.
-    _panel.slider("foam",       _foamThreshRef,   "v",  0.4, 1.0)
-    _panel.slider("shore band", _shoreBandRef,    "v",  0.2, 5.0)
+    _panel.slider("foam",       _knobs["foamThresh"],   "v",  0.4, 1.0)
+    _panel.slider("shore band", _knobs["shoreBand"],    "v",  0.2, 5.0)
     _panel.toggle("pause water", _flags, "pauseWater")
     _panel.toggle("reflection",  _flags, "reflection")
     _panel.divider()
@@ -1202,13 +1143,13 @@ class ProceduralWorld is Game {
     // Raise water and/or lower terrain to drown more of the
     // island; lower water and/or raise terrain to expose more
     // ground.
-    _panel.slider("terrain amp", _terrainAmpRef, "v", 2.0, 18.0)
-    _panel.slider("water y",     _waterYRef,     "v", -6.0, 4.0)
+    _panel.slider("terrain amp", _knobs["terrainAmp"], "v", 2.0, 18.0)
+    _panel.slider("water y",     _knobs["waterY"],     "v", -6.0, 4.0)
     _panel.divider()
     _panel.toggle("foliage", _flags, "showFoliage")
-    _panel.slider("grass",   _grassDensityRef, "v", 0.0, 1.0)
-    _panel.slider("foliage", _otherDensityRef, "v", 0.0, 1.0)
-    _panel.slider("scatter", _densityRef,      "v", 0.0, 1.0)
+    _panel.slider("grass",   _knobs["grassDens"], "v", 0.0, 1.0)
+    _panel.slider("foliage", _knobs["otherDens"], "v", 0.0, 1.0)
+    _panel.slider("scatter", _knobs["scatter"],      "v", 0.0, 1.0)
 
     // Atmospheric / camera knobs live in their own panel so the
     // main WORLD strip doesn't overflow the window. FOV is a
@@ -1216,12 +1157,12 @@ class ProceduralWorld is Game {
     // define the linear false-horizon band; toggle `fog exp²` for
     // an exponential haze using the density slider instead.
     _panelAtmo.beginFrame()
-    _panelAtmo.slider("fov",       _fovRef,        "v", 30.0, 90.0)
-    _panelAtmo.slider("fog start", _fogStartRef,   "v",  0.0, 300.0)
-    _panelAtmo.slider("fog end",   _fogEndRef,     "v", 20.0, 400.0)
-    _panelAtmo.slider("fog dens",  _fogDensityRef, "v",  0.0, 0.08)
-    _panelAtmo.toggle("fog exp²",  _fogFlags, "expCurve")
-    _panelAtmo.slider("clouds",    _cloudCoverRef, "v",  0.0, 1.0)
+    _panelAtmo.slider("fov",       _knobs["fov"],        "v", 30.0, 90.0)
+    _panelAtmo.slider("fog start", _knobs["fogStart"],   "v",  0.0, 300.0)
+    _panelAtmo.slider("fog end",   _knobs["fogEnd"],     "v", 20.0, 400.0)
+    _panelAtmo.slider("fog dens",  _knobs["fogDensity"], "v",  0.0, 0.08)
+    _panelAtmo.toggle("fog exp²",  _knobs["fogFlags"], "expCurve")
+    _panelAtmo.slider("clouds",    _knobs["cloudCover"], "v",  0.0, 1.0)
     _hud.endFrame
     _hudRenderer.endPass()
     _hudRenderer.flush(g.pass)
@@ -1237,8 +1178,7 @@ class ProceduralWorld is Game {
       var reflPass = _water.beginReflectionPass(g.encoder,
         [0.45, 0.62, 0.78, 1.0])
       _renderer.beginFrame(reflPass, _mirrorCamera)
-      _renderer.setAmbient(_ambient, _ambientInt)
-      _renderer.addDirectional(_sunDir, _sunColor, _sunIntensity, false)
+      Sun.applyTo(_renderer, _sun)
       _renderer.draw(_terrainMesh, _terrainMat, terrainModel)
       if (_flags["showFoliage"]) {
         for (i in 0..._foliageFloats.count) {

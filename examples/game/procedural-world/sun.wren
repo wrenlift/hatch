@@ -1,0 +1,55 @@
+//! procedural-world: directional sun lighting.
+//!
+//! Single source of truth for the warm-amber midday sun the
+//! scene is lit by. Built once at `setup` and re-applied to the
+//! 3D renderer at the start of every pass (main + reflection)
+//! so a sliding sun would mean changing one constant here.
+
+import "@hatch:math" for Vec3
+
+class Sun {
+  static build() {
+    // Low-angle golden-hour sun. Direction steep from one side
+    // (not overhead) so shadows lengthen and the water specular
+    // path lights a wedge across the surface. Colour shifts from
+    // warm-white toward amber so diffuse reads as sun rays, not
+    // a soft-box. Ambient cooled toward sky-blue so areas in
+    // shadow keep a believable bounce-light tint instead of
+    // going grey.
+    return {
+      "dir":        Vec3.new(-0.55, -0.42, -0.72),
+      "color":      Vec3.new(1.00, 0.78, 0.55),
+      "intensity":  3.2,
+      "ambient":    Vec3.new(0.55, 0.62, 0.74),
+      "ambientInt": 0.95
+    }
+  }
+
+  /// Push the sun + ambient into a Renderer3D before the first
+  /// draw of a pass. Called twice per frame (main pass +
+  /// reflection pass) so both views light identically.
+  /// @param {Renderer3D} renderer
+  /// @param {Map}        sun
+  static applyTo(renderer, sun) {
+    renderer.setAmbient(sun["ambient"], sun["ambientInt"])
+    renderer.addDirectional(sun["dir"], sun["color"], sun["intensity"], false)
+  }
+
+  /// Bridge the same sun config into Water + Sky pipelines at
+  /// setup time. WaterPipeline and SkyboxPipeline read these
+  /// once each (no per-frame re-broadcast needed).
+  /// @param {WaterPipeline}   water
+  /// @param {SkyboxPipeline}  sky
+  /// @param {Map}             sun
+  static applyToScene(water, sky, sun) {
+    var dir = sun["dir"]
+    var col = sun["color"]
+    water.setSun([dir.x, dir.y, dir.z],
+                 [col.x, col.y, col.z],
+                 sun["intensity"])
+    water.setAmbient([0.10, 0.16, 0.22])
+    sky.setSun([dir.x, dir.y, dir.z],
+               [col.x, col.y, col.z],
+               sun["intensity"])
+  }
+}
