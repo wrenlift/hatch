@@ -7,9 +7,16 @@ readme   = "README.md"
 
 # Cross-package deps. Version pins resolve through the registry,
 # so the published bundle is fully self-describing.
+#
+# WORKSPACE OVERRIDE: @hatch:gpu is on a path dep so the in-tree
+# `gpu_native.wren` + plugin dylib pick up locally during the
+# shore-foam / depth-sample iteration. Revert this entry to the
+# matching version pin (e.g. "0.3.9" after a publish) before
+# publishing @hatch:game itself — path deps don't resolve for
+# downstream consumers of the registry bundle.
 [dependencies]
 "@hatch:window" = "0.2.11"
-"@hatch:gpu"    = "0.3.8"
+"@hatch:gpu"    = { path = "../hatch-gpu" }
 "@hatch:time"   = "0.1.2"
 "@hatch:math"   = "0.1.5"
 "@hatch:ecs"    = "0.2.4"

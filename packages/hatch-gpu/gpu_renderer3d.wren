@@ -69,7 +69,7 @@ class Renderer3D {
   //       + light_vp(64) + shadow_params(16)
   //       + dir × 32 + point × 32 + spot × 64
   //       = 112 + 80 + 128 + 256 + 256 = 832 bytes.
-  static SCENE_UBO_BYTES_  { 832 }
+  static SCENE_UBO_BYTES_  { 848 }
   static DRAW_UBO_BYTES_   { 128 }       // model(64) + normal_mat(64)
   static MAT_UBO_BYTES_    { 64 }        // 4 vec4s
   static SHADOW_UBO_BYTES_ { 128 }       // light_vp(64) + model(64) per draw
@@ -94,6 +94,8 @@ class Renderer3D {
         // .y = PCF texel-space radius (used for 3×3 jittering),
         // .z/.w = reserved.
         shadow_params: vec4<f32>,
+        // xy = wind direction (unit, xz plane), z = time, w = strength
+        wind:          vec4<f32>,
         dir_lights:    array<DirLight,   4>,
         point_lights:  array<PointLight, 8>,
         spot_lights:   array<SpotLight,  4>,
@@ -173,10 +175,32 @@ class Renderer3D {
         @location(2)       uv:     vec2<f32>,
       };
 
+      // Apply wind-driven sway to a model-local vertex. Bends the
+      // mesh in the wind direction proportionally to the vertex's
+      // local-Y (so the base stays put and the tip moves most). A
+      // world-space phase term decorrelates neighbouring instances
+      // so the field doesn't sway in lockstep.
+      fn apply_sway(local_pos: vec3<f32>, anchor_world: vec3<f32>, sway: f32) -> vec3<f32> {
+        if (sway <= 0.0) { return local_pos; }
+        let phase = anchor_world.x * 0.45 + anchor_world.z * 0.37 + scene.wind.z * 2.6;
+        let osc   = sin(phase);
+        let bend  = local_pos.y * sway * scene.wind.w * osc * 0.30;
+        return vec3<f32>(
+          local_pos.x + scene.wind.x * bend,
+          local_pos.y,
+          local_pos.z + scene.wind.y * bend
+        );
+      }
+
       @vertex
       fn vs_main(in: VsIn) -> VsOut {
         var o: VsOut;
-        let world_pos  = draw_u.model * vec4<f32>(in.pos, 1.0);
+        // Anchor world position of the instance origin (so all
+        // vertices of one instance share the same phase) — read
+        // from model's translation column.
+        let anchor = vec3<f32>(draw_u.model[3].x, draw_u.model[3].y, draw_u.model[3].z);
+        let local_swayed = apply_sway(in.pos, anchor, mat.alpha.w);
+        let world_pos  = draw_u.model * vec4<f32>(local_swayed, 1.0);
         let world_norm = (draw_u.normal_mat * vec4<f32>(in.normal, 0.0)).xyz;
         o.clip   = scene.vp * world_pos;
         o.world  = world_pos.xyz;
@@ -291,6 +315,8 @@ class Renderer3D {
         counts:        vec4<f32>,
         light_vp:      mat4x4<f32>,
         shadow_params: vec4<f32>,
+        // xy = wind direction (unit, xz plane), z = time, w = strength
+        wind:          vec4<f32>,
         dir_lights:    array<DirLight,   4>,
         point_lights:  array<PointLight, 8>,
         spot_lights:   array<SpotLight,  4>,
@@ -356,11 +382,25 @@ class Renderer3D {
         @location(2)       uv:     vec2<f32>,
       };
 
+      fn apply_sway(local_pos: vec3<f32>, anchor_world: vec3<f32>, sway: f32) -> vec3<f32> {
+        if (sway <= 0.0) { return local_pos; }
+        let phase = anchor_world.x * 0.45 + anchor_world.z * 0.37 + scene.wind.z * 2.6;
+        let osc   = sin(phase);
+        let bend  = local_pos.y * sway * scene.wind.w * osc * 0.30;
+        return vec3<f32>(
+          local_pos.x + scene.wind.x * bend,
+          local_pos.y,
+          local_pos.z + scene.wind.y * bend
+        );
+      }
+
       @vertex
       fn vs_main(in: VsIn, @builtin(instance_index) inst_idx: u32) -> VsOut {
         let draw_u = instances[inst_idx];
         var o: VsOut;
-        let world_pos  = draw_u.model * vec4<f32>(in.pos, 1.0);
+        let anchor = vec3<f32>(draw_u.model[3].x, draw_u.model[3].y, draw_u.model[3].z);
+        let local_swayed = apply_sway(in.pos, anchor, mat.alpha.w);
+        let world_pos  = draw_u.model * vec4<f32>(local_swayed, 1.0);
         let world_norm = (draw_u.normal_mat * vec4<f32>(in.normal, 0.0)).xyz;
         o.clip   = scene.vp * world_pos;
         o.world  = world_pos.xyz;
@@ -502,7 +542,9 @@ class Renderer3D {
     })
     _materialBgl = device.createBindGroupLayout({
       "entries": [
-        { "binding": 0, "visibility": ["fragment"], "kind": "uniform" },
+        // Material UBO is read by BOTH stages now: fragment for the
+        // PBR factors, vertex for the wind-sway scalar in alpha.w.
+        { "binding": 0, "visibility": ["vertex", "fragment"], "kind": "uniform" },
         { "binding": 1, "visibility": ["fragment"], "kind": "texture" },
         { "binding": 2, "visibility": ["fragment"], "kind": "texture" },
         { "binding": 3, "visibility": ["fragment"], "kind": "texture" },
@@ -694,6 +736,10 @@ class Renderer3D {
     _shadowFar         = 100.0
     _shadowBias        = 0.005
     _shadowPcfRadius   = 0.0015
+    _windDirX     = 1.0
+    _windDirZ     = 0.0
+    _windStrength = 0.0
+    _windTime     = 0.0
     _shadowDepthFormat = "depth32float"
     _shadowTex         = null
     _shadowPipeline    = null
@@ -767,6 +813,27 @@ class Renderer3D {
   ///
   /// @param {Vec3} color. Linear-space RGB.
   /// @param {Num} intensity. Scalar multiplier.
+  /// Set the wind direction (xz unit) + strength. Any material
+  /// with a non-zero `sway` factor bends in this direction during
+  /// vertex shading; high vertices in mesh-local space bend more.
+  /// Call once per frame before `addDirectional` / `draw`.
+  /// @param {Num} dirX. xz-plane component, normalised below.
+  /// @param {Num} dirZ.
+  /// @param {Num} strength. 0 = still; ~1.0 = visibly windy.
+  setWind(dirX, dirZ, strength) {
+    var len = (dirX * dirX + dirZ * dirZ).sqrt
+    if (len > 0.0001) {
+      _windDirX = dirX / len
+      _windDirZ = dirZ / len
+    }
+    _windStrength = strength
+  }
+
+  /// Advance the wind animation clock — should be incremented by
+  /// `g.dt` every frame so sway oscillates over time.
+  /// @param {Num} time. Seconds since simulation start.
+  setWindTime(time) { _windTime = time }
+
   setAmbient(color, intensity) {
     _ambient = color
     _ambientIntensity = intensity
@@ -1162,6 +1229,11 @@ class Renderer3D {
     var entry = bindGroupFor_(material)
     var pass = _pass
     pass.setPipeline(_pipeline)
+    // Re-bind scene group explicitly so a preceding pipeline
+    // switch (e.g. `drawMeshInstanced` → `draw` in the same pass)
+    // can't leave slot 0 invalidated. Matches what
+    // `drawMeshInstanced` already does.
+    pass.setBindGroup(0, _sceneBindGroup)
     pass.setBindGroup(1, _drawBindGroupPool[i])
     pass.setBindGroup(2, entry["bg"])
     pass.setVertexBuffer(0, mesh.vertexBuffer)
@@ -1399,6 +1471,13 @@ class Renderer3D {
     _sceneUboFloats.add(_shadowPcfRadius)
     _sceneUboFloats.add(0)
     _sceneUboFloats.add(0)
+    // wind: xy = direction (xz plane), z = time, w = strength.
+    // Vertex shaders multiply this by per-material `sway` and a
+    // per-vertex local-Y factor to bend foliage in the wind.
+    _sceneUboFloats.add(_windDirX)
+    _sceneUboFloats.add(_windDirZ)
+    _sceneUboFloats.add(_windTime)
+    _sceneUboFloats.add(_windStrength)
     // dir_lights[0..MAX]; pad slots after the live count with zeros
     // so the shader's loop bound (`scene.counts.x`) governs reads.
     var i = 0

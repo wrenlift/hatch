@@ -163,6 +163,14 @@ class PostPass {
   /// custom pipelines (multiple per pass for multi-step effects).
   /// @param {PostFX} orchestrator
   onAdded_(orchestrator) {
+    // Defensive re-init. wlift's class-field codegen can let a
+    // subclass field stomp a base-class slot under inheritance, so
+    // `_pipelines` reads back as the subclass's scalar instead of
+    // the empty list our constructor set. Reinitialising here gives
+    // us a consistent List handle before the .add() call.
+    if (!(_pipelines is List))    _pipelines = []
+    if (!(_bindGroups is List))   _bindGroups = []
+    if (!(_intermediates is List)) _intermediates = []
     var pipe = orchestrator.buildFragmentPipeline_(this)
     _pipelines.add(pipe)
     if (uniformBytes > 0) {

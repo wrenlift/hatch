@@ -1,23 +1,27 @@
-// `@hatch:gltf` — pure-Wren glTF 2.0 / .glb loader.
+// `@hatch:gltf` — pure-Wren glTF 2.0 loader.
 //
 //   import "@hatch:gltf" for Gltf
 //
-//   var doc = Gltf.parse(bytes)         // pure parse, no GPU
-//   doc.upload(device)                   // creates Mesh handles
+//   // Single-file .glb (everything embedded):
+//   var doc = Gltf.load(device, bytes)
+//
+//   // Multi-file .gltf with sibling .bin + textures:
+//   var db  = Assets.open("assets")
+//   var doc = Gltf.fromAssetsDir(device, db, "nature-kit/models/tree.gltf")
+//
 //   doc.spawnInto(world)                 // entities + Transform + MeshRenderer
 //
-// `Gltf.load(device, bytes)` collapses parse + upload into one call.
-//
-// Supports: .glb container parsing (single-file binary), node
+// Supports: .glb container parsing (single-file binary), external
+// `.gltf+.bin+.png` packs resolved through `@hatch:assets`, node
 // hierarchy with translation/rotation/scale → Transform, indexed
 // triangle meshes with position + normal + uv accessors, material
-// baseColorFactor read into a flat Material.
+// baseColorFactor read into a flat Material, multi-buffer +
+// multi-texture indirection via `bufferView.buffer`.
 //
-// Not yet supported: external buffer / texture URIs, embedded
-// textures, animations + channels, skins + joints, KHR extensions
-// beyond pbrMetallicRoughness defaults, sparse accessors, point /
-// line primitives, morph targets, cameras. Each lands when the
-// downstream feature needs it.
+// Not yet supported: animations + channels, skins + joints, KHR
+// extensions beyond pbrMetallicRoughness defaults, sparse accessors,
+// point / line primitives, morph targets, cameras. Each lands when
+// the downstream feature needs it.
 
 import "@hatch:json"  for JSON
 import "@hatch:math"  for Vec3, Vec4, Quat
@@ -104,6 +108,74 @@ class Gltf {
   static fromAssets(device, db, relPath) {
     return load(device, db.bytes(relPath))
   }
+
+  /// Load an external-format glTF (text `.gltf` + sibling `.bin`
+  /// buffers + image files) via an `@hatch:assets` database.
+  ///
+  /// The loader reads the .gltf text from `gltfPath`, walks
+  /// `buffers[]` and `images[]` resolving each external `uri`
+  /// relative to the .gltf's directory, and constructs a
+  /// `GltfScene` with every buffer / image preloaded. Then it
+  /// uploads to the GPU device and returns the populated scene.
+  ///
+  /// Quaternius packs and most online sources (Sketchfab,
+  /// Polyhaven) ship in this multi-file layout — useful when you
+  /// want the textures to be inspectable / hot-reloadable as PNGs
+  /// rather than baked into a .glb blob.
+  ///
+  /// `db` is duck-typed on `.bytes(relPath)` for both the .gltf
+  /// text (decoded as ASCII / UTF-8) and the binary sidecars.
+  ///
+  /// @param {Device} device
+  /// @param {Assets} db. Object with a `bytes(relPath)` method.
+  /// @param {String} gltfPath. Path to the .gltf file inside `db`.
+  /// @returns {GltfScene}
+  static fromAssetsDir(device, db, gltfPath) {
+    var dir = GltfScene.dirname_(gltfPath)
+    var jsonBytes = db.bytes(gltfPath)
+    var jsonText = Bytes_.asciiString(jsonBytes, 0, jsonBytes.count)
+    var json = JSON.parse(GltfScene.stripPad_(jsonText))
+    if (!(json is Map)) Fiber.abort("Gltf.fromAssetsDir: %(gltfPath) did not decode to a JSON object")
+
+    // Resolve every `buffers[i]` entry. External URI: load via db.
+    // Embedded base64 data URI: also supported (rare for nature-kit
+    // packs but trivial since we already have the JSON).
+    var buffers = []
+    var bufArr = json["buffers"]
+    if (bufArr is List) {
+      for (bEntry in bufArr) {
+        if (!(bEntry is Map)) Fiber.abort("Gltf.fromAssetsDir: bad buffer entry")
+        var uri = bEntry["uri"]
+        if (!(uri is String)) Fiber.abort("Gltf.fromAssetsDir: buffer missing uri (.glb-style embedded BIN is the load() path)")
+        if (uri.startsWith("data:")) {
+          Fiber.abort("Gltf.fromAssetsDir: data: URIs not yet supported — externalise the buffer or use .glb")
+        }
+        var bufPath = GltfScene.joinPath_(dir, uri)
+        buffers.add(db.bytes(bufPath))
+      }
+    }
+
+    // Resolve every `images[i]` entry with a URI. We don't decode
+    // here — we hand off raw bytes to the upload path so the same
+    // Image.decode + uploadImage call site handles both embedded
+    // and external images.
+    var externalImageBytes = []
+    var imgs = json["images"]
+    if (imgs is List) {
+      for (im in imgs) {
+        if (im is Map && im["uri"] is String && !im["uri"].startsWith("data:")) {
+          var imgPath = GltfScene.joinPath_(dir, im["uri"])
+          externalImageBytes.add(db.bytes(imgPath))
+        } else {
+          externalImageBytes.add(null)
+        }
+      }
+    }
+
+    var scene = GltfScene.fromJson_(json, buffers, externalImageBytes)
+    scene.upload(device)
+    return scene
+  }
 }
 
 // Byte-reader helpers. The .glb format is little-endian; the JSON
@@ -167,28 +239,35 @@ class Bytes_ {
 /// over a `GltfScene`; `spawnInto(world)` walks the default-scene
 /// root nodes into ECS entities.
 class GltfScene {
-  /// Internal — constructed by `Gltf.parse` after the .glb header
-  /// + chunk split has resolved the JSON tree and the BIN buffer.
-  /// User code goes through `Gltf.parse` / `Gltf.load` instead.
+  /// Internal — constructed by `Gltf.parse` (for .glb) or
+  /// `Gltf.fromAssetsDir` (for external .gltf+.bin). User code
+  /// goes through `Gltf.parse` / `Gltf.load` / `Gltf.fromAssetsDir`.
   ///
   /// @param {Map} json. The decoded glTF JSON tree.
-  /// @param {ByteArray} bin. The BIN chunk; empty buffer if the
-  ///   .glb had no BIN data.
-  construct new_(json, bin) {
-    _json = json
-    _bin  = bin
+  /// @param {List<ByteArray>} buffers. One entry per `json["buffers"]`
+  ///   index; .glb supplies a single entry (the BIN chunk).
+  /// @param {List<ByteArray|null>} externalImageBytes. Optional —
+  ///   one entry per `json["images"]` index, raw PNG/JPG bytes
+  ///   for images loaded via external URI. `null` for embedded
+  ///   (`bufferView`-based) images or absent slots.
+  construct new_(json, buffers, externalImageBytes) {
+    _json     = json
+    _buffers  = buffers
     _materials      = GltfScene.buildMaterials_(json)
-    _meshes         = GltfScene.buildMeshes_(json, bin)
+    _meshes         = GltfScene.buildMeshes_(json, _buffers)
     _nodes          = GltfScene.buildNodes_(json)
     _rootIndices    = GltfScene.pickRootIndices_(json)
-    // One image-descriptor entry per glTF `images[i]`, holding
-    // either the bufferView range (embedded in .glb) or `null`
-    // for external-URI images we can't load without a fetcher.
+    // One image-descriptor entry per glTF `images[i]`. Each entry
+    // is either `null` (no source) or a Map with `"kind"`:
+    //   - "buffer": embedded image in a bufferView — `"buffer"` /
+    //     `"byteOffset"` / `"byteLength"` for the slice.
+    //   - "bytes":  external image loaded via URI — `"bytes"` holds
+    //     the raw PNG/JPG payload, decoded at upload time.
     // The sRGB flag is set per how each material slot uses the
     // image (albedo + emissive = sRGB; MR / normal / occlusion =
     // linear). Pass the parsed `_materials` list so the builder
     // can walk each material's slot indices.
-    _imageSources   = GltfScene.buildImageSources_(json, _materials)
+    _imageSources   = GltfScene.buildImageSources_(json, _materials, externalImageBytes)
     // Populated by `upload(device)` — same length as
     // `_imageSources`, each entry an uploaded `Texture` or
     // `null` when the source couldn't be decoded.
@@ -200,9 +279,16 @@ class GltfScene {
   /// (extensions, asset.copyright, etc.).
   json         { _json }
 
-  /// The BIN chunk as a `ByteArray`. Empty buffer if the .glb
-  /// had no BIN chunk.
-  binBuffer    { _bin }
+  /// The first buffer's bytes as a `ByteArray`. Convenience for
+  /// .glb consumers (where there's only one buffer). External
+  /// multi-buffer scenes have multiple — use `buffers` for the full
+  /// list. Returns an empty ByteArray when no buffers are present.
+  binBuffer    { _buffers.isEmpty ? ByteArray.new(0) : _buffers[0] }
+
+  /// All buffers, in `json["buffers"]` order. .glb scenes have one
+  /// entry (the BIN chunk); external .gltf scenes have one per
+  /// sidecar .bin file.
+  buffers      { _buffers }
 
   materials    { _materials }   // List<GltfMaterial>
   meshes       { _meshes }      // List<GltfMesh>
@@ -263,7 +349,34 @@ class GltfScene {
     }
     if (json == null) Fiber.abort("Gltf.parse: no JSON chunk found")
     if (!(json is Map)) Fiber.abort("Gltf.parse: JSON chunk did not decode to an object")
-    return GltfScene.new_(json, bin)
+    return GltfScene.new_(json, [bin], [])
+  }
+
+  // Build a scene from already-resolved external buffers + image
+  // bytes. The fromAssetsDir front door uses this; tests and other
+  // callers with their own asset-resolution can too.
+  static fromJson_(json, buffers, externalImageBytes) {
+    return GltfScene.new_(json, buffers, externalImageBytes)
+  }
+
+  // Strip the directory component off `path`, returning everything
+  // up to and including the last "/", or "" if there's no slash.
+  // Used to anchor relative URIs in a .gltf against the .gltf's own
+  // directory inside the assets database.
+  static dirname_(path) {
+    var i = path.count - 1
+    while (i >= 0) {
+      if (path[i] == "/") return path[0..i]
+      i = i - 1
+    }
+    return ""
+  }
+
+  // Combine a directory prefix with a relative URI. Absolute URIs
+  // (those starting with "/") replace the prefix.
+  static joinPath_(dir, uri) {
+    if (uri.startsWith("/")) return uri[1..-1]
+    return dir + uri
   }
 
   static stripPad_(s) {
@@ -372,21 +485,23 @@ class GltfScene {
 
   // -- Images ------------------------------------------------------
 
-  // Walk `images[]` building a per-image descriptor + sRGB flag.
-  // The descriptor holds the bufferView range (byteOffset +
-  // byteLength) for .glb-embedded images; external-URI images
-  // get `null` (we can't fetch them from inside the loader).
+  // Walk `images[]` building a per-image source descriptor + sRGB
+  // flag. Each entry is either:
+  //   - `null` — no source we can decode
+  //   - `{ "kind": "buffer", "buffer": N, "byteOffset": X, "byteLength": Y, "sRGB": flag }`
+  //     for .glb-embedded images (a bufferView slice into one of
+  //     the loaded buffers)
+  //   - `{ "kind": "bytes", "bytes": ByteArray, "sRGB": flag }`
+  //     for external-URI images that have been preloaded by the
+  //     fromAssetsDir entry point
   //
-  // sRGB tagging: each material slot has a fixed expected
-  // encoding by the glTF spec — `baseColor` + `emissive` are
-  // sRGB, `metallicRoughness` + `normal` + `occlusion` are
-  // linear. We walk every material and tag each referenced
-  // image accordingly. If an image is referenced by both an
-  // sRGB and a linear slot (rare in practice), sRGB wins so
-  // albedo paths render correctly; the linear sampler picks
-  // up the wrong gamma but the result is still close enough
-  // for the workflows that hit this edge case.
-  static buildImageSources_(json, materials) {
+  // sRGB tagging: each material slot has a fixed expected encoding
+  // by the glTF spec — `baseColor` + `emissive` are sRGB,
+  // `metallicRoughness` + `normal` + `occlusion` are linear. We
+  // walk every material and tag each referenced image accordingly.
+  // If an image is referenced by both an sRGB and a linear slot
+  // (rare in practice), sRGB wins so albedo paths render correctly.
+  static buildImageSources_(json, materials, externalImageBytes) {
     var imgs = json["images"]
     if (!(imgs is List)) return []
 
@@ -406,7 +521,14 @@ class GltfScene {
     var idx = 0
     while (idx < imgs.count) {
       var im = imgs[idx]
-      if (im is Map && im["bufferView"] is Num) {
+      // External URI first: caller pre-loaded the file bytes.
+      if (idx < externalImageBytes.count && externalImageBytes[idx] != null) {
+        out.add({
+          "kind":  "bytes",
+          "bytes": externalImageBytes[idx],
+          "sRGB":  srgbFlags[idx],
+        })
+      } else if (im is Map && im["bufferView"] is Num) {
         var bvIdx = im["bufferView"]
         var bvs   = json["bufferViews"]
         if (!(bvs is List) || bvIdx >= bvs.count) {
@@ -414,13 +536,15 @@ class GltfScene {
         } else {
           var bv = bvs[bvIdx]
           out.add({
+            "kind":       "buffer",
+            "buffer":     bv["buffer"] is Num ? bv["buffer"] : 0,
             "byteOffset": bv["byteOffset"] is Num ? bv["byteOffset"] : 0,
             "byteLength": bv["byteLength"],
             "sRGB":       srgbFlags[idx],
           })
         }
       } else {
-        // External URI (or no source field) — unsupported here.
+        // No source field, can't resolve.
         out.add(null)
       }
       idx = idx + 1
@@ -430,7 +554,7 @@ class GltfScene {
 
   // -- Meshes ------------------------------------------------------
 
-  static buildMeshes_(json, bin) {
+  static buildMeshes_(json, buffers) {
     var out = []
     var arr = json["meshes"]
     if (!(arr is List)) return out
@@ -439,32 +563,32 @@ class GltfScene {
       var prims = []
       var pl = m["primitives"]
       if (pl is List) {
-        for (p in pl) prims.add(GltfScene.extractPrimitive_(json, bin, p))
+        for (p in pl) prims.add(GltfScene.extractPrimitive_(json, buffers, p))
       }
       out.add(GltfMesh.new_(name, prims))
     }
     return out
   }
 
-  static extractPrimitive_(json, bin, p) {
+  static extractPrimitive_(json, buffers, p) {
     if (!(p is Map)) Fiber.abort("Gltf: primitive is not an object")
     var attrs = p["attributes"]
     if (!(attrs is Map)) Fiber.abort("Gltf: primitive has no attributes")
 
     var posIdx = attrs["POSITION"]
     if (!(posIdx is Num)) Fiber.abort("Gltf: primitive missing required POSITION accessor")
-    var positions = GltfScene.readVec3Accessor_(json, bin, posIdx)
+    var positions = GltfScene.readVec3Accessor_(json, buffers, posIdx)
 
     var normals = null
     var normIdx = attrs["NORMAL"]
-    if (normIdx is Num) normals = GltfScene.readVec3Accessor_(json, bin, normIdx)
+    if (normIdx is Num) normals = GltfScene.readVec3Accessor_(json, buffers, normIdx)
 
     var uvs = null
     var uvIdx = attrs["TEXCOORD_0"]
-    if (uvIdx is Num) uvs = GltfScene.readVec2Accessor_(json, bin, uvIdx)
+    if (uvIdx is Num) uvs = GltfScene.readVec2Accessor_(json, buffers, uvIdx)
 
     var indices = null
-    if (p["indices"] is Num) indices = GltfScene.readIndexAccessor_(json, bin, p["indices"])
+    if (p["indices"] is Num) indices = GltfScene.readIndexAccessor_(json, buffers, p["indices"])
 
     var materialIndex = p["material"] is Num ? p["material"] : null
     return GltfPrimitive.new_(positions, normals, uvs, indices, materialIndex)
@@ -563,12 +687,23 @@ class GltfScene {
     return bvs[idx]
   }
 
-  static readVec3Accessor_(json, bin, idx) {
-    return GltfScene.readFloatAccessor_(json, bin, idx, 3, "VEC3")
+  // Resolve a bufferView entry to the byte source: `(bin, byteOffset)`
+  // where `bin` is the underlying `ByteArray`. bv["buffer"] defaults
+  // to 0 when absent (matches .glb's single-buffer convention).
+  static binFromBufferView_(buffers, bv) {
+    var bufIdx = bv["buffer"] is Num ? bv["buffer"] : 0
+    if (bufIdx >= buffers.count) {
+      Fiber.abort("Gltf: bufferView references buffer %(bufIdx) but only %(buffers.count) buffer(s) loaded")
+    }
+    return buffers[bufIdx]
   }
 
-  static readVec2Accessor_(json, bin, idx) {
-    return GltfScene.readFloatAccessor_(json, bin, idx, 2, "VEC2")
+  static readVec3Accessor_(json, buffers, idx) {
+    return GltfScene.readFloatAccessor_(json, buffers, idx, 3, "VEC3")
+  }
+
+  static readVec2Accessor_(json, buffers, idx) {
+    return GltfScene.readFloatAccessor_(json, buffers, idx, 2, "VEC2")
   }
 
   // Reads a contiguous f32-typed accessor into a packed
@@ -576,7 +711,7 @@ class GltfScene {
   // elements). Strided bufferViews (`byteStride`) are honoured so
   // interleaved glTF exports parse correctly; the output is
   // always packed.
-  static readFloatAccessor_(json, bin, idx, components, expectedType) {
+  static readFloatAccessor_(json, buffers, idx, components, expectedType) {
     var a = GltfScene.accessorAt_(json, idx)
     if (a["type"] != expectedType) {
       Fiber.abort("Gltf: accessor %(idx) is %(a["type"]), expected %(expectedType)")
@@ -587,6 +722,7 @@ class GltfScene {
     var bvIdx = a["bufferView"]
     if (!(bvIdx is Num)) Fiber.abort("Gltf: float accessor %(idx) has no bufferView")
     var bv = GltfScene.bufferViewAt_(json, bvIdx)
+    var bin = GltfScene.binFromBufferView_(buffers, bv)
     var byteOffset = (a["byteOffset"] is Num ? a["byteOffset"] : 0) +
                      (bv["byteOffset"] is Num ? bv["byteOffset"] : 0)
     var count = a["count"]
@@ -608,7 +744,7 @@ class GltfScene {
   // Reads a u8/u16/u32 SCALAR index accessor into a packed
   // `Int32Array`. i32 is plenty for any realistic mesh (max 2³¹
   // vertices) and matches `Mesh.fromArrays`'s u32 index buffer.
-  static readIndexAccessor_(json, bin, idx) {
+  static readIndexAccessor_(json, buffers, idx) {
     var a = GltfScene.accessorAt_(json, idx)
     if (a["type"] != "SCALAR") {
       Fiber.abort("Gltf: index accessor %(idx) type %(a["type"]), expected SCALAR")
@@ -623,6 +759,7 @@ class GltfScene {
     var bvIdx = a["bufferView"]
     if (!(bvIdx is Num)) Fiber.abort("Gltf: index accessor %(idx) has no bufferView")
     var bv = GltfScene.bufferViewAt_(json, bvIdx)
+    var bin = GltfScene.binFromBufferView_(buffers, bv)
     var byteOffset = (a["byteOffset"] is Num ? a["byteOffset"] : 0) +
                      (bv["byteOffset"] is Num ? bv["byteOffset"] : 0)
     var count = a["count"]
@@ -655,10 +792,11 @@ class GltfScene {
     for (m in _meshes) m.upload_(device, _materials, _imageTextures)
   }
 
-  // Decode + upload every embedded image. External-URI images
-  // (where `bufferView` is absent / null) stay as `null` in the
-  // textures list so `GltfMaterial.toGpuMaterial` falls through
-  // to the renderer's 1×1 fallback for that slot.
+  // Decode + upload every resolvable image. Embedded sources slice
+  // the matching buffer, external sources hand off pre-loaded bytes;
+  // both flow through `Image.decode` + `device.uploadImage`. Slots
+  // with no usable source stay `null` so `GltfMaterial.toGpuMaterial`
+  // falls through to the renderer's 1×1 fallback.
   uploadImages_(device) {
     _imageTextures = []
     var i = 0
@@ -667,21 +805,23 @@ class GltfScene {
       if (src == null) {
         _imageTextures.add(null)
       } else {
-        var bytes = ByteArray.new(src["byteLength"])
-        var off = src["byteOffset"]
-        var len = src["byteLength"]
-        var k = 0
-        while (k < len) {
-          bytes[k] = _bin[off + k]
-          k = k + 1
+        var bytes = null
+        if (src["kind"] == "bytes") {
+          bytes = src["bytes"]
+        } else {
+          // "buffer" — slice from the matching loaded buffer.
+          var bufIdx = src["buffer"]
+          var srcBuf = _buffers[bufIdx]
+          var off = src["byteOffset"]
+          var len = src["byteLength"]
+          bytes = ByteArray.new(len)
+          var k = 0
+          while (k < len) {
+            bytes[k] = srcBuf[off + k]
+            k = k + 1
+          }
         }
         var img = Image.decode(bytes)
-        // Albedo + emissive are sRGB-encoded; MR / normal / AO
-        // are linear. We don't know which slot this image will
-        // be sampled in (the same image could conceivably fill
-        // either), so default to sRGB. Material slot doc-strings
-        // note the expected encoding for callers building their
-        // own textures.
         var fmt = (src["sRGB"] == true) ? "rgba8unorm-srgb" : "rgba8unorm"
         var tex = device.uploadImage(img, { "format": fmt })
         _imageTextures.add(tex)

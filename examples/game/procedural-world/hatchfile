@@ -3,12 +3,22 @@ version     = "0.1.0"
 entry       = "main"
 description = "Procedural terrain + animated water + instanced foliage with live HUD controls. Composes every phase shipped on the procedural-world parity track: @hatch:noise drives terrain heights and foliage density, Terrain.fromNoise builds the ground mesh, Foliage.scatter picks placement points, ClusterGrid + Frustum.sphereVisible + Lod.select3 cull and bucket the visible subset, Renderer3D.drawMeshInstanced renders each LOD in one drawIndexed, WaterPipeline paints the lake with animated displacement, and HUDPanel exposes every knob (water amplitude, wind gust, foliage density, fov) at runtime."
 
-# Path deps double-resolve shared modules (the @hatch:hud copy of
-# @hatch:gpu collides with the @hatch:game copy). Registry deps
-# share resolved modules at the bundle level, so we pin to the
-# published versions here and pick up workspace edits the next
-# round of publishes.
+# Workspace path deps so changes to @hatch:game / @hatch:hud
+# under packages/ pick up on the next demo rebuild without
+# staging a fresh .hatch in ~/.hatch/cache. Tradeoff: when two
+# of these deps each carry their own bundled copy of a shared
+# transitive package (most commonly @hatch:gpu via @hatch:game),
+# the resolver flags a `module X collides with the enclosing
+# hatch` error. Fix by aligning the inner pins in those
+# packages' hatchfiles to the same version, OR by listing the
+# shared transitive here on its own path so every consumer
+# resolves through the single workspace copy.
 [dependencies]
-"@hatch:game"    = "0.3.15"
-"@hatch:hud"     = "0.1.4"
-"@hatch:spatial" = "0.1.0"
+"@hatch:game"    = { path = "../../../packages/hatch-game" }
+"@hatch:hud"     = { path = "../../../packages/hatch-hud" }
+"@hatch:gpu"     = { path = "../../../packages/hatch-gpu" }
+"@hatch:spatial" = { path = "../../../packages/hatch-spatial" }
+"@hatch:assets"  = { path = "../../../packages/hatch-assets" }
+"@hatch:image"   = { path = "../../../packages/hatch-image" }
+"@hatch:gltf"    = { path = "../../../packages/hatch-gltf" }
+"@hatch:postfx"  = { path = "../../../packages/hatch-postfx" }

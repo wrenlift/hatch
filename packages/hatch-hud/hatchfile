@@ -5,11 +5,14 @@ description = "Immediate-mode HUD overlay for the WrenLift game framework. `HUD.
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:hud"
 readme      = "README.md"
 
-# `@hatch:gpu` comes through `@hatch:game` transitively — listing
-# it here too creates a module-name collision (Renderer2D /
-# Texture appear twice) when any consumer pulls both packages.
+# Workspace path dep — when a consumer also pulls @hatch:game
+# via its own path entry, both routes resolve to the same
+# workspace bundle, dodging the "module X collides" error that a
+# mixed path+version setup hits. Revert to a version pin before
+# publishing (or before the workspace path stops being valid for
+# whoever else is loading this manifest).
 [dependencies]
-"@hatch:game" = "0.3.15"
+"@hatch:game" = { path = "../hatch-game" }
 
 [spec-dependencies]
 "@hatch:test"   = "0.2.1"
