@@ -29,6 +29,7 @@ import "./knobs"        for Knobs
 import "./wind"         for Wind
 import "./sun"          for Sun
 import "./postfx_setup" for PostFxSetup
+import "./topography"   for Topography
 import "@hatch:gpu"     for Gpu, Renderer3D, Renderer2D,
                             Camera3D, Camera2D,
                             Frustum, Lod, Mesh, Material
@@ -162,17 +163,10 @@ class ProceduralWorld is Game {
     _seed = 1337
 
     // ── Terrain (sampled from value-noise-plateau PNG) ──────────
-    // The plateau noise carries the topography we want: flat
-    // tops, sharp edges, internal depressions inside plateaus
-    // (those darker pits show up as inland ponds once we render
-    // water at a level above them). Radial falloff still applies
-    // so the bundle's edges drop below water level and the
-    // ocean wraps a coherent island silhouette.
-    // Try the local `assets` dir first; fall back to the workspace
-    // path if `hatch run` was launched from somewhere else (the
-    // typical case is `target/release/hatch run hatch/examples/.../
-    // procedural-world.hatch` from the wren_lift root, where cwd
-    // is wren_lift and the demo's assets sit two levels deeper).
+    // Resolve the demo's assets directory. Try the local `assets`
+    // dir first; fall back to the workspace path if `hatch run`
+    // was launched from somewhere else (the typical case is from
+    // wren_lift root, where the demo assets sit two levels deeper).
     var candidates = [
       "assets",
       "hatch/examples/game/procedural-world/assets",
@@ -189,183 +183,9 @@ class ProceduralWorld is Game {
       Fiber.abort("procedural-world: could not locate the `assets` dir. Run from the demo's package directory.")
     }
     var heightDb = Assets.open(assetsPath)
-    var heightImg = Image.decode(heightDb.bytes("value-noise-plateau_height_1024.png"))
-    var srcW = heightImg.width
-    var srcH = heightImg.height
-    var srcPx = heightImg.pixels
-
-    var terrainW = 128
-    var terrainD = 128
-    var terrainStep = 1.2
-    var terrainAmp  = 8.0
-    _terrainSize = (terrainW - 1) * terrainStep
-    _terrainAmp  = terrainAmp
-    _terrainStep = terrainStep
-
-    var heights = Float32Array.new(terrainW * terrainD)
-    var cx = (terrainW - 1) / 2
-    var cz = (terrainD - 1) / 2
-    var radius = cx
-    var j = 0
-    while (j < terrainD) {
-      var sy = ((j * srcH) / terrainD).floor
-      var dz = (j - cz) / radius
-      var i = 0
-      while (i < terrainW) {
-        var sx = ((i * srcW) / terrainW).floor
-        // Sample the red channel (textures are grayscale so RGB
-        // are equal); normalise from [0, 255] → [0, 1] then re-
-        // centre to [-0.5, +0.5] so a midway pixel reads as the
-        // baseline height.
-        var pix = srcPx[(sy * srcW + sx) * 4]
-        var raw = pix / 255 - 0.5
-        // Soft radial falloff so the bundle's outer ring sinks
-        // below water — gives the island a defined coastline
-        // rather than fading abruptly at the mesh edge.
-        var dx = (i - cx) / radius
-        var d2 = dx * dx + dz * dz
-        var t = 1 - d2
-        if (t < 0) t = 0
-        if (t > 1) t = 1
-        var falloff = t * t * (3 - 2 * t)
-        heights[j * terrainW + i] = raw * falloff - 0.5 * (1 - falloff)
-        i = i + 1
-      }
-      j = j + 1
-    }
-    // Smooth the heightmap with a couple of 3 × 3 box-filter
-    // passes so the sharp value-noise spikes round into rolling
-    // hills instead of cracked peaks. Each pass replaces every
-    // cell with the average of its 3×3 neighbourhood; two passes
-    // is enough to fold the worst of the plateau noise edges
-    // without losing the macro topography.
-    var smoothed = Float32Array.new(terrainW * terrainD)
-    var passes = 2
-    var pass = 0
-    while (pass < passes) {
-      var sj = 0
-      while (sj < terrainD) {
-        var si = 0
-        while (si < terrainW) {
-          var sum = 0
-          var count = 0
-          var dj = -1
-          while (dj <= 1) {
-            var rj = sj + dj
-            if (rj >= 0 && rj < terrainD) {
-              var di = -1
-              while (di <= 1) {
-                var ri = si + di
-                if (ri >= 0 && ri < terrainW) {
-                  sum = sum + heights[rj * terrainW + ri]
-                  count = count + 1
-                }
-                di = di + 1
-              }
-            }
-            dj = dj + 1
-          }
-          smoothed[sj * terrainW + si] = sum / count
-          si = si + 1
-        }
-        sj = sj + 1
-      }
-      // Swap (copy back) for the next pass; can't reassign
-      // `heights` here without confusing the closures further down.
-      var ci = 0
-      while (ci < terrainW * terrainD) {
-        heights[ci] = smoothed[ci]
-        ci = ci + 1
-      }
-      pass = pass + 1
-    }
-    _terrainHeights = heights
-    _terrainCols = terrainW
-    _terrainRows = terrainD
-    _terrainMesh = Terrain.meshFromHeightmap(g.device, heights, terrainW, terrainD, {
-      "stepX": terrainStep,
-      "stepZ": terrainStep,
-      "amplitude": terrainAmp
-    })
-    // Topographic colour bands. Sand at the shore, bright grass on
-    // plains, darker forest at altitude, rocky tops. Generated as
-    // a width × depth texture indexed 1:1 by mesh UV — the colour
-    // ramp comes out of the height field directly, no separate
-    // shader work. The plateau normal map still rides on top for
-    // micro-relief.
-    var topoBytes = ByteArray.new(terrainW * terrainD * 4)
-    var k = 0
-    var jj = 0
-    while (jj < terrainD) {
-      var ii = 0
-      while (ii < terrainW) {
-        var hRaw = heights[jj * terrainW + ii]
-        var y = hRaw * terrainAmp
-        var r = 0
-        var gC = 0
-        var b = 0
-        if (y < -2.5) {
-          // Submerged sea floor — a dim wet-sand colour. The water
-          // alpha blend tints it blue at depth so a near-neutral
-          // brown reads correctly through the body; pure black or
-          // navy here just punches a hole at the shore.
-          r = 140
-          gC = 128
-          b = 96
-        } else if (y < 0.3) {
-          // Wet sand / beach shoreline.
-          r = 224
-          gC = 206
-          b = 142
-        } else if (y < 1.6) {
-          // Plain land — bright brown+green mix (soil with grass).
-          r = 168
-          gC = 170
-          b = 80
-        } else if (y < 3.5) {
-          // Plateau forest — saturated green.
-          r = 78
-          gC = 140
-          b = 56
-        } else if (y < 5.0) {
-          // Rocky transition (light grey, sparse vegetation).
-          r = 140
-          gC = 132
-          b = 120
-        } else {
-          // Hill / mountain rock — dark grey.
-          r = 92
-          gC = 86
-          b = 80
-        }
-        topoBytes[k]     = r
-        topoBytes[k + 1] = gC
-        topoBytes[k + 2] = b
-        topoBytes[k + 3] = 255
-        k = k + 4
-        ii = ii + 1
-      }
-      jj = jj + 1
-    }
-    var topoTex = g.device.createTexture({
-      "width":  terrainW,
-      "height": terrainD,
-      "format": "rgba8unorm-srgb",
-      "usage":  ["texture-binding", "copy-dst"],
-      "label":  "terrain-topo-palette"
-    })
-    g.device.writeTexture(topoTex, topoBytes, {
-      "width":       terrainW,
-      "height":      terrainD,
-      "bytesPerRow": terrainW * 4
-    })
-    var normalImg = Image.decode(heightDb.bytes("value-noise-plateau_normal_1024.png"))
-    var normalTex = g.device.uploadImage(normalImg, { "format": "rgba8unorm", "label": "terrain-normal" })
-    _terrainMat = Material.new(Vec4.new(1.0, 1.0, 1.0, 1.0))
-    _terrainMat.albedoTexture = topoTex
-    _terrainMat.normalTexture = normalTex
-    _terrainMat.roughnessFactor = 0.85
-    _terrainMat.metallicFactor  = 0.0
+    // Heightmap → mesh → palette → normal → material. Lives in
+    // topography.wren so this `setup` stays focused on wiring.
+    _terrain = Topography.new(g, heightDb)
 
     // ── Water surface ──────────────────────────────────────────
     // A full-terrain-extent water plane at a moderate y level.
@@ -381,19 +201,18 @@ class ProceduralWorld is Game {
     // `_knobs["waterY"]["v"]` (live) and `_knobs["terrainAmp"]["v"]` (terrain
     // gets Y-scaled in its model matrix), both wired to the HUD
     // panel below.
-    _terrainAmpBase = _terrainAmp
-    _waterY         = _knobs["waterY"]["v"]
+    _waterY = _knobs["waterY"]["v"]
     // High subdivision so wave_h interpolation reads smooth at
     // close zoom. 192 cells × 1.6m terrainSize gives ~0.8 m
     // faces — well under the wavelength so curved peaks survive
     // the triangle rasterisation. The cost is ~37 k vertices /
     // ~73 k triangles, a single drawIndexed call.
     _waterMesh = Water.makePlane(g.device, {
-      "size":         _terrainSize,
+      "size":         _terrain.size,
       "subdivisions": 192,
       "y":            0,
-      "originX":      -_terrainSize / 2,
-      "originZ":      -_terrainSize / 2
+      "originX":      -_terrain.size / 2,
+      "originZ":      -_terrain.size / 2
     })
 
     // ── Foliage ─────────────────────────────────────────────────
@@ -579,14 +398,14 @@ class ProceduralWorld is Game {
   // density. Called at setup and whenever a HUD slider changes
   // the threshold or seed.
   rescatterFoliage_() {
-    var half = _terrainSize / 2
+    var half = _terrain.size / 2
     var seedLocal       = _seed
     var densityLocal    = _foliageDensity
-    var terrainAmpLocal = _terrainAmp
-    var stepLocal       = _terrainStep
-    var heightsLocal    = _terrainHeights
-    var colsLocal       = _terrainCols
-    var rowsLocal       = _terrainRows
+    var terrainAmpLocal = _terrain.amp
+    var stepLocal       = _terrain.step
+    var heightsLocal    = _terrain.heights
+    var colsLocal       = _terrain.cols
+    var rowsLocal       = _terrain.rows
     var originXLocal    = -half
     var originZLocal    = -half
     var waterYLocal     = _waterY
@@ -693,7 +512,7 @@ class ProceduralWorld is Game {
     }
     _foliageCount = count
     _foliageDirty = true
-    _foliageScatterAmp = _terrainAmp
+    _foliageScatterAmp = _terrain.amp
     // Diagnostic histogram of how the SCATTER assigned buckets,
     // independent of the per-class dropout in rebuild. If this
     // shows 0 trees but the rebuild log does too, the scatter is
@@ -957,9 +776,9 @@ class ProceduralWorld is Game {
     // Live HUD knobs: scale terrain Y by the slider ratio and
     // resync the foliage-height lookup amplitude so cubes stay
     // pinned to the surface as the user dials terrain amp.
-    _terrainAmp     = _knobs["terrainAmp"]["v"]
+    _terrain.amp     = _knobs["terrainAmp"]["v"]
     _waterY         = _knobs["waterY"]["v"]
-    var ampScale    = _terrainAmp / _terrainAmpBase
+    var ampScale    = _terrain.amp / _terrain.ampBase
     var terrainModel = Mat4.scale(1, ampScale, 1)
     var waterModel  = Mat4.translation(0, _waterY, 0)
 
@@ -1001,14 +820,14 @@ class ProceduralWorld is Game {
     var windStr = _windOpts["baseStrength"] * (1 + _windOpts["gust"] * 0.7)
     _renderer.setWind(_windOpts["baseX"], _windOpts["baseZ"], windStr)
     _renderer.setWindTime(g.elapsed)
-    _renderer.draw(_terrainMesh, _terrainMat, terrainModel)
+    _renderer.draw(_terrain.mesh, _terrain.mat, terrainModel)
 
     // Foliage: matrices are precomputed and only rebuilt when
     // scatter or terrain amp changes. The per-frame cost collapses
     // to 5 buffer uploads + ~10 instanced draw calls — no Wren
     // bytecode loop over 30k instances every frame.
     if (_flags["showFoliage"]) {
-      if ((_terrainAmp - _foliageScatterAmp).abs > 0.5) {
+      if ((_terrain.amp - _foliageScatterAmp).abs > 0.5) {
         rescatterFoliage_()
         rebuildFoliageMatrices_(ampScale)
       } else {
@@ -1179,7 +998,7 @@ class ProceduralWorld is Game {
         [0.45, 0.62, 0.78, 1.0])
       _renderer.beginFrame(reflPass, _mirrorCamera)
       Sun.applyTo(_renderer, _sun)
-      _renderer.draw(_terrainMesh, _terrainMat, terrainModel)
+      _renderer.draw(_terrain.mesh, _terrain.mat, terrainModel)
       if (_flags["showFoliage"]) {
         for (i in 0..._foliageFloats.count) {
           var n = _foliageCounts[i]
