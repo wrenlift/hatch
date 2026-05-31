@@ -127,6 +127,8 @@ import "./weather" for Wind
 // self-contained render pipeline that displaces + fresnels +
 // speculars the water mesh on the GPU.
 import "./water" for Water, WaterPipeline
+import "./sky"   for SkyboxPipeline
+import "./fog"   for Fog
 
 // On web, the main fiber holds the JS thread until it parks on
 // an async bridge. The frame loop yields with
@@ -826,6 +828,13 @@ class Game {
       // attachment (needed for depth-as-sampled-texture in shore
       // foam / refraction effects).
       g.colorView = sceneColorView
+      // Mirror the depth view that pass 1 actually wrote into so
+      // demo follow-up passes (water, shore-foam refraction) load
+      // and sample the SAME depth texture. Without PostFX,
+      // `sceneDepthView` already is `g.depthView` so this is a
+      // no-op on the fast path.
+      var savedDepthView = g.depthView
+      g.depthView = sceneDepthView
       // Run the user draw in a child fiber so the GPU teardown
       // below ALWAYS executes. If draw aborts mid-frame the
       // SurfaceTexture and open CommandEncoder would otherwise
@@ -854,6 +863,7 @@ class Game {
       var finalPass = g.pass
       g.pass = null
       g.colorView = null
+      g.depthView = savedDepthView
       if (finalPass != null) finalPass.end
       pass = null
 

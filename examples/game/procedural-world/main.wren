@@ -22,6 +22,8 @@
 import "@hatch:game"    for Game,
                             Terrain, Foliage, Wind,
                             Water, WaterPipeline,
+                            SkyboxPipeline,
+                            Fog,
                             PostFX
 import "@hatch:postfx"  for Tonemap, Vignette, ColorGrade
 import "@hatch:gpu"     for Gpu, Renderer3D, Renderer2D,
@@ -86,22 +88,16 @@ class ProceduralWorld is Game {
     // ── Renderers ───────────────────────────────────────────────
     _renderer = Renderer3D.new(g.device, g.surfaceFormat, g.depthFormat)
     _water    = WaterPipeline.new(g.device, g.surfaceFormat, g.depthFormat)
+    _sky      = SkyboxPipeline.new(g.device, g.surfaceFormat, g.depthFormat)
 
     // ── Post-process chain ──────────────────────────────────────
-    // BLOCKED: wlift's class-field codegen mis-routes references
-    // inside `PostPass` subclasses, so the cached pipeline / layout
-    // / bindgroup handles end up pointing at the wrong slots.
-    // First it manifested as `_pipelines is Num`, then after a
-    // defensive re-init as `BindGroup.create: unknown layout id`.
-    // The chain orchestration needs a wlift-level fix for the
-    // inheritance + private-field interaction before we can wire
-    // ACES tonemap / vignette / bloom here. Kept the imports + this
-    // comment so re-enabling is a one-line change once the bug is
-    // resolved upstream.
-    //
-    // g.postFX = PostFX.new(g)
-    // g.postFX.add(Tonemap.new({ "exposure": 1.15 }))
-    // g.postFX.add(Vignette.new({ "strength": 0.28 }))
+    g.postFX = PostFX.new(g)
+    g.postFX.add(Tonemap.new({ "exposure": 1.15 }))
+    g.postFX.add(Vignette.new({
+      "strength": 0.28,
+      "radius":   0.70,
+      "softness": 0.45
+    }))
 
     // Low-angle golden-hour sun. Direction is steep from one side
     // rather than overhead, so shadows lengthen and the specular
@@ -122,12 +118,38 @@ class ProceduralWorld is Game {
     // Water ambient picks up the cooler sky tint so the body
     // colour doesn't read as flat black where the sun isn't.
     _water.setAmbient([0.10, 0.16, 0.22])
+    // Sky palette tuned to the warm amber sun: saturated zenith,
+    // pale-cyan mid, sandy horizon haze so the band where the sky
+    // meets the water reads as warm air, not a cold backdrop.
+    _sky.setSun([_sunDir.x, _sunDir.y, _sunDir.z],
+                [_sunColor.x, _sunColor.y, _sunColor.z],
+                _sunIntensity)
+    _sky.setSkyGradient([0.30, 0.52, 0.92],   // zenith — saturated blue
+                        [0.62, 0.80, 0.98],   // mid    — pale cyan
+                        [0.96, 0.86, 0.72])   // horizon — warm sand haze
+    _sky.setClouds(0.42, 320.0, 1.4, [1.00, 0.96, 0.88])
+    _sky.setWind(0.015, 0.005)
+
+    // Aerial-perspective fog. `end` sits strictly inside the
+    // water-mesh radius so the mesh's terminating edge fades into
+    // the sky horizon band before the geometry boundary is
+    // visible. Linear curve is the predictable choice here — the
+    // false-horizon distance is a hard contract (everything past
+    // `end` is fully horizon-coloured). Colour binds to the sky's
+    // horizon triple so the world's hue matches the visible sky.
+    _fog = Fog.new()
+    _fog.color = [0.96, 0.86, 0.72]
+    _fog.start = 60.0
+    _fog.end   = 130.0
+    _fog.curve = 0
+    _water.setFog(_fog)
     // Shore foam — sample the scene depth so foam fades in along
     // the coastline. Near/far must match the camera's perspective
     // params below; bandMeters is how deep the terrain can be
     // beneath the water surface before foam fully fades.
     _shoreBandRef = { "v": 0.4 }
     _water.setShore(g.depthView, 0.5, 600, _shoreBandRef["v"])
+    _lastShoreDepthView_ = g.depthView
     // Allocate the planar-reflection target sized to the surface.
     _water.resize(g.width, g.height)
 
@@ -142,6 +164,7 @@ class ProceduralWorld is Game {
     _mirrorCamera = Camera3D.perspective(_fovY, 1.0, 0.5, 600)
     var aspect = g.width / g.height
     _camera = Camera3D.perspective(_fovY, aspect, 0.5, 600)
+    _sky.setProjection(_fovY, aspect)
     rebuildCameraView_()
 
     _drag = false
@@ -163,6 +186,16 @@ class ProceduralWorld is Game {
     _waterAlphaRef  = { "v": 0.91 }
     _foamThreshRef  = { "v": 1.0 }
     _flowStrengthRef = { "v": 0.0 }
+    // HUD-controlled scene knobs. Camera FOV and fog ranges live
+    // here so the panel can mutate them in place each frame; the
+    // draw loop re-applies them onto the camera / sky / fog before
+    // building the per-frame UBOs.
+    _fovRef         = { "v": 55.0 }
+    _fogStartRef    = { "v": 60.0 }
+    _fogEndRef      = { "v": 130.0 }
+    _fogDensityRef  = { "v": 0.020 }
+    _cloudCoverRef  = { "v": 0.42 }
+    _fogFlags       = { "expCurve": false }
     _windOpts = {
       "baseX":        1,
       "baseY":        0,
@@ -572,6 +605,19 @@ class ProceduralWorld is Game {
     _panel = HUDPanel.new(_hud, {
       "x": _panelX, "y": _panelY, "width": _panelW, "title": "WORLD", "scale": scale
     })
+    // Second panel for atmospheric / camera knobs. The main WORLD
+    // panel overflows the window past ~25 rows on modest-height
+    // displays; splitting the camera+fog controls into their own
+    // strip keeps every slider visible without a scrollbar. Pinned
+    // to the right edge of the surface (mirror of the WORLD panel's
+    // left-edge offset) so the central scene stays uncluttered.
+    _panelAtmo = HUDPanel.new(_hud, {
+      "x": w - _panelW - _panelX,
+      "y": _panelY,
+      "width": _panelW,
+      "title": "ATMO",
+      "scale": scale
+    })
   }
 
   rebuildCameraView_() {
@@ -833,6 +879,7 @@ class ProceduralWorld is Game {
     // and ratchet the window down at the next valid resize.
     if (w <= 0 || h <= 0) return
     _camera.setPerspective(_fovY, w / h, 0.5, 600)
+    _sky.setProjection(_fovY, w / h)
     // The framework reallocates the depth texture on resize;
     // rebind the water pipeline's depth-sample slot to the new
     // view so shore foam keeps reading the live attachment.
@@ -986,6 +1033,23 @@ class ProceduralWorld is Game {
     _mirrorCamera.setPerspective(_fovY, g.width / g.height, 0.5, 600)
     _mirrorCamera.lookAt(mirrorEye, mirrorTgt, Vec3.new(0, -1, 0))
 
+    // Pick up HUD-driven FOV + cloud edits before the camera and
+    // sky UBOs upload this frame. Camera projection rebuilds are
+    // cheap (one Mat4); sky cloud coverage is a single uniform.
+    if (_fovRef["v"] != _fovY) {
+      _fovY = _fovRef["v"]
+      _camera.setPerspective(_fovY, g.width / g.height, 0.5, 600)
+      _sky.setProjection(_fovY, g.width / g.height)
+    }
+    _sky.setClouds(_cloudCoverRef["v"], 320.0, 1.4, [1.00, 0.96, 0.88])
+
+    // Sky first — clip.z=1 + depthCompare="less-equal" means every
+    // terrain/foliage fragment overwrites the sky in pass 1, so the
+    // dome only survives where no geometry covers it (horizon).
+    _sky.beginFrame(pass, _camera, g.elapsed)
+    _sky.draw()
+    _sky.endFrame()
+
     // Terrain through Renderer3D's PBR pipeline.
     _renderer.beginFrame(pass, _camera)
     _renderer.setAmbient(_ambient, _ambientInt)
@@ -1075,7 +1139,27 @@ class ProceduralWorld is Game {
     _water.setColors([0.22, 0.58, 0.65, _waterAlphaRef["v"]], [0.60, 0.82, 0.92], 3.5)
     _water.setFoam([0.95, 0.98, 1.0], _foamThreshRef["v"])
     _water.setFlow(_windOpts["baseX"], _windOpts["baseZ"], _windOpts["baseStrength"] * 0.08)
+    // Rebind shore depth to the live pass-1 attachment. `g.depthView`
+    // is only the framework's scene-depth INSIDE the user draw block;
+    // outside it (resize callback) it points at the swap-chain depth
+    // which pass 1 never wrote under PostFX, making `beneath` collapse
+    // to zero and shore-foam fire across the entire surface.
+    if (_lastShoreDepthView_ != g.depthView) {
+      _water.setShore(g.depthView, 0.5, 600, _shoreBand)
+      _lastShoreDepthView_ = g.depthView
+    }
     _water.setShoreBand(_shoreBandRef["v"])
+    // Pick up HUD slider edits before the per-frame UBO upload.
+    // Guard `end > start + ε` so the FS's `1 / (end-start)` term
+    // doesn't blow up if the user drags the two sliders past each
+    // other.
+    _fog.start   = _fogStartRef["v"]
+    var fogEnd   = _fogEndRef["v"]
+    if (fogEnd < _fog.start + 1.0) fogEnd = _fog.start + 1.0
+    _fog.end     = fogEnd
+    _fog.density = _fogDensityRef["v"]
+    _fog.curve   = _fogFlags["expCurve"] ? 1 : 0
+    _water.setFog(_fog)
     _water.beginFrame(pass, _camera, _waterTime)
     _water.draw(_waterMesh, waterModel)
     _water.endFrame()
@@ -1125,6 +1209,19 @@ class ProceduralWorld is Game {
     _panel.slider("grass",   _grassDensityRef, "v", 0.0, 1.0)
     _panel.slider("foliage", _otherDensityRef, "v", 0.0, 1.0)
     _panel.slider("scatter", _densityRef,      "v", 0.0, 1.0)
+
+    // Atmospheric / camera knobs live in their own panel so the
+    // main WORLD strip doesn't overflow the window. FOV is a
+    // slider so the change is reversible by drag. Fog start/end
+    // define the linear false-horizon band; toggle `fog exp²` for
+    // an exponential haze using the density slider instead.
+    _panelAtmo.beginFrame()
+    _panelAtmo.slider("fov",       _fovRef,        "v", 30.0, 90.0)
+    _panelAtmo.slider("fog start", _fogStartRef,   "v",  0.0, 300.0)
+    _panelAtmo.slider("fog end",   _fogEndRef,     "v", 20.0, 400.0)
+    _panelAtmo.slider("fog dens",  _fogDensityRef, "v",  0.0, 0.08)
+    _panelAtmo.toggle("fog exp²",  _fogFlags, "expCurve")
+    _panelAtmo.slider("clouds",    _cloudCoverRef, "v",  0.0, 1.0)
     _hud.endFrame
     _hudRenderer.endPass()
     _hudRenderer.flush(g.pass)
@@ -1165,6 +1262,7 @@ class ProceduralWorld is Game {
   }
 
   destroy {
+    _sky.destroy
     _water.destroy
     _renderer.destroy
     _foliageBufs.each {|b| b.destroy }

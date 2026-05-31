@@ -193,6 +193,10 @@ class WaterPipeline {
                                    //   as a fraction of the wave amplitude
         shore:        vec4<f32>,   // x=near, y=far, z=band (world m),
                                    //   w=enable (1=on, 0=off)
+        fog_color:    vec4<f32>,   // r,g,b = fog tint; w = curve mode
+                                   //   (0 linear, 1 exp²)
+        fog_params:   vec4<f32>,   // x=start, y=end, z=density,
+                                   //   w=1/(end-start)
       };
       struct DrawUniforms {
         model: mat4x4<f32>,
@@ -405,7 +409,16 @@ class WaterPipeline {
         let sheen = pow(NdotH,  32.0) * scene.sun_dir.w * 0.25;
         let spec  = glint + sheen;
         let diffuse = body * (NdotL * scene.sun_color.rgb + scene.ambient.rgb);
-        var rgb = diffuse + spec * scene.sun_color.rgb;
+        // Cap the spec*sun contribution per-channel before adding to
+        // diffuse. The scene target is LDR (bgra8unorm), so an
+        // uncapped sun-glint of (4.5, 3.5, 2.5) would either clamp to
+        // (1,1,1) on write OR if normalised by max-luminance collapse
+        // the hue to pure sun_color, washing teal out of every glint
+        // pixel. Capping at 0.35 keeps glints as bright neutral
+        // accents on top of the teal body; PostFX ACES then rolls
+        // the highlights hue-preservingly.
+        let spec_rgb = min(spec * scene.sun_color.rgb, vec3<f32>(0.35));
+        var rgb = diffuse + spec_rgb;
 
         // Crest foam — gated by a noise mask so the foam doesn't
         // paint the underlying sine lattice as a uniform grid. Foam
@@ -463,7 +476,21 @@ class WaterPipeline {
         // (effectively opaque white); at foam_t=0 it falls back to
         // the body alpha so the rest of the water keeps its dial.
         let alpha_out = mix(scene.colors.a, 0.95, foam_t);
-        return vec4<f32>(rgb, alpha_out);
+        // Aerial perspective. Fade the water body into the sky
+        // horizon band so the finite water mesh edge merges into
+        // the visible sky rather than terminating in a hard line.
+        // Linear curve (fog_color.w &lt; 0.5) lets callers set `end`
+        // strictly inside the mesh boundary; exp² (≥ 0.5) is the
+        // softer haze curve. Alpha rides up to 1.0 with fog_t so
+        // sky-blue clear doesn't bleed through near the edge.
+        let fog_d   = distance(scene.camera_pos.xyz, in.world);
+        let fog_lin = clamp((fog_d - scene.fog_params.x) * scene.fog_params.w, 0.0, 1.0);
+        let fog_e   = fog_d * scene.fog_params.z;
+        let fog_exp = 1.0 - exp(-(fog_e * fog_e));
+        let fog_t   = select(fog_lin, fog_exp, scene.fog_color.w > 0.5);
+        let fogged_rgb   = mix(rgb, scene.fog_color.rgb, fog_t);
+        let fogged_alpha = mix(alpha_out, 1.0, fog_t);
+        return vec4<f32>(fogged_rgb, fogged_alpha);
       }
     "
   }
@@ -681,6 +708,15 @@ class WaterPipeline {
     _shoreBand   = 2.5
     _shoreOn     = 0.0
 
+    // Aerial-perspective fog. Defaults disable the effect by
+    // placing `end` past any realistic scene range; demos opt in
+    // via `setFog(fog)`.
+    _fogColor    = [0.72, 0.78, 0.85]
+    _fogStart    = 1.0e9
+    _fogEnd      = 1.0e9 + 1.0
+    _fogDensity  = 0.0
+    _fogCurve    = 0.0
+
     _pass = null
   }
 
@@ -812,6 +848,20 @@ class WaterPipeline {
   /// @param {Num} bandMeters
   setShoreBand(bandMeters) { _shoreBand = bandMeters }
 
+  /// Bind a Fog object to the water shader. Subsequent frames
+  /// fade the body to `fog.color` over `[fog.start, fog.end]` (or
+  /// via exp² when `fog.curve != 0`). Calling once after the sky
+  /// is configured is enough — the values are re-uploaded on
+  /// every `beginFrame`.
+  /// @param {Fog} fog
+  setFog(fog) {
+    _fogColor   = fog.color
+    _fogStart   = fog.start
+    _fogEnd     = fog.end
+    _fogDensity = fog.density
+    _fogCurve   = fog.curve
+  }
+
   /// Begin a frame: writes the scene UBO with the current camera +
   /// sun + wave + colour state and the supplied `time` value, then
   /// binds the pipeline + scene group on `pass`.
@@ -877,7 +927,19 @@ class WaterPipeline {
     putF_(f, 53, "shoreFar", _shoreFar)
     putF_(f, 54, "shoreBand", _shoreBand)
     putF_(f, 55, "shoreOn", _shoreOn)
-    _sceneUbo.writeFloatsN(0, _sceneUboFloats, 56)
+    putF_(f, 56, "fogColor[0]", _fogColor[0])
+    putF_(f, 57, "fogColor[1]", _fogColor[1])
+    putF_(f, 58, "fogColor[2]", _fogColor[2])
+    putF_(f, 59, "fogCurve", _fogCurve)
+    putF_(f, 60, "fogStart", _fogStart)
+    putF_(f, 61, "fogEnd", _fogEnd)
+    putF_(f, 62, "fogDensity", _fogDensity)
+    // Reciprocal of (end-start) precomputed CPU-side so the FS
+    // avoids a per-fragment division. Guard against start==end.
+    var fogSpan = _fogEnd - _fogStart
+    if (fogSpan < 1.0e-3) fogSpan = 1.0e-3
+    putF_(f, 63, "fogInvSpan", 1.0 / fogSpan)
+    _sceneUbo.writeFloatsN(0, _sceneUboFloats, 64)
 
     pass.setPipeline(_pipeline)
     pass.setBindGroup(0, _sceneBindGroup)
