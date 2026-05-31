@@ -20,7 +20,6 @@
 // wheel zooms. Controls live in a top-left panel.
 
 import "@hatch:game"    for Game,
-                            Terrain, Foliage,
                             Water, WaterPipeline,
                             SkyboxPipeline,
                             Fog,
@@ -30,6 +29,7 @@ import "./wind"         for Wind
 import "./sun"          for Sun
 import "./postfx_setup" for PostFxSetup
 import "./topography"   for Topography
+import "./foliage_scene"      for FoliageScene
 import "@hatch:gpu"     for Gpu, Renderer3D, Renderer2D,
                             Camera3D, Camera2D,
                             Frustum, Lod, Mesh, Material
@@ -215,65 +215,10 @@ class ProceduralWorld is Game {
       "originZ":      -_terrain.size / 2
     })
 
-    // ── Foliage ─────────────────────────────────────────────────
-    // Quaternius nature-kit variants (CC0 1.0 / @Quaternius). Five
-    // models keep the existing palette-bucket scatter: noise picks
-    // a bucket per site, the bucket selects which set of
-    // primitives renders. Trees ship with separate bark / leaves
-    // primitives, so each bucket is a LIST of primitives — every
-    // bucket's instance buffer drives one drawIndexed per primitive.
-    _foliagePrims = []  // List<List<GltfPrimitive>>, indexed by bucket
-    // Order: most → least dense. The scatter's bucket-selection
-    // weights below give grass the lion's share, bushes a chunk in
-    // the middle, and trees the long tail. Reordering the list
-    // changes the density mapping; do both together.
-    var nature = [
-      "nature-kit/Grass_Common_Short.gltf",     // 0 — densest cover
-      "nature-kit/Bush_Common.gltf",             // 1 — common bush
-      "nature-kit/Bush_Common_Flowers.gltf",     // 2 — flowering bush
-      "nature-kit/CommonTree_3.gltf",            // 3 — small tree
-      "nature-kit/CommonTree_1.gltf"             // 4 — large tree, sparsest
-    ]
-    // Per-bucket world-scale multiplier. Quaternius models ship at
-    // a unit-ish scale that doesn't match our 150 m terrain — grass
-    // tufts read as 1 m bushes, trees read as 1 m shrubs. Scale to
-    // a believable real-world height: ~0.4 m grass, ~0.8 m bushes,
-    // ~4-6 m trees.
-    // World-scale tuning: the island is ~150 m across, so real-life
-    // trees would top out at ~10-15 m and bushes at ~1 m. Quaternius
-    // native units are model-local; these factors land everything
-    // in roughly the right ratio.
-    //                grass  bush_c bush_f tree_s tree_l
-    _foliageScale = [ 0.45,  0.55,  0.55,  1.0,   1.5 ]
-    // Per-bucket sway, split across primitives. Quaternius trees
-    // ship as (bark, leaves) — bark must be stiff or the trunk
-    // visibly buckles, leaves can sway gently. Grass + bushes are
-    // single-primitive, so primSwayFor_(bucket, i) returns the same
-    // value for both indices.
-    //                 grass  bush_c bush_f tree_s tree_l
-    var primaryS  = [ 0.85,  0.45,  0.45,  0.02,  0.01 ]
-    var leafS     = [ 0.85,  0.45,  0.45,  0.18,  0.12 ]
-    var bi = 0
-    while (bi < nature.count) {
-      var path = nature[bi]
-      var doc = Gltf.fromAssetsDir(g.device, heightDb, path)
-      var prims = []
-      var sourcePrims = doc.meshes[0].primitives
-      var pIdx = 0
-      while (pIdx < sourcePrims.count) {
-        var prim = sourcePrims[pIdx]
-        if (prim.mesh != null) {
-          var swayV = primaryS[bi]
-          if (pIdx > 0) swayV = leafS[bi]
-          prim.material.sway = swayV
-          prims.add(prim)
-        }
-        pIdx = pIdx + 1
-      }
-      if (prims.count == 0) Fiber.abort("procedural-world: no usable primitives in %(path)")
-      _foliagePrims.add(prims)
-      bi = bi + 1
-    }
+    // Foliage lives in `foliage.wren`. The class loads Quaternius
+    // models, allocates per-bucket instance buffers, runs the
+    // first scatter, and exposes `update(ampScale)` / `draw(renderer)`
+    // / `setWaterY(y)` for the per-frame loop.
 
     // ── HUD ─────────────────────────────────────────────────────
     // Surface-pixel coords so the panel always anchors to the
@@ -293,13 +238,8 @@ class ProceduralWorld is Game {
     // The base scatter pre-filter (gates which sites survive the
     // water/cliff/peak thresholds at all). Bucket-specific density
     // is applied on top of this at rebuild time so grass can be
-    // dense while bushes/trees stay sparse. Defaults for these
-    // sliders ship with `Knobs.make()`; cache the initial values
-    // so we know when a slider changes and a re-scatter is owed.
-    _foliageDensity      = _knobs["scatter"]["v"]
-    _bakedGrassDensity   = _knobs["grassDens"]["v"]
-    _bakedOtherDensity   = _knobs["otherDens"]["v"]
-    _bakedScatterDensity = _knobs["scatter"]["v"]
+    // dense while bushes/trees stay sparse.
+    _foliage = FoliageScene.new(g, heightDb, _terrain, _knobs, _waterY, _seed)
 
     // ── Stats ───────────────────────────────────────────────────
     _fpsCounter   = 0
@@ -307,38 +247,6 @@ class ProceduralWorld is Game {
     _fps          = 0
     _visibleCount = 0
     _culledCount  = 0
-
-    // ── Foliage scatter (first build) ───────────────────────────
-    rescatterFoliage_()
-
-    // Per-bucket instance buffer sizes match the natural density
-    // profile of each foliage type: grass dominates a real field,
-    // trees are rare. Sizes are chosen so the buffers don't
-    // overflow under the fine-spaced scatter below.
-    //   bucket 0: Grass (dense)        — 80000
-    //   bucket 1: Bush_Common          — 12000
-    //   bucket 2: Bush_Common_Flowers  — 8000
-    //   bucket 3: CommonTree_3 (small) — 2000
-    //   bucket 4: CommonTree_1 (large) — 800
-    _foliageBufs   = []
-    _foliageFloats = []
-    _foliageCounts = [0, 0, 0, 0, 0]
-    // Capacities sized for the dense scatter: grass tufts dominate
-    // (one per 0.35 m × 0.35 m cell over the island ≈ 80 k), bushes
-    // fill the middle band, trees stay rare.
-    _foliageCapacity = [250000, 30000, 12000, 4000, 1500]
-    _foliageDirty = true
-    _foliageUploadDirty = true
-    _foliageBakedAmpScale = 1.0
-    for (i in 0..._foliagePrims.count) {
-      var cap = _foliageCapacity[i]
-      _foliageBufs.add(g.device.createBuffer({
-        "size":  cap * 32 * 4,
-        "usage": ["storage", "copy-dst"],
-        "label": "foliage-instances-%(i)"
-      }))
-      _foliageFloats.add(Float32Array.new(cap * 32))
-    }
   }
 
   // Recompute the panel anchor + width from the surface size and
@@ -392,246 +300,6 @@ class ProceduralWorld is Game {
     var ey = _distance * _pitch.sin + _target.y
     var ez = _distance * _yaw.sin * cy + _target.z
     _camera.lookAt(Vec3.new(ex, ey, ez), _target, Vec3.new(0, 1, 0))
-  }
-
-  // Pick foliage placements + their palette assignment via noise
-  // density. Called at setup and whenever a HUD slider changes
-  // the threshold or seed.
-  rescatterFoliage_() {
-    var half = _terrain.size / 2
-    var seedLocal       = _seed
-    var densityLocal    = _foliageDensity
-    var terrainAmpLocal = _terrain.amp
-    var stepLocal       = _terrain.step
-    var heightsLocal    = _terrain.heights
-    var colsLocal       = _terrain.cols
-    var rowsLocal       = _terrain.rows
-    var originXLocal    = -half
-    var originZLocal    = -half
-    var waterYLocal     = _waterY
-    // Sample terrain Y at world (x, z) by bilinearly interpolating
-    // the heightmap — matches what the terrain MESH renders since
-    // its triangle rasterisation interpolates between vertex
-    // heights. A floor-based nearest-cell lookup picks the nearest
-    // grid corner, which can sit metres above or below the actual
-    // surface on a sloped tile; foliage placed against that value
-    // pops above or sinks below the terrain as the amp slider
-    // scales the discrepancy.
-    var heightAt = Fn.new {|x, z|
-      var fx = (x - originXLocal) / stepLocal
-      var fz = (z - originZLocal) / stepLocal
-      var i0 = fx.floor
-      var j0 = fz.floor
-      var tx = fx - i0
-      var tz = fz - j0
-      if (i0 < 0) {
-        i0 = 0
-        tx = 0
-      }
-      if (i0 >= colsLocal - 1) {
-        i0 = colsLocal - 2
-        tx = 1
-      }
-      if (j0 < 0) {
-        j0 = 0
-        tz = 0
-      }
-      if (j0 >= rowsLocal - 1) {
-        j0 = rowsLocal - 2
-        tz = 1
-      }
-      var h00 = heightsLocal[j0 * colsLocal + i0]
-      var h10 = heightsLocal[j0 * colsLocal + i0 + 1]
-      var h01 = heightsLocal[(j0 + 1) * colsLocal + i0]
-      var h11 = heightsLocal[(j0 + 1) * colsLocal + i0 + 1]
-      var h0  = h00 + (h10 - h00) * tx
-      var h1  = h01 + (h11 - h01) * tx
-      return (h0 + (h1 - h0) * tz) * terrainAmpLocal
-    }
-    // Slope estimator. Samples the heightmap one step away on
-    // each axis and returns the magnitude of the gradient — high
-    // values are cliffs, low values are plains. Foliage prefers
-    // plains so the cliff faces of plateau edges stay bare.
-    var slopeAt = Fn.new {|x, z|
-      var s = stepLocal
-      var h  = heightAt.call(x, z)
-      var hx = heightAt.call(x + s, z)
-      var hz = heightAt.call(x, z + s)
-      var dx = hx - h
-      var dz = hz - h
-      return (dx * dx + dz * dz).sqrt
-    }
-    var sites = Foliage.scatter({
-      "bounds":  [-half * 0.95, -half * 0.95, half * 0.95, half * 0.95],
-      // Tight spacing for a dense grass field — the bucket weight
-      // table below thins trees back down so they stay rare even
-      // at this resolution.
-      "spacing": 0.20,
-      "jitter":  0.55,
-      "seed":    seedLocal + 9999,
-      "threshold": Fn.new {|x, z|
-        // Site-validity only — submerged, summit, or cliff sites
-        // get culled here. Density is applied per-class downstream
-        // in `rebuildFoliageMatrices_` so the grass slider and the
-        // scatter slider thin grass and non-grass independently.
-        var y = heightAt.call(x, z)
-        if (y < waterYLocal + 0.3) return 0
-        if (y > terrainAmpLocal * 0.85) return 0
-        if (slopeAt.call(x, z) > 1.2) return 0
-        return 1.0
-      }
-    })
-    _foliageSites = sites
-    var count = sites["count"]
-    _foliageYs       = Float32Array.new(count)
-    _foliagePalettes = []
-    var si = 0
-    while (si < count) {
-      var x = sites["xs"][si]
-      var z = sites["zs"][si]
-      _foliageYs[si] = heightAt.call(x, z)
-      // Weight bucket selection by foliage type — grass dominates,
-      // bushes fill the middle band, trees are the long tail. The
-      // noise is sampled at a coarser scale so neighbouring sites
-      // share a type, giving the scatter visible patches of grass
-      // with the occasional tree rather than salt-and-pepper.
-      // Per-site uniform-[0,1] hash. OpenSimplex output is narrowly
-      // bounded and biases heavily after rescale-and-clamp; a plain
-      // sine-hash gives a flat distribution so the bucket thresholds
-      // below actually correspond to their percentages.
-      var hashV = (x * 12.9898 + z * 78.233 + seedLocal * 0.31).sin * 43758.5453
-      var p = hashV - hashV.floor
-      if (p < 0) p = p + 1
-      var slot = 0
-      if (p >= 0.80)  slot = 1   // bush common      (15%)
-      if (p >= 0.95)  slot = 2   // bush flowers     (3%)
-      if (p >= 0.98)  slot = 3   // small tree       (1.5%)
-      if (p >= 0.995) slot = 4   // large tree       (0.5%)
-      _foliagePalettes.add(slot)
-      si = si + 1
-    }
-    _foliageCount = count
-    _foliageDirty = true
-    _foliageScatterAmp = _terrain.amp
-    // Diagnostic histogram of how the SCATTER assigned buckets,
-    // independent of the per-class dropout in rebuild. If this
-    // shows 0 trees but the rebuild log does too, the scatter is
-    // never producing tree sites at all (noise range issue or
-    // weight thresholds set too high).
-    _paletteHist = [0, 0, 0, 0, 0]
-    var hi = 0
-    while (hi < _foliagePalettes.count) {
-      var b = _foliagePalettes[hi]
-      _paletteHist[b] = _paletteHist[b] + 1
-      hi = hi + 1
-    }
-  }
-
-  // Bake every foliage instance's TRS matrix (translation × scale)
-  // into the per-bucket Float32Array — once per scatter, plus once
-  // whenever the terrain amp slider crosses a small delta. The
-  // matrices end up in the layout `Renderer3D.writeInstance`
-  // produces (column-major model + normalMat, 32 floats each), so
-  // the GPU's instance buffer is a direct copy.
-  rebuildFoliageMatrices_(ampScale) {
-    var ci = 0
-    var cn = _foliageCounts.count
-    while (ci < cn) {
-      _foliageCounts[ci] = 0
-      ci = ci + 1
-    }
-    var xs = _foliageSites["xs"]
-    var zs = _foliageSites["zs"]
-    var ys = _foliageYs
-    var palettes = _foliagePalettes
-    var scales   = _foliageScale
-    var caps     = _foliageCapacity
-    var buckets  = _foliageFloats
-    var counts   = _foliageCounts
-    var grassDensity   = _knobs["grassDens"]["v"]
-    var otherDensity   = _knobs["otherDens"]["v"]
-    var scatterDensity = _knobs["scatter"]["v"]
-    // Pre-multiplied non-grass keep rate. Avoids repeated map
-    // indexing in the hot loop (and skirts whatever upvalue path
-    // was tripping when we read `_knobs["scatter"]["v"]` per iteration).
-    var nonGrassKeep = otherDensity * scatterDensity
-    var seedLocal    = _seed
-    var i = 0
-    while (i < _foliageCount) {
-      var bucket = palettes[i]
-      // Per-class dropout via a uniform-[0,1] hash. Grass is gated
-      // only by the grass slider; non-grass by foliage × scatter
-      // (so the scatter slider thins trees/bushes without touching
-      // grass coverage).
-      var dh = (xs[i] * 9.7531 + zs[i] * 23.197 + seedLocal * 0.137).sin * 87412.3
-      var dropoutSample = dh - dh.floor
-      if (dropoutSample < 0) dropoutSample = dropoutSample + 1
-      var keep = nonGrassKeep
-      if (bucket == 0) keep = grassDensity
-      if (dropoutSample > keep) {
-        i = i + 1
-        continue
-      }
-      var slot   = counts[bucket]
-      if (slot >= caps[bucket]) {
-        i = i + 1
-        continue
-      }
-      var s = scales[bucket]
-      var arr = buckets[bucket]
-      var off = slot * 32
-      var x = xs[i]
-      var y = ys[i] * ampScale
-      var z = zs[i]
-      // Column-major model matrix (4 rows × 4 cols) for a uniform
-      // scale + translation:
-      //   col0 = (s, 0, 0, 0)
-      //   col1 = (0, s, 0, 0)
-      //   col2 = (0, 0, s, 0)
-      //   col3 = (x, y, z, 1)
-      arr[off]      = s
-      arr[off + 1]  = 0
-      arr[off + 2]  = 0
-      arr[off + 3]  = 0
-      arr[off + 4]  = 0
-      arr[off + 5]  = s
-      arr[off + 6]  = 0
-      arr[off + 7]  = 0
-      arr[off + 8]  = 0
-      arr[off + 9]  = 0
-      arr[off + 10] = s
-      arr[off + 11] = 0
-      arr[off + 12] = x
-      arr[off + 13] = y
-      arr[off + 14] = z
-      arr[off + 15] = 1
-      // Normal matrix — same as model for uniform scale; shader
-      // re-normalises, so the magnitude bias from `s` is harmless.
-      arr[off + 16] = s
-      arr[off + 17] = 0
-      arr[off + 18] = 0
-      arr[off + 19] = 0
-      arr[off + 20] = 0
-      arr[off + 21] = s
-      arr[off + 22] = 0
-      arr[off + 23] = 0
-      arr[off + 24] = 0
-      arr[off + 25] = 0
-      arr[off + 26] = s
-      arr[off + 27] = 0
-      arr[off + 28] = x
-      arr[off + 29] = y
-      arr[off + 30] = z
-      arr[off + 31] = 1
-      counts[bucket] = slot + 1
-      i = i + 1
-    }
-    _foliageDirty = false
-    _foliageUploadDirty = true
-    _foliageBakedAmpScale = ampScale
-    _bakedGrassDensity = grassDensity
-    _bakedOtherDensity = otherDensity
-    _bakedScatterDensity = _knobs["scatter"]["v"]
   }
 
   resize(g, w, h) {
@@ -822,44 +490,18 @@ class ProceduralWorld is Game {
     _renderer.setWindTime(g.elapsed)
     _renderer.draw(_terrain.mesh, _terrain.mat, terrainModel)
 
-    // Foliage: matrices are precomputed and only rebuilt when
-    // scatter or terrain amp changes. The per-frame cost collapses
-    // to 5 buffer uploads + ~10 instanced draw calls — no Wren
-    // bytecode loop over 30k instances every frame.
+    // Foliage: matrices are precomputed inside `FoliageScene` and
+    // only rebuilt when a density knob or the terrain amp slider
+    // changes. `update(ampScale)` decides; `draw(renderer)` issues
+    // the per-bucket instanced draws (≤ 5 buffer uploads + ~10
+    // draws per frame).
     if (_flags["showFoliage"]) {
-      if ((_terrain.amp - _foliageScatterAmp).abs > 0.5) {
-        rescatterFoliage_()
-        rebuildFoliageMatrices_(ampScale)
-      } else {
-        var needsRebuild = _foliageDirty ||
-          (ampScale - _foliageBakedAmpScale).abs > 0.001 ||
-          (_knobs["grassDens"]["v"] - _bakedGrassDensity).abs > 0.005 ||
-          (_knobs["otherDens"]["v"] - _bakedOtherDensity).abs > 0.005 ||
-          (_knobs["scatter"]["v"]      - _bakedScatterDensity).abs > 0.005
-        if (needsRebuild) rebuildFoliageMatrices_(ampScale)
-      }
-      var bi = 0
-      var bn = _foliageFloats.count
-      while (bi < bn) {
-        var n = _foliageCounts[bi]
-        if (n > 0) {
-          if (_foliageUploadDirty) {
-            _foliageBufs[bi].writeFloatsN(0, _foliageFloats[bi], n * 32)
-          }
-          var prims = _foliagePrims[bi]
-          var pi = 0
-          var pn = prims.count
-          while (pi < pn) {
-            var prim = prims[pi]
-            _renderer.drawMeshInstanced(prim.mesh, prim.material, _foliageBufs[bi], n)
-            pi = pi + 1
-          }
-        }
-        bi = bi + 1
-      }
-      if (_foliageUploadDirty) _foliageUploadDirty = false
+      _foliage.setWaterY(_waterY)
+      _foliage.update(ampScale)
+      _foliage.draw(_renderer)
     }
-    _visibleCount = _foliageCounts[0] + _foliageCounts[1] + _foliageCounts[2] + _foliageCounts[3] + _foliageCounts[4]
+    var fc = _foliage.counts
+    _visibleCount = fc[0] + fc[1] + fc[2] + fc[3] + fc[4]
     _culledCount  = 0
     _renderer.endFrame()
 
@@ -930,11 +572,13 @@ class ProceduralWorld is Game {
     _hud.beginFrame(g, _hudRenderer)
     _panel.beginFrame()
     _panel.text("FPS", _fps.round)
-    _panel.text("grass",   "%(_foliageCounts[0]) / %(_paletteHist[0])")
-    _panel.text("bush c",  "%(_foliageCounts[1]) / %(_paletteHist[1])")
-    _panel.text("bush f",  "%(_foliageCounts[2]) / %(_paletteHist[2])")
-    _panel.text("tree s",  "%(_foliageCounts[3]) / %(_paletteHist[3])")
-    _panel.text("tree l",  "%(_foliageCounts[4]) / %(_paletteHist[4])")
+    var hc = _foliage.counts
+    var ph = _foliage.paletteHist
+    _panel.text("grass",   "%(hc[0]) / %(ph[0])")
+    _panel.text("bush c",  "%(hc[1]) / %(ph[1])")
+    _panel.text("bush f",  "%(hc[2]) / %(ph[2])")
+    _panel.text("tree s",  "%(hc[3]) / %(ph[3])")
+    _panel.text("tree l",  "%(hc[4]) / %(ph[4])")
     _panel.divider()
     // Amp ceiling sized against the terrain's nearshore relief —
     // anything beyond ~0.3 m crests above the sand band and reads
@@ -999,16 +643,7 @@ class ProceduralWorld is Game {
       _renderer.beginFrame(reflPass, _mirrorCamera)
       Sun.applyTo(_renderer, _sun)
       _renderer.draw(_terrain.mesh, _terrain.mat, terrainModel)
-      if (_flags["showFoliage"]) {
-        for (i in 0..._foliageFloats.count) {
-          var n = _foliageCounts[i]
-          if (n == 0) continue
-          for (prim in _foliagePrims[i]) {
-            _renderer.drawMeshInstanced(
-              prim.mesh, prim.material, _foliageBufs[i], n)
-          }
-        }
-      }
+      if (_flags["showFoliage"]) _foliage.draw(_renderer)
       _renderer.endFrame()
       reflPass.end
       g.pass = null
@@ -1023,8 +658,8 @@ class ProceduralWorld is Game {
   destroy {
     _sky.destroy
     _water.destroy
+    _foliage.destroy
     _renderer.destroy
-    _foliageBufs.each {|b| b.destroy }
   }
 }
 
