@@ -19,9 +19,17 @@ class Sun {
     return {
       "dir":        Vec3.new(-0.55, -0.42, -0.72),
       "color":      Vec3.new(1.00, 0.82, 0.62),
-      "intensity":  4.2,
-      "ambient":    Vec3.new(0.55, 0.62, 0.74),
-      "ambientInt": 0.95
+      "intensity":  4.5,
+      // Ambient is the "no shadows here either" baseline — set
+      // too high and shadowed regions read as lit, washing the
+      // direct sunlight contrast out. The previous 0.55/0.62/0.74
+      // × 0.95 = ~0.55 brightness meant a fully shadowed pixel
+      // still received >50% of the lit pixel's light, making the
+      // shadow factor visually disappear. Cool sky-tinted ambient
+      // at ~30% strength leaves shadow regions readable but
+      // distinctly darker than direct sun.
+      "ambient":    Vec3.new(0.42, 0.50, 0.62),
+      "ambientInt": 0.55
     }
   }
 

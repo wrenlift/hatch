@@ -480,7 +480,14 @@ class ProceduralWorld is Game {
       _foliage.setWaterY(_waterY)
       _foliage.update(ampScale)
     }
-    _renderer.beginShadowPass(g.encoder, _sun["dir"], _camera.target)
+    // Shadow-box centre is FIXED at the island origin instead of
+    // tracking the camera target. A moving centre quantises the
+    // shadow-map texels against the camera's pan, making every
+    // shadow edge shimmer as the user drags the view; pinning it
+    // to (0,0,0) gives stable edges for a static scene. The
+    // shadow extent (90 m half-width) is sized to cover the whole
+    // 152 m island from origin.
+    _renderer.beginShadowPass(g.encoder, _sun["dir"], Vec3.zero)
     _renderer.drawShadow(_terrain.mesh, terrainModel)
     if (_flags["showFoliage"]) _foliage.drawShadow(_renderer)
     _renderer.endShadowPass
