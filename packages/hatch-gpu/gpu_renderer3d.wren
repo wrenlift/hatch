@@ -498,6 +498,38 @@ class Renderer3D {
     "
   }
 
+  // Instanced depth-only shadow shader. light_vp lives on a per-pass
+  // uniform; the model matrix comes from an instance-buffer storage
+  // array indexed by `@builtin(instance_index)` — the SAME instance
+  // buffer the instanced PBR pipeline already populates per frame.
+  // One drawIndexed call covers an arbitrary number of casters
+  // (the foliage buckets), matching the main-pass shape.
+  static SHADOW_INSTANCED_WGSL_ {
+    return "
+      struct ShadowUniforms {
+        light_vp: mat4x4<f32>,
+      };
+      struct DrawUniforms {
+        model:      mat4x4<f32>,
+        normal_mat: mat4x4<f32>,
+      };
+      @group(0) @binding(0) var<uniform> u: ShadowUniforms;
+      @group(1) @binding(0) var<storage, read> instances: array<DrawUniforms>;
+
+      struct VsIn {
+        @location(0) pos:    vec3<f32>,
+        @location(1) normal: vec3<f32>,
+        @location(2) uv:     vec2<f32>,
+      };
+
+      @vertex
+      fn vs_main(in: VsIn, @builtin(instance_index) inst_idx: u32) -> @builtin(position) vec4<f32> {
+        let draw_u = instances[inst_idx];
+        return u.light_vp * draw_u.model * vec4<f32>(in.pos, 1.0);
+      }
+    "
+  }
+
   /// Build a renderer against `device`. Pre-creates the three
   /// bind-group layouts, the PBR pipeline, the scene + draw
   /// uniform buffers, the default 1×1 fallback textures, and the
@@ -985,6 +1017,68 @@ class Renderer3D {
       },
       "label": "renderer3d-shadow-pipeline"
     })
+
+    // Instanced shadow pipeline — same depth-only target as the
+    // non-instanced version, but the vertex stage reads `model`
+    // from `_instancedBgl`'s storage buffer (the same one the
+    // instanced PBR pipeline binds at @group(1)). One drawIndexed
+    // per foliage bucket casts thousands of shadow casters in one
+    // GPU dispatch.
+    _shadowInstancedBgl0 = _device.createBindGroupLayout({
+      "entries": [
+        { "binding": 0, "visibility": ["vertex"], "kind": "uniform" }
+      ],
+      "label": "renderer3d-shadow-instanced-bgl0"
+    })
+    _shadowInstancedLayout = _device.createPipelineLayout({
+      "bindGroupLayouts": [_shadowInstancedBgl0, _instancedBgl]
+    })
+    var instShader = _device.createShaderModule({
+      "code":  Renderer3D.SHADOW_INSTANCED_WGSL_,
+      "label": "renderer3d-shadow-instanced-shader"
+    })
+    _shadowInstancedPipeline = _device.createRenderPipeline({
+      "layout": _shadowInstancedLayout,
+      "vertex": {
+        "module": instShader, "entryPoint": "vs_main",
+        "buffers": [{
+          "arrayStride": Renderer3D.FLOATS_PER_VERTEX_ * 4,
+          "stepMode":    "vertex",
+          "attributes": [
+            { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
+            { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
+            { "shaderLocation": 2, "offset": 24, "format": "float32x2" }
+          ]
+        }]
+      },
+      // Front-cull would push acne off geometry's lit face for
+      // closed solids — but Quaternius foliage uses single-sided
+      // cards (grass blades, leaves) that get culled away
+      // entirely under front-cull, leaving zero shadow casters
+      // for those buckets. Disable culling so both faces register.
+      "primitive":    { "topology": "triangle-list", "cullMode": "none" },
+      "depthStencil": {
+        "format": _shadowDepthFormat,
+        "depthWriteEnabled": true,
+        "depthCompare": "less"
+      },
+      "label": "renderer3d-shadow-instanced-pipeline"
+    })
+    // Single per-pass UBO holding `light_vp` — populated in
+    // `beginShadowPass` and reused for every instanced shadow draw
+    // in that pass.
+    _shadowInstancedUbo = _device.createBuffer({
+      "size":  64,                 // one mat4
+      "usage": ["uniform", "copy-dst"],
+      "label": "renderer3d-shadow-instanced-ubo"
+    })
+    _shadowInstancedBg0 = _device.createBindGroup({
+      "layout":  _shadowInstancedBgl0,
+      "entries": [
+        { "binding": 0, "buffer": _shadowInstancedUbo, "size": 64 }
+      ]
+    })
+    _shadowInstanceBgCache = {}
   }
 
   /// True after a successful `enableShadows(...)` call.
@@ -1040,6 +1134,52 @@ class Renderer3D {
       },
       "label": "renderer3d-shadow-pass"
     })
+    _shadowPass.setPipeline(_shadowPipeline)
+
+    // Upload the per-pass light_vp used by every instanced shadow
+    // draw. The non-instanced `drawShadow` writes (light_vp, model)
+    // into its per-slot UBO; the instanced variant reads light_vp
+    // once from this shared UBO and pulls model from each
+    // instance's storage buffer entry.
+    _shadowInstancedFloats = _shadowInstancedFloats == null ? [] : _shadowInstancedFloats
+    _shadowInstancedFloats.clear()
+    appendMat4_(_shadowInstancedFloats, _shadowLightVP)
+    _shadowInstancedUbo.writeFloats(0, _shadowInstancedFloats)
+  }
+
+  /// Issue an INSTANCED shadow draw. The instance buffer holds
+  /// per-instance `DrawUniforms { model, normal_mat }` packed
+  /// 32-floats-per-entry (the same layout `Renderer3D.writeInstance`
+  /// + the existing `drawMeshInstanced` already consume). Only the
+  /// `model` half is read by the depth-only shadow VS; normal_mat
+  /// is ignored.
+  ///
+  /// @param {Mesh}   mesh
+  /// @param {Buffer} instanceBuffer
+  /// @param {Num}    instanceCount
+  drawShadowMeshInstanced(mesh, instanceBuffer, instanceCount) {
+    if (_shadowPass == null) {
+      Fiber.abort("Renderer3D.drawShadowMeshInstanced: call beginShadowPass first.")
+    }
+    var bgKey = instanceBuffer.id
+    var bg = _shadowInstanceBgCache[bgKey]
+    if (bg == null) {
+      bg = _device.createBindGroup({
+        "layout":  _instancedBgl,
+        "entries": [{ "binding": 0, "buffer": instanceBuffer }]
+      })
+      _shadowInstanceBgCache[bgKey] = bg
+    }
+    _shadowPass.setPipeline(_shadowInstancedPipeline)
+    _shadowPass.setBindGroup(0, _shadowInstancedBg0)
+    _shadowPass.setBindGroup(1, bg)
+    _shadowPass.setVertexBuffer(0, mesh.vertexBuffer)
+    _shadowPass.setIndexBuffer(mesh.indexBuffer, "uint32")
+    _shadowPass.drawIndexed(mesh.indexCount, instanceCount)
+    // Restore the non-instanced shadow pipeline state for any
+    // subsequent `drawShadow(...)` call in the same pass — the
+    // typical pattern is `terrain (non-instanced) → bucket-N
+    // (instanced)`, so callers may interleave either order.
     _shadowPass.setPipeline(_shadowPipeline)
   }
 
