@@ -7,5 +7,17 @@ examples/**/*.hatch
 packages/**/*.hatch
 .DS_Store
 
+# AOT-compiled native binaries (rebuilt via `wlift --aot ...`).
+examples/**/*_aot
+site/site_aot
+
+# Unused texture/heightmap assets shipped alongside the procedural-world
+# demo source archive. The gltf models in nature-kit/ reference their
+# own downsampled copies; the full-size Textures/ dupes and the
+# value-noise base/roughness PNGs are not loaded by the demo.
+examples/game/procedural-world/assets/Textures/
+examples/game/procedural-world/assets/value-noise-plateau_base_1024.png
+examples/game/procedural-world/assets/value-noise-plateau_roughness_1024.png
+
 # Private planning notes — design docs are tracked, plan docs are not.
 docs/*-plan.md
