@@ -87,10 +87,16 @@ class FoliageScene {
       bi = bi + 1
     }
 
-    // Capacities sized for the dense scatter: grass tufts dominate
-    // (one per 0.35 m × 0.35 m cell ≈ 80 k), bushes fill the middle
-    // band, trees stay rare.
-    _capacity     = [250000, 30000, 12000, 4000, 1500]
+    // Capacities sized at ~1.5× the worst-case post-dropout count
+    // observed across HUD slider ranges (grass + scatter at 1.0
+    // peaks at ~60 k grass + ~10 k bush_c + ~2 k bush_f + ~800
+    // tree_s + ~220 tree_l). Total ~110 k slots × 32 floats ×
+    // 4 bytes = ~14 MB instance-buffer memory — down from the
+    // 297 k × 128 B = 38 MB cap the earlier defaults reserved
+    // for unrealistic slider extremes. Slider drag past these
+    // visible budgets safely overflows: `rebuild_` drops sites
+    // when `slot >= caps[bucket]` instead of panicking.
+    _capacity     = [120000, 16000, 4000, 1500, 500]
     _counts       = [0, 0, 0, 0, 0]
     _bufs         = []
     _floats       = []

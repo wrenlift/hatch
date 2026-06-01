@@ -790,6 +790,16 @@ class GltfScene {
   upload(device) {
     uploadImages_(device)
     for (m in _meshes) m.upload_(device, _materials, _imageTextures)
+    // Drop the parsed image bytes and .bin buffers now that
+    // everything we need is on the GPU. For Quaternius-scale assets
+    // these can total 30+ MB in raw PNG bytes alone — kept around
+    // they only served the upload step. Materials hold Texture
+    // handles in `_imageTextures`; meshes hold their own VBO / IBO
+    // handles via `Mesh.fromArrays`; spawnInto reads only metadata.
+    // Callers needing hot-reload of the source bytes should keep
+    // their own copy upstream.
+    _imageSources = []
+    _buffers      = []
   }
 
   // Decode + upload every resolvable image. Embedded sources slice
