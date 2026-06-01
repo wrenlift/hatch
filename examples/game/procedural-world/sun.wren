@@ -28,8 +28,13 @@ class Sun {
       // shadow factor visually disappear. Cool sky-tinted ambient
       // at ~30% strength leaves shadow regions readable but
       // distinctly darker than direct sun.
-      "ambient":    Vec3.new(0.42, 0.50, 0.62),
-      "ambientInt": 0.55
+      // Ambient values tuned so back-of-tree faces (NoL ≤ 0,
+      // direct light fully clamped) land at ~sRGB 110-140 for
+      // typical foliage albedos — readable as "in shadow" rather
+      // than crushed black, while keeping ~3× contrast between
+      // sun-lit and shadow-side surfaces.
+      "ambient":    Vec3.new(0.55, 0.62, 0.72),
+      "ambientInt": 1.20
     }
   }
 
