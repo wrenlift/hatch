@@ -19,22 +19,18 @@ class Sun {
     return {
       "dir":        Vec3.new(-0.55, -0.42, -0.72),
       "color":      Vec3.new(1.00, 0.82, 0.62),
-      "intensity":  4.5,
-      // Ambient is the "no shadows here either" baseline — set
-      // too high and shadowed regions read as lit, washing the
-      // direct sunlight contrast out. The previous 0.55/0.62/0.74
-      // × 0.95 = ~0.55 brightness meant a fully shadowed pixel
-      // still received >50% of the lit pixel's light, making the
-      // shadow factor visually disappear. Cool sky-tinted ambient
-      // at ~30% strength leaves shadow regions readable but
-      // distinctly darker than direct sun.
-      // Ambient values tuned so back-of-tree faces (NoL ≤ 0,
-      // direct light fully clamped) land at ~sRGB 110-140 for
-      // typical foliage albedos — readable as "in shadow" rather
-      // than crushed black, while keeping ~3× contrast between
-      // sun-lit and shadow-side surfaces.
+      "intensity":  6.5,
+      // Ambient is the "no shadows here either" baseline. Tuned
+      // so the lit pixel's direct radiance dominates the ambient
+      // floor in R and G — otherwise the shadow factor's
+      // multiplicative cut leaves a lit/shadow ratio under 2×
+      // and ACES squashes what's left, reading as "very faint
+      // shadows". With direct ≈ (0.35, 0.29, 0.22) and ambient
+      // ≈ (0.13, 0.15, 0.17), shadow gets ~3× contrast vs lit
+      // while back-of-tree faces (ambient-only) still clear the
+      // 0.10 luminance floor for sky readability.
       "ambient":    Vec3.new(0.55, 0.62, 0.72),
-      "ambientInt": 1.20
+      "ambientInt": 0.60
     }
   }
 
