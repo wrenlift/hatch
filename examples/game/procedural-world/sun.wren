@@ -18,8 +18,8 @@ class Sun {
     // going grey.
     return {
       "dir":        Vec3.new(-0.55, -0.42, -0.72),
-      "color":      Vec3.new(1.00, 0.78, 0.55),
-      "intensity":  3.2,
+      "color":      Vec3.new(1.00, 0.82, 0.62),
+      "intensity":  4.2,
       "ambient":    Vec3.new(0.55, 0.62, 0.74),
       "ambientInt": 0.95
     }
@@ -32,7 +32,11 @@ class Sun {
   /// @param {Map}        sun
   static applyTo(renderer, sun) {
     renderer.setAmbient(sun["ambient"], sun["ambientInt"])
-    renderer.addDirectional(sun["dir"], sun["color"], sun["intensity"], false)
+    // Last arg = castsShadows. Renderer3D pins shadow-casting dir
+    // lights to slot 0 so the PBR shader's `i == 0` shadow factor
+    // path stays branch-free; only fires when the caller also
+    // invoked `enableShadows(...)`.
+    renderer.addDirectional(sun["dir"], sun["color"], sun["intensity"], true)
   }
 
   /// Bridge the same sun config into Water + Sky pipelines at

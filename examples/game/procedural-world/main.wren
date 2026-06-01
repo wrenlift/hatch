@@ -91,6 +91,18 @@ class ProceduralWorld is Game {
 
     // ── Renderers ───────────────────────────────────────────────
     _renderer = Renderer3D.new(g.device, g.surfaceFormat, g.depthFormat)
+    // Soft directional shadows. 2048² shadow map across a 90 m
+    // half-extent ortho frustum covers the whole island; pcfRadius
+    // sets the 3×3 PCF kernel step in shadow-map UV space —
+    // 0.0015 reads as a soft 1.5 px feather at 2048 resolution.
+    _renderer.enableShadows({
+      "size":      2048,
+      "extent":    90.0,
+      "near":      0.1,
+      "far":       250.0,
+      "bias":      0.004,
+      "pcfRadius": 0.0018
+    })
     _water    = WaterPipeline.new(g.device, g.surfaceFormat, g.depthFormat)
     _sky      = SkyboxPipeline.new(g.device, g.surfaceFormat, g.depthFormat)
 
@@ -450,6 +462,42 @@ class ProceduralWorld is Game {
     var terrainModel = Mat4.scale(1, ampScale, 1)
     var waterModel  = Mat4.translation(0, _waterY, 0)
 
+    // ── Shadow pre-pass ─────────────────────────────────────────
+    // Soft directional shadows. End the framework's main pass
+    // (which it just opened but we haven't drawn into yet), run a
+    // depth-only pass from the sun's POV into the shadow map,
+    // then reopen the main pass with `loadOp: "load"` to pick up
+    // the cleared color/depth the framework's pass already wrote.
+    // Terrain is non-instanced; foliage buckets use the
+    // instanced shadow path with the same instance buffers the
+    // main PBR pass already populated.
+    pass.end
+    // Prep foliage matrices BEFORE the shadow pass so both the
+    // shadow draw and the main draw consume the same uploaded
+    // instance buffers (FoliageScene.uploadIfDirty_ runs once and
+    // flips its dirty bit, so the second consumer is free).
+    if (_flags["showFoliage"]) {
+      _foliage.setWaterY(_waterY)
+      _foliage.update(ampScale)
+    }
+    _renderer.beginShadowPass(g.encoder, _sun["dir"], _camera.target)
+    _renderer.drawShadow(_terrain.mesh, terrainModel)
+    if (_flags["showFoliage"]) _foliage.drawShadow(_renderer)
+    _renderer.endShadowPass
+    pass = g.encoder.beginRenderPass({
+      "colorAttachments": [{
+        "view":     g.colorView,
+        "loadOp":   "load",
+        "storeOp":  "store"
+      }],
+      "depthStencilAttachment": {
+        "view":          g.depthView,
+        "depthLoadOp":   "load",
+        "depthStoreOp":  "store"
+      }
+    })
+    g.pass = pass
+
     // Build a mirror camera once for the planar-reflection pass
     // that runs at the end of this frame. Reflecting eye + target
     // across the water plane (y = _waterY) and flipping the up
@@ -495,11 +543,10 @@ class ProceduralWorld is Game {
     // changes. `update(ampScale)` decides; `draw(renderer)` issues
     // the per-bucket instanced draws (≤ 5 buffer uploads + ~10
     // draws per frame).
-    if (_flags["showFoliage"]) {
-      _foliage.setWaterY(_waterY)
-      _foliage.update(ampScale)
-      _foliage.draw(_renderer)
-    }
+    // Foliage matrices were already updated + uploaded in the
+    // shadow pre-pass earlier in this frame; main-pass draw just
+    // rebinds the prepared instance buffers and issues PBR draws.
+    if (_flags["showFoliage"]) _foliage.draw(_renderer)
     var fc = _foliage.counts
     _visibleCount = fc[0] + fc[1] + fc[2] + fc[3] + fc[4]
     _culledCount  = 0

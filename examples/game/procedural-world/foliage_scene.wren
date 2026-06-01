@@ -157,14 +157,12 @@ class FoliageScene {
   /// pass — same data, two passes.
   /// @param {Renderer3D} renderer
   draw(renderer) {
+    uploadIfDirty_()
     var bi = 0
     var bn = _floats.count
     while (bi < bn) {
       var n = _counts[bi]
       if (n > 0) {
-        if (_uploadDirty) {
-          _bufs[bi].writeFloatsN(0, _floats[bi], n * 32)
-        }
         var prims = _prims[bi]
         var pi = 0
         var pn = prims.count
@@ -176,7 +174,46 @@ class FoliageScene {
       }
       bi = bi + 1
     }
-    if (_uploadDirty) _uploadDirty = false
+  }
+
+  /// Issue one `drawShadowMeshInstanced` per primitive per non-
+  /// empty bucket — the depth-only counterpart to `draw`. Material
+  /// + textures are unused (shadow VS is position-only); only the
+  /// mesh's vertex/index buffers and the per-bucket instance
+  /// buffer are bound. Uploads dirty buffers on entry so callers
+  /// can invoke `drawShadow` before `draw` and the main pass
+  /// reuses the already-uploaded bytes.
+  /// @param {Renderer3D} renderer
+  drawShadow(renderer) {
+    uploadIfDirty_()
+    var bi = 0
+    var bn = _floats.count
+    while (bi < bn) {
+      var n = _counts[bi]
+      if (n > 0) {
+        var prims = _prims[bi]
+        // Only the first primitive needs shadow coverage — the
+        // tree-bark + leaves primitives in each bucket share the
+        // same instance transform, so casting one bucket-shaped
+        // shadow per instance is enough; doubling up just thickens
+        // the depth write without changing the resulting shadow.
+        var prim = prims[0]
+        renderer.drawShadowMeshInstanced(prim.mesh, _bufs[bi], n)
+      }
+      bi = bi + 1
+    }
+  }
+
+  uploadIfDirty_() {
+    if (!_uploadDirty) return
+    var bi = 0
+    var bn = _floats.count
+    while (bi < bn) {
+      var n = _counts[bi]
+      if (n > 0) _bufs[bi].writeFloatsN(0, _floats[bi], n * 32)
+      bi = bi + 1
+    }
+    _uploadDirty = false
   }
 
   /// Release every per-bucket instance buffer.
