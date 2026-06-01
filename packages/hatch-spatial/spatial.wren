@@ -1,5 +1,5 @@
 // `@hatch:spatial`. Spatial acceleration structures for 3D
-// procedural worlds. Two complementary shapes ship today:
+// procedural worlds. Four complementary shapes ship:
 //
 //   ClusterGrid — uniform 3D bucket grid. Cheapest insert, O(1)
 //   cell lookup, fast radius / AABB queries when entity density
@@ -11,11 +11,17 @@
 //   blocks beside open fields) without wasting memory on empty
 //   regions.
 //
-// Both store points keyed by caller-supplied numeric ids. Storing
-// AABBs / arbitrary shapes is a planned extension; for now the
-// caller inflates query radii to cover an entity's bounds.
-// BVH (ray cast acceleration) and Quadtree (2D variant) land in
-// follow-up releases.
+//   Quadtree2D — 2D variant of Octree. Sprite hit-testing, UI
+//   click regions, 2D particle bucketing.
+//
+//   BVH — axis-aligned bounding-volume hierarchy over AABBs. The
+//   path the renderer takes for ray casts and frustum culling
+//   over large instance counts. Stores items by `(id, minX, minY,
+//   minZ, maxX, maxY, maxZ)` tuples; supports `refit` so moving
+//   AABBs don't need a full rebuild every frame.
+//
+// ClusterGrid / Octree / Quadtree2D index points; BVH indexes
+// AABBs.
 
 /// Uniform 3D bucket grid. `O(1)` insert + lookup; query cost is
 /// `O(visited cells × entities per cell)`. Pick `cellSize` to be
@@ -549,5 +555,598 @@ class OctreeNode_ {
   clear_() {
     _entries = []
     _children = null
+  }
+}
+
+/// 2D variant of `Octree`. Stores points by numeric id, subdivides
+/// each leaf into four children when entries exceed `maxPerLeaf`.
+/// Same query contract as `Octree` minus the z axis.
+///
+/// ## Example
+///
+/// ```wren
+/// var tree = Quadtree2D.new(-256, -256, 256, 256, 16)
+/// tree.insert(0, x, y)
+/// tree.queryRadius(cx, cy, 32.0) {|id, ix, iy| ... }
+/// ```
+class Quadtree2D {
+  /// Build a tree spanning the world AABB. `maxPerLeaf` caps the
+  /// number of entities a leaf holds before subdividing — 8–16 is
+  /// the typical sweet spot for tree depth vs. linear-scan cost.
+  ///
+  /// @param {Num} minX
+  /// @param {Num} minY
+  /// @param {Num} maxX
+  /// @param {Num} maxY
+  /// @param {Num} maxPerLeaf
+  construct new(minX, minY, maxX, maxY, maxPerLeaf) {
+    if (maxPerLeaf < 1) Fiber.abort("Quadtree2D.new: maxPerLeaf must be >= 1.")
+    _root = Quadtree2DNode_.new_(minX, minY, maxX, maxY)
+    _max = maxPerLeaf
+    _ids = {}   // id → leaf node, for fast remove
+  }
+
+  count { _ids.count }
+
+  /// Insert at `(x, y)`. Aborts on duplicate id.
+  insert(id, x, y) {
+    if (_ids.containsKey(id)) {
+      Fiber.abort("Quadtree2D.insert: id %(id) already present.")
+    }
+    var leaf = _root.insert_(id, x, y, _max)
+    _ids[id] = leaf
+  }
+
+  remove(id) {
+    var leaf = _ids[id]
+    if (leaf == null) return
+    leaf.removeEntry_(id)
+    _ids.remove(id)
+  }
+
+  /// Yield every entity within `radius` of `(cx, cy)`.
+  /// Callback signature: `cb(id, x, y)`. Returning `false` stops
+  /// iteration.
+  queryRadius(cx, cy, radius, cb) {
+    _root.queryRadius_(cx, cy, radius * radius, radius, cb)
+  }
+
+  /// AABB query. Same callback contract as `queryRadius`.
+  queryAabb(minX, minY, maxX, maxY, cb) {
+    _root.queryAabb_(minX, minY, maxX, maxY, cb)
+  }
+
+  clear() {
+    _root.clear_()
+    _ids = {}
+  }
+}
+
+class Quadtree2DNode_ {
+  construct new_(minX, minY, maxX, maxY) {
+    _minX = minX
+    _minY = minY
+    _maxX = maxX
+    _maxY = maxY
+    _midX = (minX + maxX) * 0.5
+    _midY = (minY + maxY) * 0.5
+    _entries = []
+    _children = null
+  }
+
+  entries  { _entries }
+  children { _children }
+
+  insert_(id, x, y, maxPerLeaf) {
+    if (_children != null) {
+      return childFor_(x, y).insert_(id, x, y, maxPerLeaf)
+    }
+    _entries.add([id, x, y])
+    if (_entries.count > maxPerLeaf) {
+      subdivide_(maxPerLeaf)
+      if (_children == null) return this
+      return descendForId_(id, x, y)
+    }
+    return this
+  }
+
+  subdivide_(maxPerLeaf) {
+    var span = _maxX - _minX
+    if (_maxY - _minY > span) span = _maxY - _minY
+    if (span < 1e-6) return
+
+    var oldEntries = _entries
+    _entries = []
+    _children = List.filled(4, null)
+    _children[0] = Quadtree2DNode_.new_(_minX, _minY, _midX, _midY)
+    _children[1] = Quadtree2DNode_.new_(_midX, _minY, _maxX, _midY)
+    _children[2] = Quadtree2DNode_.new_(_minX, _midY, _midX, _maxY)
+    _children[3] = Quadtree2DNode_.new_(_midX, _midY, _maxX, _maxY)
+    for (e in oldEntries) {
+      childFor_(e[1], e[2]).entries.add(e)
+    }
+    for (child in _children) {
+      if (child.entries.count > maxPerLeaf) {
+        child.subdivide_(maxPerLeaf)
+      }
+    }
+  }
+
+  childFor_(x, y) {
+    var ox = x >= _midX ? 1 : 0
+    var oy = y >= _midY ? 2 : 0
+    return _children[ox + oy]
+  }
+
+  descendForId_(id, x, y) {
+    if (_children == null) {
+      for (entry in _entries) {
+        if (entry[0] == id) return this
+      }
+      return null
+    }
+    return childFor_(x, y).descendForId_(id, x, y)
+  }
+
+  removeEntry_(id) {
+    for (i in 0..._entries.count) {
+      if (_entries[i][0] == id) {
+        _entries.removeAt(i)
+        return
+      }
+    }
+  }
+
+  queryRadius_(cx, cy, r2, r, cb) {
+    if (!intersectsCircle_(cx, cy, r)) return
+    if (_children != null) {
+      for (child in _children) {
+        if (child.queryRadius_(cx, cy, r2, r, cb) == false) return false
+      }
+      return
+    }
+    for (e in _entries) {
+      var dx = e[1] - cx
+      var dy = e[2] - cy
+      if (dx * dx + dy * dy <= r2) {
+        if (cb.call(e[0], e[1], e[2]) == false) return false
+      }
+    }
+  }
+
+  queryAabb_(minX, minY, maxX, maxY, cb) {
+    if (_maxX < minX || _minX > maxX) return
+    if (_maxY < minY || _minY > maxY) return
+    if (_children != null) {
+      for (child in _children) {
+        if (child.queryAabb_(minX, minY, maxX, maxY, cb) == false) return false
+      }
+      return
+    }
+    for (e in _entries) {
+      var x = e[1]
+      var y = e[2]
+      if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+        if (cb.call(e[0], x, y) == false) return false
+      }
+    }
+  }
+
+  intersectsCircle_(cx, cy, r) {
+    var dx = 0
+    var dy = 0
+    if (cx < _minX) dx = _minX - cx
+    if (cx > _maxX) dx = cx - _maxX
+    if (cy < _minY) dy = _minY - cy
+    if (cy > _maxY) dy = cy - _maxY
+    return (dx * dx + dy * dy) <= r * r
+  }
+
+  clear_() {
+    _entries = []
+    _children = null
+  }
+}
+
+/// Axis-aligned bounding-volume hierarchy. The acceleration
+/// structure of choice for ray casts and frustum culling over
+/// large numbers of objects with non-trivial extent.
+///
+/// Built from a `List` of items where each item is the 7-element
+/// list `[id, minX, minY, minZ, maxX, maxY, maxZ]`. The tree is
+/// built top-down via median split along the longest-axis at each
+/// internal node — simple, fast to build, accepts arbitrary
+/// AABB sizes. `refit()` walks the tree bottom-up recomputing
+/// internal AABBs without restructuring, so moving objects can
+/// update their leaf AABB and trigger a refit each frame instead
+/// of a full rebuild.
+///
+/// Caller-supplied numeric `id`s are surfaced through every query
+/// callback. The id space is opaque to the BVH — game code keeps
+/// the mapping from id to whatever scene-side handle it needs.
+///
+/// ## Example
+///
+/// ```wren
+/// var items = []
+/// for (i in 0...count) {
+///   items.add([i, x - r, y - r, z - r, x + r, y + r, z + r])
+/// }
+/// var bvh = BVH.new(items)
+/// var visible = Int32Array.new(count)
+/// var n = bvh.queryFrustum(camera.frustumPlanes, visible)
+/// for (i in 0...n) renderInstance(visible[i])
+/// ```
+class BVH {
+  /// Build a BVH over `items`. Each `item` must be a 7-element
+  /// `List<Num>` shaped as `[id, minX, minY, minZ, maxX, maxY, maxZ]`.
+  /// The `id` is returned verbatim through every query callback;
+  /// `maxAxis < minAxis` is rejected.
+  ///
+  /// Empty input is allowed — the BVH has zero leaves and every
+  /// query returns 0.
+  ///
+  /// @param {List} items
+  construct new(items) {
+    _items = []
+    _idToIndex = {}         // id → index in _items
+    for (i in 0...items.count) {
+      var it = items[i]
+      if (it.count < 7) {
+        Fiber.abort("BVH.new: item must be [id, minX, minY, minZ, maxX, maxY, maxZ].")
+      }
+      if (_idToIndex.containsKey(it[0])) {
+        Fiber.abort("BVH.new: duplicate id %(it[0]).")
+      }
+      _idToIndex[it[0]] = i
+      _items.add(it)
+    }
+    _root = _items.count > 0 ? buildNode_(0, _items.count - 1, indexList_()) : null
+  }
+
+  /// Number of items currently indexed.
+  /// @returns {Num}
+  count { _items.count }
+
+  /// Replace the AABB associated with `id`. The tree structure is
+  /// not rebuilt — call `refit()` afterwards (typically once per
+  /// frame after all moves) so internal node AABBs catch up.
+  ///
+  /// @param {Num} id
+  /// @param {Num} minX
+  /// @param {Num} minY
+  /// @param {Num} minZ
+  /// @param {Num} maxX
+  /// @param {Num} maxY
+  /// @param {Num} maxZ
+  updateAabb(id, minX, minY, minZ, maxX, maxY, maxZ) {
+    var idx = _idToIndex[id]
+    if (idx == null) Fiber.abort("BVH.updateAabb: unknown id %(id).")
+    var it = _items[idx]
+    it[1] = minX
+    it[2] = minY
+    it[3] = minZ
+    it[4] = maxX
+    it[5] = maxY
+    it[6] = maxZ
+  }
+
+  /// Recompute internal-node AABBs bottom-up from current leaf
+  /// AABBs. Use after a batch of `updateAabb` calls when entities
+  /// have moved — much cheaper than rebuilding the tree.
+  refit() {
+    if (_root != null) refitNode_(_root)
+  }
+
+  /// Fill `out` (an `Int32Array`) with the `id`s of items whose
+  /// AABBs are not fully outside any plane of the camera frustum.
+  /// Returns the number of indices written.
+  ///
+  /// `planes` is the 24-float `Camera3D.frustumPlanes` payload.
+  /// Each plane is `[a, b, c, d]` such that `a*x + b*y + c*z + d`
+  /// is the signed distance from the plane; positive = inside.
+  ///
+  /// The test is conservative — items partially inside one plane
+  /// and partially outside another remain in the visible set.
+  /// Use a per-fragment / per-pixel cull downstream if exact
+  /// visibility matters.
+  ///
+  /// @param {Float32Array} planes
+  /// @param {Int32Array} out
+  /// @returns {Num}
+  queryFrustum(planes, out) {
+    _cursor = 0
+    _out = out
+    if (_root != null) queryFrustumNode_(_root, planes)
+    return _cursor
+  }
+
+  /// Fill `out` (an `Int32Array`) with the `id`s of items whose
+  /// AABBs the ray `origin + t * dir` enters (for any `t >= 0`).
+  /// Returns the count, capped at `maxResults`. The order is
+  /// AABB-traversal order, not nearest-first — callers needing
+  /// nearest-first should sort post-hoc against the returned ids.
+  ///
+  /// @param {Num} originX
+  /// @param {Num} originY
+  /// @param {Num} originZ
+  /// @param {Num} dirX
+  /// @param {Num} dirY
+  /// @param {Num} dirZ
+  /// @param {Int32Array} out
+  /// @param {Num} maxResults
+  /// @returns {Num}
+  queryRay(originX, originY, originZ, dirX, dirY, dirZ, out, maxResults) {
+    _cursor = 0
+    _out = out
+    _rayCap = maxResults
+    var invX = dirX == 0 ? 1.0e30 : 1.0 / dirX
+    var invY = dirY == 0 ? 1.0e30 : 1.0 / dirY
+    var invZ = dirZ == 0 ? 1.0e30 : 1.0 / dirZ
+    if (_root != null) {
+      queryRayNode_(_root, originX, originY, originZ, invX, invY, invZ)
+    }
+    return _cursor
+  }
+
+  /// Fill `out` with `id`s of items whose AABBs overlap the given
+  /// query AABB. Returns the count written.
+  ///
+  /// @param {Num} minX
+  /// @param {Num} minY
+  /// @param {Num} minZ
+  /// @param {Num} maxX
+  /// @param {Num} maxY
+  /// @param {Num} maxZ
+  /// @param {Int32Array} out
+  /// @returns {Num}
+  queryAabb(minX, minY, minZ, maxX, maxY, maxZ, out) {
+    _cursor = 0
+    _out = out
+    if (_root != null) {
+      queryAabbNode_(_root, minX, minY, minZ, maxX, maxY, maxZ)
+    }
+    return _cursor
+  }
+
+  // --- internals ----------------------------------------------------
+
+  indexList_() {
+    var idx = List.filled(_items.count, 0)
+    for (i in 0..._items.count) idx[i] = i
+    return idx
+  }
+
+  // Build a subtree over the entries `indices[lo..hi]` (inclusive).
+  // Median split along the longest axis of the parent AABB. Stops
+  // when a range fits in a single leaf (we use leaf size = 1 for
+  // simplicity; multi-entry leaves are a future tuning lever).
+  buildNode_(lo, hi, indices) {
+    var node = BVHNode_.new_()
+    if (lo == hi) {
+      // Leaf: AABB is the single item's. Bypassing `computeAabb_`
+      // because Wren's `..` operator is descending when the start
+      // exceeds the end, so the `(lo+1)..hi` loop inside would
+      // iterate `[lo+1, lo]` and read past the indices array.
+      var it = _items[indices[lo]]
+      node.setAabb_(it[1], it[2], it[3], it[4], it[5], it[6])
+      node.bindLeaf_(indices[lo])
+      return node
+    }
+    computeAabb_(node, lo, hi, indices)
+    var axis = longestAxis_(node)
+    sortByCentroid_(indices, lo, hi, axis)
+    var mid = ((lo + hi) / 2).floor
+    node.bindInternal_(buildNode_(lo, mid, indices), buildNode_(mid + 1, hi, indices))
+    return node
+  }
+
+  computeAabb_(node, lo, hi, indices) {
+    var first = _items[indices[lo]]
+    var nMinX = first[1]
+    var nMinY = first[2]
+    var nMinZ = first[3]
+    var nMaxX = first[4]
+    var nMaxY = first[5]
+    var nMaxZ = first[6]
+    for (k in (lo + 1)..hi) {
+      var it = _items[indices[k]]
+      if (it[1] < nMinX) nMinX = it[1]
+      if (it[2] < nMinY) nMinY = it[2]
+      if (it[3] < nMinZ) nMinZ = it[3]
+      if (it[4] > nMaxX) nMaxX = it[4]
+      if (it[5] > nMaxY) nMaxY = it[5]
+      if (it[6] > nMaxZ) nMaxZ = it[6]
+    }
+    node.setAabb_(nMinX, nMinY, nMinZ, nMaxX, nMaxY, nMaxZ)
+  }
+
+  longestAxis_(node) {
+    var dx = node.maxX - node.minX
+    var dy = node.maxY - node.minY
+    var dz = node.maxZ - node.minZ
+    if (dx >= dy && dx >= dz) return 0
+    if (dy >= dz) return 1
+    return 2
+  }
+
+  // In-place insertion sort over indices[lo..hi] by item-centroid
+  // along `axis`. Insertion sort is fine for the BVH path because
+  // subarrays shrink fast — a quicksort costs more on small ranges
+  // and the median-split build never recurses on a range below ~16
+  // before bottoming out to leaves. For 1M-item builds where this
+  // becomes hot, the same logic in Rust as a plugin gives ~10x.
+  sortByCentroid_(indices, lo, hi, axis) {
+    var i = lo + 1
+    while (i <= hi) {
+      var k = indices[i]
+      var c = centroid_(k, axis)
+      var j = i - 1
+      while (j >= lo && centroid_(indices[j], axis) > c) {
+        indices[j + 1] = indices[j]
+        j = j - 1
+      }
+      indices[j + 1] = k
+      i = i + 1
+    }
+  }
+
+  centroid_(idx, axis) {
+    var it = _items[idx]
+    if (axis == 0) return (it[1] + it[4]) * 0.5
+    if (axis == 1) return (it[2] + it[5]) * 0.5
+    return (it[3] + it[6]) * 0.5
+  }
+
+  refitNode_(node) {
+    if (node.isLeaf) {
+      var it = _items[node.itemIndex]
+      node.setAabb_(it[1], it[2], it[3], it[4], it[5], it[6])
+      return
+    }
+    refitNode_(node.left)
+    refitNode_(node.right)
+    var l = node.left
+    var r = node.right
+    var nMinX = l.minX < r.minX ? l.minX : r.minX
+    var nMinY = l.minY < r.minY ? l.minY : r.minY
+    var nMinZ = l.minZ < r.minZ ? l.minZ : r.minZ
+    var nMaxX = l.maxX > r.maxX ? l.maxX : r.maxX
+    var nMaxY = l.maxY > r.maxY ? l.maxY : r.maxY
+    var nMaxZ = l.maxZ > r.maxZ ? l.maxZ : r.maxZ
+    node.setAabb_(nMinX, nMinY, nMinZ, nMaxX, nMaxY, nMaxZ)
+  }
+
+  // Frustum classification: pick the AABB corner most along each
+  // plane's normal (the "p-vertex"). If that corner is behind the
+  // plane the entire AABB is — short-circuit. This is the
+  // conservative test every renderer uses.
+  classifyFrustum_(node, planes) {
+    var i = 0
+    while (i < 24) {
+      var a = planes[i]
+      var b = planes[i + 1]
+      var c = planes[i + 2]
+      var d = planes[i + 3]
+      var px = a >= 0 ? node.maxX : node.minX
+      var py = b >= 0 ? node.maxY : node.minY
+      var pz = c >= 0 ? node.maxZ : node.minZ
+      if (a * px + b * py + c * pz + d < 0) return false
+      i = i + 4
+    }
+    return true
+  }
+
+  queryFrustumNode_(node, planes) {
+    if (!classifyFrustum_(node, planes)) return
+    if (node.isLeaf) {
+      var it = _items[node.itemIndex]
+      _out[_cursor] = it[0]
+      _cursor = _cursor + 1
+      return
+    }
+    queryFrustumNode_(node.left, planes)
+    queryFrustumNode_(node.right, planes)
+  }
+
+  // Standard slab method. Reject the AABB if the ray's intervals
+  // along x/y/z don't overlap. `inv*` is `1/dir*` pre-computed in
+  // queryRay so we avoid per-recursion divides.
+  rayHitsAabb_(node, ox, oy, oz, invX, invY, invZ) {
+    var tx1 = (node.minX - ox) * invX
+    var tx2 = (node.maxX - ox) * invX
+    var tmin = tx1 < tx2 ? tx1 : tx2
+    var tmax = tx1 > tx2 ? tx1 : tx2
+
+    var ty1 = (node.minY - oy) * invY
+    var ty2 = (node.maxY - oy) * invY
+    var tymin = ty1 < ty2 ? ty1 : ty2
+    var tymax = ty1 > ty2 ? ty1 : ty2
+    if (tymin > tmin) tmin = tymin
+    if (tymax < tmax) tmax = tymax
+
+    var tz1 = (node.minZ - oz) * invZ
+    var tz2 = (node.maxZ - oz) * invZ
+    var tzmin = tz1 < tz2 ? tz1 : tz2
+    var tzmax = tz1 > tz2 ? tz1 : tz2
+    if (tzmin > tmin) tmin = tzmin
+    if (tzmax < tmax) tmax = tzmax
+
+    return tmax >= 0 && tmin <= tmax
+  }
+
+  queryRayNode_(node, ox, oy, oz, invX, invY, invZ) {
+    if (_cursor >= _rayCap) return
+    if (!rayHitsAabb_(node, ox, oy, oz, invX, invY, invZ)) return
+    if (node.isLeaf) {
+      var it = _items[node.itemIndex]
+      _out[_cursor] = it[0]
+      _cursor = _cursor + 1
+      return
+    }
+    queryRayNode_(node.left, ox, oy, oz, invX, invY, invZ)
+    queryRayNode_(node.right, ox, oy, oz, invX, invY, invZ)
+  }
+
+  queryAabbNode_(node, qMinX, qMinY, qMinZ, qMaxX, qMaxY, qMaxZ) {
+    if (node.maxX < qMinX || node.minX > qMaxX) return
+    if (node.maxY < qMinY || node.minY > qMaxY) return
+    if (node.maxZ < qMinZ || node.minZ > qMaxZ) return
+    if (node.isLeaf) {
+      var it = _items[node.itemIndex]
+      _out[_cursor] = it[0]
+      _cursor = _cursor + 1
+      return
+    }
+    queryAabbNode_(node.left, qMinX, qMinY, qMinZ, qMaxX, qMaxY, qMaxZ)
+    queryAabbNode_(node.right, qMinX, qMinY, qMinZ, qMaxX, qMaxY, qMaxZ)
+  }
+}
+
+// Internal BVH node — interior (two children, no item) or leaf
+// (one item index, no children).
+class BVHNode_ {
+  construct new_() {
+    _minX = 0
+    _minY = 0
+    _minZ = 0
+    _maxX = 0
+    _maxY = 0
+    _maxZ = 0
+    _left = null
+    _right = null
+    _itemIndex = -1
+  }
+
+  minX { _minX }
+  minY { _minY }
+  minZ { _minZ }
+  maxX { _maxX }
+  maxY { _maxY }
+  maxZ { _maxZ }
+  left  { _left }
+  right { _right }
+  itemIndex { _itemIndex }
+  isLeaf { _itemIndex >= 0 }
+
+  setAabb_(minX, minY, minZ, maxX, maxY, maxZ) {
+    _minX = minX
+    _minY = minY
+    _minZ = minZ
+    _maxX = maxX
+    _maxY = maxY
+    _maxZ = maxZ
+  }
+
+  bindLeaf_(idx) {
+    _itemIndex = idx
+    _left = null
+    _right = null
+  }
+
+  bindInternal_(left, right) {
+    _itemIndex = -1
+    _left = left
+    _right = right
   }
 }

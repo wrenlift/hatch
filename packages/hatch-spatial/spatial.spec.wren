@@ -4,7 +4,7 @@
 // volume (no false positives, no misses), early-out via `false`
 // return short-circuits the walk.
 
-import "./spatial"   for ClusterGrid, Octree
+import "./spatial"   for ClusterGrid, Octree, Quadtree2D, BVH
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -211,6 +211,214 @@ Test.describe("Octree subdivision invariant") {
     var hits = 0
     t.queryRadius(0, 0, 0, 0.5) {|id, x, y, z| hits = hits + 1 }
     Expect.that(hits).toBe(20)
+  }
+}
+
+Test.describe("Quadtree2D.insert + remove + queryRadius") {
+  Test.it("count tracks insert / remove") {
+    var t = Quadtree2D.new(-10, -10, 10, 10, 4)
+    Expect.that(t.count).toBe(0)
+    t.insert(1, 0, 0)
+    t.insert(2, 3, 3)
+    Expect.that(t.count).toBe(2)
+    t.remove(1)
+    Expect.that(t.count).toBe(1)
+  }
+
+  Test.it("aborts on duplicate id") {
+    var t = Quadtree2D.new(-10, -10, 10, 10, 4)
+    t.insert(1, 0, 0)
+    var e = Fiber.new { t.insert(1, 2, 2) }.try()
+    Expect.that(e).toContain("already present")
+  }
+
+  Test.it("queryRadius returns every entity inside the circle, none outside") {
+    var t = Quadtree2D.new(-100, -100, 100, 100, 4)
+    t.insert(1, 0, 0)
+    t.insert(2, 5, 0)
+    t.insert(3, 30, 30)
+    var hits = {}
+    t.queryRadius(0, 0, 10) {|id, x, y| hits[id] = true }
+    Expect.that(hits[1]).toBe(true)
+    Expect.that(hits[2]).toBe(true)
+    Expect.that(hits.containsKey(3)).toBe(false)
+  }
+
+  Test.it("queryAabb returns every entity inside the rectangle") {
+    var t = Quadtree2D.new(-100, -100, 100, 100, 4)
+    for (i in 0...50) t.insert(i, i * 1.0, i * 1.0)
+    var hits = []
+    t.queryAabb(10, 10, 30, 30) {|id, x, y| hits.add(id) }
+    // ids 10..30 inclusive.
+    Expect.that(hits.count).toBe(21)
+  }
+
+  Test.it("survives stacking many entities at the same point") {
+    var t = Quadtree2D.new(-10, -10, 10, 10, 2)
+    for (i in 0...20) t.insert(i, 0, 0)
+    Expect.that(t.count).toBe(20)
+    var hits = 0
+    t.queryRadius(0, 0, 0.5) {|id, x, y| hits = hits + 1 }
+    Expect.that(hits).toBe(20)
+  }
+}
+
+Test.describe("BVH.new + queryAabb") {
+  Test.it("empty input gives zero count and queries return 0") {
+    var bvh = BVH.new([])
+    Expect.that(bvh.count).toBe(0)
+    var out = List.filled(8, 0)
+    Expect.that(bvh.queryAabb(-1, -1, -1, 1, 1, 1, out)).toBe(0)
+  }
+
+  Test.it("queryAabb returns every overlapping item, no misses") {
+    // Three unit cubes laid out along x.
+    var items = [
+      [0,  0, 0, 0, 1, 1, 1],
+      [1, 10, 0, 0, 11, 1, 1],
+      [2, 20, 0, 0, 21, 1, 1]
+    ]
+    var bvh = BVH.new(items)
+    Expect.that(bvh.count).toBe(3)
+    var out = List.filled(8, 0)
+    var n = bvh.queryAabb(-1, -1, -1, 12, 1, 1, out)
+    Expect.that(n).toBe(2)
+    var got = {}
+    for (i in 0...n) got[out[i]] = true
+    Expect.that(got[0]).toBe(true)
+    Expect.that(got[1]).toBe(true)
+    Expect.that(got.containsKey(2)).toBe(false)
+  }
+
+  Test.it("rejects duplicate ids on build") {
+    var e = Fiber.new {
+      BVH.new([[7, 0, 0, 0, 1, 1, 1], [7, 5, 5, 5, 6, 6, 6]])
+    }.try()
+    Expect.that(e).toContain("duplicate id")
+  }
+}
+
+Test.describe("BVH.queryRay") {
+  Test.it("hits items the ray actually enters") {
+    // Three blockers strung along +x: at x=5, x=15, x=25.
+    var items = [
+      [0,  4.5, -0.5, -0.5,  5.5, 0.5, 0.5],
+      [1, 14.5, -0.5, -0.5, 15.5, 0.5, 0.5],
+      [2, 24.5, -0.5, -0.5, 25.5, 0.5, 0.5]
+    ]
+    var bvh = BVH.new(items)
+    var out = List.filled(8, 0)
+    var n = bvh.queryRay(0, 0, 0, 1, 0, 0, out, 8)
+    Expect.that(n).toBe(3)
+  }
+
+  Test.it("misses items the ray flies past") {
+    // Ray on the y-axis won't intersect AABBs lined up on +x.
+    var items = [
+      [0,  4.5, -0.5, -0.5,  5.5, 0.5, 0.5],
+      [1, 14.5, -0.5, -0.5, 15.5, 0.5, 0.5]
+    ]
+    var bvh = BVH.new(items)
+    var out = List.filled(8, 0)
+    var n = bvh.queryRay(0, 10, 0, 0, 1, 0, out, 8)
+    Expect.that(n).toBe(0)
+  }
+
+  Test.it("respects maxResults cap") {
+    var items = []
+    for (i in 0...10) items.add([i, i * 2.0 - 0.5, -0.5, -0.5, i * 2.0 + 0.5, 0.5, 0.5])
+    var bvh = BVH.new(items)
+    var out = List.filled(16, 0)
+    var n = bvh.queryRay(-1, 0, 0, 1, 0, 0, out, 3)
+    Expect.that(n).toBe(3)
+  }
+}
+
+Test.describe("BVH.queryFrustum") {
+  // Build a hand-rolled axis-aligned frustum that retains
+  // (-10..10, -10..10, -100..100). Plane format matches
+  // Camera3D.frustumPlanes: 6 planes × [a, b, c, d] with positive
+  // signed distance = inside.
+  //
+  // Plane equation: a*x + b*y + c*z + d >= 0 means "inside".
+  //   left   :  ( 1, 0, 0,  10)  → x >= -10
+  //   right  :  (-1, 0, 0,  10)  → x <=  10
+  //   bottom :  ( 0, 1, 0,  10)  → y >= -10
+  //   top    :  ( 0,-1, 0,  10)  → y <=  10
+  //   near   :  ( 0, 0, 1, 100)  → z >= -100
+  //   far    :  ( 0, 0,-1, 100)  → z <=  100
+  var planes = List.filled(24, 0)
+  // left   : (1, 0, 0, 10) → x >= -10
+  planes[0] = 1
+  planes[3] = 10
+  // right  : (-1, 0, 0, 10) → x <= 10
+  planes[4] = -1
+  planes[7] = 10
+  // bottom : (0, 1, 0, 10) → y >= -10
+  planes[9] = 1
+  planes[11] = 10
+  // top    : (0, -1, 0, 10) → y <= 10
+  planes[13] = -1
+  planes[15] = 10
+  // near   : (0, 0, 1, 100) → z >= -100
+  planes[18] = 1
+  planes[19] = 100
+  // far    : (0, 0, -1, 100) → z <= 100
+  planes[22] = -1
+  planes[23] = 100
+
+  Test.it("keeps items inside, drops items fully outside") {
+    var items = [
+      [0,  0, 0, 0,  1, 1, 1],          // fully inside
+      [1, 50, 50, 0, 51, 51, 1],         // outside on x AND y
+      [2, -5, -5, -5, 5, 5, 5],          // fully inside
+      [3, 200, 0, 0, 201, 1, 1]          // outside on x
+    ]
+    var bvh = BVH.new(items)
+    var out = List.filled(8, 0)
+    var n = bvh.queryFrustum(planes, out)
+    var got = {}
+    for (i in 0...n) got[out[i]] = true
+    Expect.that(got[0]).toBe(true)
+    Expect.that(got[2]).toBe(true)
+    Expect.that(got.containsKey(1)).toBe(false)
+    Expect.that(got.containsKey(3)).toBe(false)
+  }
+
+  Test.it("keeps items that straddle the boundary") {
+    var items = [
+      [0, 8, 8, 0, 12, 12, 1]    // half inside, half outside
+    ]
+    var bvh = BVH.new(items)
+    var out = List.filled(2, 0)
+    var n = bvh.queryFrustum(planes, out)
+    Expect.that(n).toBe(1)
+    Expect.that(out[0]).toBe(0)
+  }
+}
+
+Test.describe("BVH.refit") {
+  Test.it("rejects updateAabb on unknown id") {
+    var bvh = BVH.new([[0, 0, 0, 0, 1, 1, 1]])
+    var e = Fiber.new { bvh.updateAabb(99, 0, 0, 0, 1, 1, 1) }.try()
+    Expect.that(e).toContain("unknown id")
+  }
+
+  Test.it("internal AABBs catch up to moved leaves") {
+    var items = [
+      [0,  0, 0, 0,  1, 1, 1],
+      [1, 10, 0, 0, 11, 1, 1]
+    ]
+    var bvh = BVH.new(items)
+    // Slide item 1 far away (was at x≈10, now at x≈200).
+    bvh.updateAabb(1, 200, 0, 0, 201, 1, 1)
+    bvh.refit()
+    // The pre-refit BVH's root AABB covered roughly x∈[0, 11];
+    // after refit a query AABB at x≈200 should still return id 1.
+    var out = List.filled(4, 0)
+    var n = bvh.queryAabb(199, -1, -1, 202, 2, 2, out)
+    Expect.that(n).toBe(1)
+    Expect.that(out[0]).toBe(1)
   }
 }
 
