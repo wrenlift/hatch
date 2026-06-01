@@ -1335,6 +1335,79 @@ class Renderer2D {
     "
   }
 
+  // Instanced-sprite shader. The Wren-side state buffer is laid
+  // out as `array<SpriteInstance>` with 16 f32 per slot:
+  //   [posX, posY, sizeX, sizeY,
+  //    u0, v0, u1, v1,
+  //    r, g, b, a,
+  //    rotation, _pad, _pad, _pad]
+  // posX/posY is the sprite centre; rotation is in radians. The
+  // last three pads keep the struct at a 16-byte WGSL stride so
+  // future fields (LOD index, atlas slice, etc.) can slot in
+  // without breaking existing buffers.
+  static INSTANCED_SPRITE_WGSL_ {
+    return "
+      struct Uniforms { vp: mat4x4<f32> };
+      @group(0) @binding(0) var<uniform> u: Uniforms;
+      struct SpriteInstance {
+        pos:      vec2<f32>,
+        size:     vec2<f32>,
+        uv0:      vec2<f32>,
+        uv1:      vec2<f32>,
+        color:    vec4<f32>,
+        rotation: f32,
+        _pad0:    f32,
+        _pad1:    f32,
+        _pad2:    f32,
+      };
+      @group(0) @binding(1) var<storage, read> instances: array<SpriteInstance>;
+      @group(0) @binding(2) var t: texture_2d<f32>;
+      @group(0) @binding(3) var s: sampler;
+
+      struct VsOut {
+        @builtin(position) clip:  vec4<f32>,
+        @location(0)       uv:    vec2<f32>,
+        @location(1)       color: vec4<f32>,
+      };
+
+      @vertex
+      fn vs_main(@builtin(vertex_index)   vi: u32,
+                 @builtin(instance_index) ii: u32) -> VsOut {
+        // Two-triangle unit quad with corner offsets in [-0.5, 0.5]
+        // so the per-instance rotation pivots around the sprite's
+        // centre. Index pattern: TL, BL, BR, TL, BR, TR.
+        var dx = array<f32, 6>(-0.5, -0.5, 0.5, -0.5, 0.5, 0.5);
+        var dy = array<f32, 6>(-0.5, 0.5, 0.5, -0.5, 0.5, -0.5);
+        var ux = array<f32, 6>( 0.0, 0.0, 1.0, 0.0, 1.0, 1.0);
+        var uy = array<f32, 6>( 0.0, 1.0, 1.0, 0.0, 1.0, 0.0);
+        let inst = instances[ii];
+        let cosR = cos(inst.rotation);
+        let sinR = sin(inst.rotation);
+        // Local-quad → rotation → translation. Size is applied
+        // before rotation so non-uniform scale stays axis-aligned
+        // to the sprite's local frame.
+        let lx = dx[vi] * inst.size.x;
+        let ly = dy[vi] * inst.size.y;
+        let wx = lx * cosR - ly * sinR + inst.pos.x;
+        let wy = lx * sinR + ly * cosR + inst.pos.y;
+        var o: VsOut;
+        o.clip  = u.vp * vec4<f32>(wx, wy, 0.0, 1.0);
+        o.uv    = mix(inst.uv0, inst.uv1, vec2<f32>(ux[vi], uy[vi]));
+        o.color = inst.color;
+        return o;
+      }
+      @fragment
+      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+        return textureSample(t, s, in.uv) * in.color;
+      }
+    "
+  }
+
+  /// Number of f32 per instance in the buffer `drawInstancedSprites`
+  /// reads. Each slot packs `[posX, posY, sizeX, sizeY, u0, v0,
+  /// u1, v1, r, g, b, a, rotation, _pad, _pad, _pad]`.
+  static FLOATS_PER_INSTANCE_ { 16 }
+
   static MAX_SPRITES_  { 4096 }
   static FLOATS_PER_VERTEX_  { 8 }   // 2 pos + 2 uv + 4 color
   static VERTS_PER_SPRITE_   { 6 }   // two triangles, no shared verts (simpler)
@@ -1400,6 +1473,30 @@ class Renderer2D {
     _currentBlend  = "alpha"
     _pipelines["alpha"] = buildPipelineFor_("alpha")
     _pipeline      = _pipelines["alpha"]
+
+    // Instanced-sprite shader + pipeline. Vertex-pulling: VS
+    // generates the unit-quad corner from `@builtin(vertex_index)`
+    // (0..5 for two triangles), reads per-instance state out of a
+    // storage buffer indexed by `@builtin(instance_index)`. One
+    // `pass.draw(6, N)` covers N sprites — no per-instance Wren
+    // overhead. Pairs with [drawInstancedSprites].
+    _instancedShader = device.createShaderModule({
+      "code":  Renderer2D.INSTANCED_SPRITE_WGSL_,
+      "label": "renderer2d-instanced-sprite"
+    })
+    _instancedBgl = device.createBindGroupLayout({
+      "entries": [
+        { "binding": 0, "visibility": ["vertex"],   "kind": "uniform" },
+        { "binding": 1, "visibility": ["vertex"],   "kind": "read-only-storage" },
+        { "binding": 2, "visibility": ["fragment"], "kind": "texture" },
+        { "binding": 3, "visibility": ["fragment"], "kind": "sampler" }
+      ]
+    })
+    _instancedPipelineLayout = device.createPipelineLayout(
+      {"bindGroupLayouts": [_instancedBgl]})
+    _instancedPipelines = {}
+    _instancedPipelines["alpha"] = buildInstancedPipelineFor_("alpha")
+    _instancedBgCache = {}
 
     var vboBytes = Renderer2D.MAX_SPRITES_ *
                    Renderer2D.VERTS_PER_SPRITE_ *
@@ -1548,6 +1645,35 @@ class Renderer2D {
       _pipelines[mode] = buildPipelineFor_(mode)
     }
     _pipeline = _pipelines[mode]
+  }
+
+  // Build an instanced-sprite pipeline for `blendMode`. No vertex
+  // buffer is bound — the VS pulls quad geometry from the vertex
+  // index. The fragment target inherits the renderer's surface
+  // format + depth format so the instanced path composites
+  // identically to the non-instanced batcher.
+  buildInstancedPipelineFor_(blendMode) {
+    var pipelineDesc = {
+      "layout": _instancedPipelineLayout,
+      "vertex": {
+        "module": _instancedShader, "entryPoint": "vs_main",
+        "buffers": []
+      },
+      "fragment": {
+        "module": _instancedShader, "entryPoint": "fs_main",
+        "targets": [{ "format": _surfaceFormat, "blend": blendMode }]
+      },
+      "primitive": { "topology": "triangle-list", "cullMode": "none" },
+      "label": "renderer2d-instanced-%(blendMode)"
+    }
+    if (_depthFormat != null) {
+      pipelineDesc["depthStencil"] = {
+        "format": _depthFormat,
+        "depthWriteEnabled": false,
+        "depthCompare": "always"
+      }
+    }
+    return _device.createRenderPipeline(pipelineDesc)
   }
 
   /// Build a Renderer2D pipeline for `blendMode`. Called lazily from
@@ -1741,6 +1867,105 @@ class Renderer2D {
     _curTexture = null
   }
 
+  /// Instanced sprite draw. `instanceBuffer` is a storage buffer
+  /// (usage `["storage", "copy-dst"]`) laid out as
+  /// `array<SpriteInstance>` with 16 f32 per slot — see
+  /// `INSTANCED_SPRITE_WGSL_` for the field order. Pack with
+  /// `Renderer2D.writeSpriteInstance(out, i, x, y, w, h, u0, v0,
+  /// u1, v1, r, g, b, a, rotation)` and upload via
+  /// `instanceBuffer.writeFloats(0, out)`.
+  ///
+  /// One `pass.draw(6, instanceCount)` covers the whole batch — no
+  /// per-instance Wren overhead. The buffer can also be the direct
+  /// output of a compute pass (decals, damage numbers, GPU-driven
+  /// UI) so the CPU never reads it.
+  ///
+  /// Honours the renderer's `setBlend` mode. Auto-flushes any
+  /// queued non-instanced sprites first so the existing batch
+  /// lands ahead of the instanced draw in submit order.
+  ///
+  /// @param {RenderPass} pass
+  /// @param {Texture} texture
+  /// @param {Buffer} instanceBuffer
+  /// @param {Num} instanceCount
+  drawInstancedSprites(pass, texture, instanceBuffer, instanceCount) {
+    if (instanceCount <= 0) return
+    if (_spriteCount > 0) flush(pass)
+    if (!_instancedPipelines.containsKey(_currentBlend)) {
+      _instancedPipelines[_currentBlend] = buildInstancedPipelineFor_(_currentBlend)
+    }
+    var bg = instancedBindGroupFor_(texture, instanceBuffer)
+    pass.setPipeline(_instancedPipelines[_currentBlend])
+    pass.setBindGroup(0, bg)
+    pass.draw(6, instanceCount)
+  }
+
+  // Cache the BindGroup that ties (texture, instanceBuffer) to
+  // the instanced pipeline. Keyed by `texture.id`+`buffer.id` so
+  // a caller reusing the same pair across frames hits the cache.
+  instancedBindGroupFor_(texture, instanceBuffer) {
+    var key = "%(texture.id):%(instanceBuffer.id)"
+    var existing = _instancedBgCache[key]
+    if (existing != null) return existing
+    var bg = _device.createBindGroup({
+      "layout":  _instancedBgl,
+      "entries": [
+        { "binding": 0, "buffer":  _ubo },
+        { "binding": 1, "buffer":  instanceBuffer },
+        { "binding": 2, "texture": texture.view },
+        { "binding": 3, "sampler": _sampler }
+      ]
+    })
+    _instancedBgCache[key] = bg
+    return bg
+  }
+
+  /// Pack one sprite instance into a 16-f32 slot at `slotIndex`
+  /// of `out`. Slot stride is `Renderer2D.FLOATS_PER_INSTANCE_`
+  /// (16). Pre-allocate `out` as
+  /// `Float32Array.new(capacity * 16)`; on upload pass the whole
+  /// buffer or a prefix to `instanceBuffer.writeFloats(0, out)`.
+  ///
+  /// `(x, y)` is the sprite centre. `(u0, v0, u1, v1)` is the UV
+  /// rectangle into the bound texture (axis-aligned; flip by
+  /// swapping bounds). `rotation` is in radians around the centre.
+  ///
+  /// @param {Float32Array} out
+  /// @param {Num} slotIndex
+  /// @param {Num} x
+  /// @param {Num} y
+  /// @param {Num} w
+  /// @param {Num} h
+  /// @param {Num} u0
+  /// @param {Num} v0
+  /// @param {Num} u1
+  /// @param {Num} v1
+  /// @param {Num} r
+  /// @param {Num} g
+  /// @param {Num} b
+  /// @param {Num} a
+  /// @param {Num} rotation
+  static writeSpriteInstance(out, slotIndex, x, y, w, h,
+                             u0, v0, u1, v1, r, g, b, a, rotation) {
+    var off = slotIndex * 16
+    out[off]      = x
+    out[off + 1]  = y
+    out[off + 2]  = w
+    out[off + 3]  = h
+    out[off + 4]  = u0
+    out[off + 5]  = v0
+    out[off + 6]  = u1
+    out[off + 7]  = v1
+    out[off + 8]  = r
+    out[off + 9]  = g
+    out[off + 10] = b
+    out[off + 11] = a
+    out[off + 12] = rotation
+    out[off + 13] = 0
+    out[off + 14] = 0
+    out[off + 15] = 0
+  }
+
   /// Release the GPU resources held by this renderer (vertex /
   /// uniform buffers, sampler, pipelines, layouts). Call when the
   /// renderer goes out of scope; not called automatically.
@@ -1749,8 +1974,11 @@ class Renderer2D {
     _ubo.destroy
     _sampler.destroy
     for (p in _pipelines.values) p.destroy
+    for (p in _instancedPipelines.values) p.destroy
     _pipelineLayout.destroy
+    _instancedPipelineLayout.destroy
     _bgl.destroy
+    _instancedBgl.destroy
   }
 }
 
