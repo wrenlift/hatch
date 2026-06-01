@@ -39,7 +39,6 @@ import "@hatch:math"    for Vec3, Vec4, Mat4
 import "@hatch:noise"   for Noise
 import "@hatch:assets"  for Assets
 import "@hatch:image"   for Image
-import "@hatch:fs"      for Fs
 import "@hatch:gltf"    for Gltf
 
 // Thin wrappers so HUD widgets see mouse coords in the same
@@ -175,26 +174,10 @@ class ProceduralWorld is Game {
     _seed = 1337
 
     // ── Terrain (sampled from value-noise-plateau PNG) ──────────
-    // Resolve the demo's assets directory. Try the local `assets`
-    // dir first; fall back to the workspace path if `hatch run`
-    // was launched from somewhere else (the typical case is from
-    // wren_lift root, where the demo assets sit two levels deeper).
-    var candidates = [
-      "assets",
-      "hatch/examples/game/procedural-world/assets",
-      "examples/game/procedural-world/assets"
-    ]
-    var assetsPath = null
-    for (p in candidates) {
-      if (Fs.isDir(p)) {
-        assetsPath = p
-        break
-      }
-    }
-    if (assetsPath == null) {
-      Fiber.abort("procedural-world: could not locate the `assets` dir. Run from the demo's package directory.")
-    }
-    var heightDb = Assets.open(assetsPath)
+    // `hatch run` chdir's into the workspace before invoking the VM,
+    // so `Fs.cwd` is this demo's directory regardless of where the
+    // user launched from. Plain relative path.
+    var heightDb = Assets.open("assets")
     // Heightmap → mesh → palette → normal → material. Lives in
     // topography.wren so this `setup` stays focused on wiring.
     _terrain = Topography.new(g, heightDb)
