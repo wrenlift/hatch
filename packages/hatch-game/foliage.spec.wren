@@ -129,4 +129,92 @@ Test.describe("Foliage.scatter scale") {
   }
 }
 
+Test.describe("Foliage.poisson") {
+  Test.it("returns points all at least r apart") {
+    var out = Foliage.poisson({
+      "bounds": [0, 0, 50, 50],
+      "r":      4,
+      "seed":   1234
+    })
+    Expect.that(out["count"] > 5).toBe(true)
+    var n = out["count"]
+    var xs = out["xs"]
+    var zs = out["zs"]
+    var minSq = 4 * 4
+    var ok = true
+    var i = 0
+    while (i < n && ok) {
+      var j = i + 1
+      while (j < n && ok) {
+        var dx = xs[i] - xs[j]
+        var dz = zs[i] - zs[j]
+        if (dx * dx + dz * dz < minSq - 0.0001) ok = false
+        j = j + 1
+      }
+      i = i + 1
+    }
+    Expect.that(ok).toBe(true)
+  }
+
+  Test.it("deterministic for the same seed") {
+    var a = Foliage.poisson({"bounds": [0, 0, 20, 20], "r": 2, "seed": 42})
+    var b = Foliage.poisson({"bounds": [0, 0, 20, 20], "r": 2, "seed": 42})
+    Expect.that(a["count"]).toBe(b["count"])
+    var i = 0
+    while (i < a["count"]) {
+      Expect.that(a["xs"][i]).toBe(b["xs"][i])
+      Expect.that(a["zs"][i]).toBe(b["zs"][i])
+      i = i + 1
+    }
+  }
+
+  Test.it("aborts on missing required options") {
+    var e1 = Fiber.new { Foliage.poisson({"r": 2}) }.try()
+    Expect.that(e1).toContain("bounds")
+    var e2 = Fiber.new { Foliage.poisson({"bounds": [0, 0, 10, 10]}) }.try()
+    Expect.that(e2).toContain("opts.r")
+  }
+}
+
+Test.describe("Foliage.fromHeightmap") {
+  Test.it("drops samples outside the slope window") {
+    var hm = Float32Array.new(16 * 16)
+    var out = Foliage.fromHeightmap({
+      "bounds":    [0, 0, 50, 50],
+      "r":         3,
+      "heightmap": hm,
+      "width":     16,
+      "height":    16,
+      "worldSize": [50, 50],
+      "slopeMin":  0.1
+    })
+    Expect.that(out["count"]).toBe(0)
+  }
+
+  Test.it("keeps samples on a gradient heightmap") {
+    var hm = Float32Array.new(16 * 16)
+    var j = 0
+    while (j < 16) {
+      var i = 0
+      while (i < 16) {
+        hm[j * 16 + i] = i * 0.5
+        i = i + 1
+      }
+      j = j + 1
+    }
+    var out = Foliage.fromHeightmap({
+      "bounds":    [0, 0, 50, 50],
+      "r":         5,
+      "heightmap": hm,
+      "width":     16,
+      "height":    16,
+      "worldSize": [50, 50],
+      "slopeMin":  0.1,
+      "slopeMax":  10,
+      "seed":      77
+    })
+    Expect.that(out["count"] > 0).toBe(true)
+  }
+}
+
 Test.run()
