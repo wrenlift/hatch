@@ -1,0 +1,9 @@
+name        = "decals-stamp"
+version     = "0.1.0"
+entry       = "main"
+description = "Click-to-stamp persistent surface decals on a ground plane. Showcases the new DecalLayer + Decal API — one instanced draw call covers every live decal, age-driven fade in/out, oriented to the surface normal."
+
+[dependencies]
+"@hatch:game" = { path = "../../../packages/hatch-game" }
+"@hatch:gpu"  = { path = "../../../packages/hatch-gpu" }
+"@hatch:math" = { path = "../../../packages/hatch-math" }
