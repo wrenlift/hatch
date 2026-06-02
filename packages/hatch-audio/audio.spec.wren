@@ -7,7 +7,7 @@
 // demo since it needs a window to keep the process alive long
 // enough for the audio thread to consume frames.
 
-import "./audio"       for Audio, Sound
+import "./audio"       for Audio, AudioGroup, Sound
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -66,11 +66,50 @@ Test.describe("Audio") {
     s.unload
   }
 
-  Test.it("rejects non-WAV byte buffers") {
+  Test.it("rejects unrecognised containers") {
     var e = Fiber.new {
       Sound.load([0, 1, 2, 3, 4, 5])
     }.try()
     Expect.that(e).toContain("WAV")
+  }
+}
+
+Test.describe("Audio.group") {
+  Test.it("returns an AudioGroup handle for known buses") {
+    Audio.context()
+    var music = Audio.group("music")
+    Expect.that(music is AudioGroup).toBe(true)
+    Expect.that(music.name).toBe("music")
+  }
+
+  Test.it("volume is initialised to 1 and is round-trippable") {
+    Audio.context()
+    var sfx = Audio.group("sfx")
+    Expect.that(sfx.volume).toBe(1)
+    sfx.volume = 0.5
+    Expect.that(sfx.volume).toBe(0.5)
+    // Restore so neighbouring tests aren't affected.
+    sfx.volume = 1
+  }
+
+  Test.it("master and ui are independent buses") {
+    Audio.context()
+    var master = Audio.group("master")
+    var ui = Audio.group("ui")
+    master.volume = 0.25
+    ui.volume = 0.75
+    Expect.that(master.volume).toBe(0.25)
+    Expect.that(ui.volume).toBe(0.75)
+    master.volume = 1
+    ui.volume = 1
+  }
+
+  Test.it("aborts cleanly on an unknown bus name") {
+    Audio.context()
+    var e = Fiber.new {
+      Audio.group("nonsense").volume = 0.5
+    }.try()
+    Expect.that(e).toContain("unknown group")
   }
 }
 
