@@ -374,9 +374,9 @@ class Particles {
   /// no-op.
   /// @param {ParticleSystem} system
   static register(system) {
-    if (!(system is ParticleSystem)) {
-      Fiber.abort("Particles.register: system must be a ParticleSystem")
-    }
+    // Duck-typed against an `update(dt)` method so both
+    // ParticleSystem (2D) and ParticleSystem3D plug into the same
+    // pump. `is ParticleSystem` would close that door.
     if (PARTICLE_LIST_.contains(system)) return
     PARTICLE_LIST_.add(system)
   }
@@ -422,3 +422,245 @@ class Particles {
 // the lazy init can swap the pointer in.
 var PARTICLE_LIST_ = []
 var RANDOM_HOLDER_ = [null]
+
+/// CPU-driven 3D particle system. Simulates positions / velocities
+/// in world space; renders each particle as a spherical camera-
+/// facing billboard via `Renderer3D.drawBillboardN`. One FFI call
+/// + one drawIndexed per system, regardless of live count.
+///
+/// Configured by an options Map mirroring [ParticleSystem]:
+///
+/// | Option         | Type                | Notes                                                  |
+/// |----------------|---------------------|--------------------------------------------------------|
+/// | `texture`      | `Texture`           | Required. The sprite atlas the billboard samples.     |
+/// | `capacity`     | `Num`               | Max live particles. Default `200`.                     |
+/// | `emissionRate` | `Num`               | Particles per second. `0` disables auto-emission.     |
+/// | `lifetime`     | `[Num, Num]`        | Min/max lifetime seconds. Default `[1, 1]`.            |
+/// | `position`     | `[Num, Num, Num]`   | Emitter origin (mutated via `setPosition`).           |
+/// | `spread`       | `[Num, Num, Num]`   | Per-axis ± half-extent at spawn. Default `[0, 0, 0]`. |
+/// | `velocity`     | `[[vx,vy,vz],[vx,vy,vz]]` | Min/max spawn velocity. Default zero.             |
+/// | `gravity`      | `[Num, Num, Num]`   | Constant accel. Default `[0, -9.8, 0]`.                |
+/// | `drag`         | `Num`               | Per-second velocity decay 0..1. Default `0`.           |
+/// | `size`         | `[Num, Num]`        | World-space half-extent (sx, sy). Default `[1, 1]`.    |
+/// | `color`        | `[[r,g,b,a],[r,g,b,a]]` | Tint over life. Default `[[1,1,1,1],[1,1,1,1]]`.  |
+/// | `playing`      | `Bool`              | Start emitting on construct. Default `true`.           |
+///
+/// ## Example
+///
+/// ```wren
+/// var fire = ParticleSystem3D.new(g.device, {
+///   "texture":      flameTex,
+///   "capacity":     500,
+///   "emissionRate": 100,
+///   "position":     [0, 0, 0],
+///   "spread":       [0.2, 0, 0.2],
+///   "velocity":     [[-1, 2, -1], [1, 4, 1]],
+///   "gravity":      [0, -1, 0],
+///   "lifetime":     [0.5, 1.5],
+///   "size":         [0.5, 0.5],
+///   "color":        [[1, 0.5, 0, 1], [1, 0, 0, 0]]
+/// })
+/// Particles.register(fire)
+/// // ...later in draw():
+/// fire.draw(renderer)
+/// ```
+class ParticleSystem3D {
+  /// Build a 3D particle system. Allocates the per-particle sim
+  /// state (`_sim`) and GPU-instance buffer (`_inst`) at full
+  /// capacity so steady-state allocation count is zero.
+  ///
+  /// @param {Device} device
+  /// @param {Map} opts
+  construct new(device, opts) {
+    if (!(opts is Map)) Fiber.abort("ParticleSystem3D.new: opts must be a Map")
+    var tex = opts["texture"]
+    if (tex == null) Fiber.abort("ParticleSystem3D.new: 'texture' is required")
+    _texture      = tex
+    _capacity     = ParticleSystem.intOr_(opts, "capacity",     200)
+    _emissionRate = ParticleSystem.numOr_(opts, "emissionRate", 0)
+    _lifetime     = ParticleSystem.pairOr_(opts, "lifetime",    1, 1)
+    _position     = ParticleSystem3D.triple_(opts, "position", 0, 0, 0)
+    _spread       = ParticleSystem3D.triple_(opts, "spread",   0, 0, 0)
+    var vel = opts.containsKey("velocity") ? opts["velocity"] : [[0, 0, 0], [0, 0, 0]]
+    _velMin = [vel[0][0], vel[0][1], vel[0][2]]
+    _velMax = [vel[1][0], vel[1][1], vel[1][2]]
+    _gravity      = ParticleSystem3D.triple_(opts, "gravity",  0, -9.8, 0)
+    _drag         = ParticleSystem.numOr_(opts, "drag",         0)
+    _size         = ParticleSystem.pairOr_(opts, "size",        1, 1)
+    var color = opts.containsKey("color") ? opts["color"] : [[1, 1, 1, 1], [1, 1, 1, 1]]
+    _colorStart = color[0]
+    _colorEnd   = color[1]
+    _playing      = opts.containsKey("playing") ? opts["playing"] : true
+
+    // Sim state — Float32Array indexed by slot * 8 (px, py, pz,
+    // vx, vy, vz, age, lifetime). Float32Array means inline
+    // writes with no boxing or method dispatch in the hot path.
+    _sim = Float32Array.new(_capacity * 8)
+    // GPU instance buffer — Float32Array sized for the full
+    // capacity matching Renderer3D.FLOATS_PER_BILLBOARD_ (16).
+    _inst = Float32Array.new(_capacity * 16)
+    _instBuf = device.createBuffer({
+      "size":  _capacity * 16 * 4,
+      "usage": ["storage", "copy-dst"],
+      "label": "particles3d-instance"
+    })
+    _emissionAccum = 0
+    _liveCount     = 0
+    _seed          = 0
+  }
+
+  static triple_(opts, key, fx, fy, fz) {
+    if (!opts.containsKey(key)) return [fx, fy, fz]
+    var v = opts[key]
+    if (!(v is List) || v.count < 3) {
+      Fiber.abort("ParticleSystem3D: '%(key)' must be a 3-element List")
+    }
+    return [v[0], v[1], v[2]]
+  }
+
+  /// True while the auto-emitter is on. @returns {Bool}
+  isPlaying      { _playing }
+  /// Toggle the auto-emitter.
+  isPlaying=(b)  { _playing = b }
+  /// Current live-particle count. @returns {Num}
+  liveCount      { _liveCount }
+  /// Max simultaneous particles. @returns {Num}
+  capacity       { _capacity }
+
+  /// Reposition the emitter origin.
+  /// @param {Num} x
+  /// @param {Num} y
+  /// @param {Num} z
+  setPosition(x, y, z) {
+    _position[0] = x
+    _position[1] = y
+    _position[2] = z
+  }
+
+  /// Spawn `n` particles immediately, regardless of `playing` or
+  /// `emissionRate`. Used for explosions, hit FX, one-shots.
+  /// @param {Num} n
+  burst(n) {
+    var i = 0
+    while (i < n) {
+      if (!spawnOne_()) return
+      i = i + 1
+    }
+  }
+
+  /// Tick every live particle by `dt` seconds. Kills expired
+  /// particles, auto-emits new ones at `emissionRate` while
+  /// `isPlaying`.
+  /// @param {Num} dt
+  update(dt) {
+    var i = 0
+    // Compact: walk the sim array, integrate alive slots, drop
+    // expired ones by swapping with the last-live slot.
+    while (i < _liveCount) {
+      var off = i * 8
+      var age = _sim[off + 6] + dt
+      if (age >= _sim[off + 7]) {
+        // Expired — swap with the last-live slot. Decrements
+        // liveCount; recheck this index next iter so the swapped-
+        // in slot also gets integrated.
+        _liveCount = _liveCount - 1
+        if (i != _liveCount) {
+          var srcOff = _liveCount * 8
+          var k = 0
+          while (k < 8) {
+            _sim[off + k] = _sim[srcOff + k]
+            k = k + 1
+          }
+        }
+        continue
+      }
+      // Integrate.
+      _sim[off + 3] = _sim[off + 3] + _gravity[0] * dt - _sim[off + 3] * _drag * dt
+      _sim[off + 4] = _sim[off + 4] + _gravity[1] * dt - _sim[off + 4] * _drag * dt
+      _sim[off + 5] = _sim[off + 5] + _gravity[2] * dt - _sim[off + 5] * _drag * dt
+      _sim[off]     = _sim[off]     + _sim[off + 3] * dt
+      _sim[off + 1] = _sim[off + 1] + _sim[off + 4] * dt
+      _sim[off + 2] = _sim[off + 2] + _sim[off + 5] * dt
+      _sim[off + 6] = age
+      i = i + 1
+    }
+    // Auto-emit if playing + a rate is configured.
+    if (_playing && _emissionRate > 0) {
+      _emissionAccum = _emissionAccum + _emissionRate * dt
+      while (_emissionAccum >= 1) {
+        if (!spawnOne_()) break
+        _emissionAccum = _emissionAccum - 1
+      }
+    }
+  }
+
+  // Allocate one new particle. Returns false when the pool is
+  // full (caller should give up trying to burst further).
+  spawnOne_() {
+    if (_liveCount >= _capacity) return false
+    var off = _liveCount * 8
+    // Spawn position: emitter ± per-axis spread.
+    _sim[off]     = _position[0] + (random_() - 0.5) * 2 * _spread[0]
+    _sim[off + 1] = _position[1] + (random_() - 0.5) * 2 * _spread[1]
+    _sim[off + 2] = _position[2] + (random_() - 0.5) * 2 * _spread[2]
+    _sim[off + 3] = _velMin[0] + random_() * (_velMax[0] - _velMin[0])
+    _sim[off + 4] = _velMin[1] + random_() * (_velMax[1] - _velMin[1])
+    _sim[off + 5] = _velMin[2] + random_() * (_velMax[2] - _velMin[2])
+    _sim[off + 6] = 0
+    _sim[off + 7] = _lifetime[0] + random_() * (_lifetime[1] - _lifetime[0])
+    _liveCount = _liveCount + 1
+    return true
+  }
+
+  // Inline PRNG. Same shape as the 2D ParticleSystem path —
+  // a single-cell holder for the lazy Random instance.
+  random_() {
+    if (RANDOM_HOLDER_[0] == null) RANDOM_HOLDER_[0] = Random.new()
+    return RANDOM_HOLDER_[0].float()
+  }
+
+  /// Build the GPU instance buffer from the current sim state and
+  /// issue a single `drawBillboardN`. Call once per frame, AFTER
+  /// `beginFrame` on `renderer` and before `endFrame`. The whole
+  /// alive set goes through one drawIndexed.
+  ///
+  /// @param {Renderer3D} renderer
+  draw(renderer) {
+    if (_liveCount == 0) return
+    var sx = _size[0]
+    var sy = _size[1]
+    // Pack each live particle into the instance buffer with
+    // colour interpolated from start → end across its life.
+    var i = 0
+    while (i < _liveCount) {
+      var simOff = i * 8
+      var t = _sim[simOff + 6] / _sim[simOff + 7]
+      if (t < 0) t = 0
+      if (t > 1) t = 1
+      var r = _colorStart[0] + (_colorEnd[0] - _colorStart[0]) * t
+      var g = _colorStart[1] + (_colorEnd[1] - _colorStart[1]) * t
+      var b = _colorStart[2] + (_colorEnd[2] - _colorStart[2]) * t
+      var a = _colorStart[3] + (_colorEnd[3] - _colorStart[3]) * t
+      var off = i * 16
+      _inst[off]      = _sim[simOff]      // ox
+      _inst[off + 1]  = _sim[simOff + 1]  // oy
+      _inst[off + 2]  = _sim[simOff + 2]  // oz
+      _inst[off + 3]  = sx
+      _inst[off + 4]  = sy
+      _inst[off + 5]  = 0      // u0
+      _inst[off + 6]  = 0      // v0
+      _inst[off + 7]  = 1      // u1
+      _inst[off + 8]  = 1      // v1
+      _inst[off + 9]  = r
+      _inst[off + 10] = g
+      _inst[off + 11] = b
+      _inst[off + 12] = a
+      _inst[off + 13] = 0      // rotation — fixed for now
+      _inst[off + 14] = 0      // lodIndex
+      _inst[off + 15] = 0
+      i = i + 1
+    }
+    _instBuf.writeFloats(0, _inst)
+    renderer.drawBillboardN(_texture, _instBuf, _liveCount)
+  }
+}

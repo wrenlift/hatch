@@ -55,6 +55,99 @@ class Renderer3D {
   // `Shader.normalMapping`), so we don't extend the layout.
   static FLOATS_PER_VERTEX_ { 8 }
 
+  /// Number of f32 per billboard instance in the buffer
+  /// `drawBillboardN` reads. Layout:
+  ///   `[origin.x, origin.y, origin.z, sizeX,
+  ///     sizeY, u0, v0, u1,
+  ///     v1, r, g, b,
+  ///     a, rotation, lodIndex, _pad]`
+  /// Use [Renderer3D.writeBillboardInstance] to pack a slot.
+  static FLOATS_PER_BILLBOARD_ { 16 }
+
+  // Billboard shader. Spherical camera-facing quad per instance,
+  // size + UV rect + colour + axis rotation pulled from a storage
+  // buffer indexed by `@builtin(instance_index)`. The VS does the
+  // camera-facing math (`forward = normalize(camera_pos - origin)`,
+  // `right = world_up × forward`, `up = forward × right`) so the
+  // CPU never re-orients quads.
+  static BILLBOARD_WGSL_ {
+    return "
+      struct Scene {
+        vp:         mat4x4<f32>,
+        camera_pos: vec4<f32>,
+      };
+      @group(0) @binding(0) var<uniform> scene: Scene;
+
+      struct BillboardInstance {
+        pos_sx:    vec4<f32>,
+        sy_uv0_u1: vec4<f32>,
+        v1_rgb:    vec4<f32>,
+        a_rot_lod: vec4<f32>,
+      };
+      @group(1) @binding(0) var<storage, read> instances: array<BillboardInstance>;
+
+      @group(2) @binding(0) var tex:  texture_2d<f32>;
+      @group(2) @binding(1) var samp: sampler;
+
+      struct VsOut {
+        @builtin(position) clip:  vec4<f32>,
+        @location(0)       uv:    vec2<f32>,
+        @location(1)       color: vec4<f32>,
+      };
+
+      @vertex
+      fn vs_main(@builtin(vertex_index)   vi: u32,
+                 @builtin(instance_index) ii: u32) -> VsOut {
+        var dx = array<f32, 6>(-0.5, -0.5, 0.5, -0.5, 0.5, 0.5);
+        var dy = array<f32, 6>(-0.5,  0.5, 0.5, -0.5, 0.5, -0.5);
+        var ux = array<f32, 6>( 0.0,  0.0, 1.0,  0.0, 1.0, 1.0);
+        var uy = array<f32, 6>( 0.0,  1.0, 1.0,  0.0, 1.0, 0.0);
+
+        let inst = instances[ii];
+        let origin = inst.pos_sx.xyz;
+        let sx     = inst.pos_sx.w;
+        let sy     = inst.sy_uv0_u1.x;
+        let uv0    = vec2<f32>(inst.sy_uv0_u1.y, inst.sy_uv0_u1.z);
+        let uv1    = vec2<f32>(inst.sy_uv0_u1.w, inst.v1_rgb.x);
+        let color  = vec4<f32>(inst.v1_rgb.y, inst.v1_rgb.z, inst.v1_rgb.w, inst.a_rot_lod.x);
+        let rot    = inst.a_rot_lod.y;
+
+        let to_cam  = scene.camera_pos.xyz - origin;
+        let forward = normalize(to_cam);
+        let world_up = vec3<f32>(0.0, 1.0, 0.0);
+        var right = cross(world_up, forward);
+        // Camera looking straight down → world_up degenerate.
+        // Fall back to world-space X for the right axis so the
+        // quad still has a stable orientation.
+        if (length(right) < 0.001) {
+          right = vec3<f32>(1.0, 0.0, 0.0);
+        } else {
+          right = normalize(right);
+        }
+        let up = cross(forward, right);
+
+        let lx = dx[vi] * sx;
+        let ly = dy[vi] * sy;
+        let cosR = cos(rot);
+        let sinR = sin(rot);
+        let rx = lx * cosR - ly * sinR;
+        let ry = lx * sinR + ly * cosR;
+        let world = origin + right * rx + up * ry;
+
+        var o: VsOut;
+        o.clip  = scene.vp * vec4<f32>(world, 1.0);
+        o.uv    = mix(uv0, uv1, vec2<f32>(ux[vi], uy[vi]));
+        o.color = color;
+        return o;
+      }
+
+      @fragment
+      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+        return textureSample(tex, samp, in.uv) * in.color;
+      }
+    "
+  }
+
   // Hard caps for the per-frame light arrays. Sized at the
   // upper end of what a typical scene actually uses; bump if a
   // game needs more (the uniform block grows by 32 / 32 / 64
@@ -667,6 +760,72 @@ class Renderer3D {
     // Bind-group cache keyed by instance-storage-buffer id. Avoids
     // re-binding on hot redraws of the same instance set.
     _instanceBgCache = {}
+
+    // ---- Billboard pipeline. Spherical camera-facing quads for
+    // 3D particles / decals / icons. Reads a slim Scene struct
+    // (vp + camera_pos) at group 0, the per-instance storage
+    // buffer at group 1, and a (texture, sampler) pair at group
+    // 2. No vertex / index buffer — VS pulls quad corners from
+    // `@builtin(vertex_index)`.
+    var billboardShader = device.createShaderModule({
+      "code":  Renderer3D.BILLBOARD_WGSL_,
+      "label": "renderer3d-billboard"
+    })
+    _billboardSceneBgl = device.createBindGroupLayout({
+      "entries": [
+        { "binding": 0, "visibility": ["vertex"], "kind": "uniform" }
+      ],
+      "label": "renderer3d-billboard-scene-bgl"
+    })
+    _billboardInstanceBgl = _instancedBgl   // reuse: same single-storage-binding layout
+    _billboardMaterialBgl = device.createBindGroupLayout({
+      "entries": [
+        { "binding": 0, "visibility": ["fragment"], "kind": "texture" },
+        { "binding": 1, "visibility": ["fragment"], "kind": "sampler" }
+      ],
+      "label": "renderer3d-billboard-material-bgl"
+    })
+    _billboardPipelineLayout = device.createPipelineLayout({
+      "bindGroupLayouts": [_billboardSceneBgl, _billboardInstanceBgl, _billboardMaterialBgl]
+    })
+    _billboardPipeline = device.createRenderPipeline({
+      "layout": _billboardPipelineLayout,
+      "vertex": {
+        "module": billboardShader, "entryPoint": "vs_main",
+        "buffers": []
+      },
+      "fragment": {
+        "module": billboardShader, "entryPoint": "fs_main",
+        "targets": [{ "format": surfaceFormat, "blend": "alpha" }]
+      },
+      "primitive":    { "topology": "triangle-list", "cullMode": "none" },
+      "depthStencil": {
+        "format": depthFormat,
+        "depthWriteEnabled": false,
+        "depthCompare": "less"
+      },
+      "label": "renderer3d-billboard-pipeline"
+    })
+    // Slim scene UBO carrying just vp + camera_pos for the
+    // billboard VS. Repopulated in `beginFrame_` alongside the
+    // main scene uniform write.
+    _billboardSceneUbo = device.createBuffer({
+      "size":  80,   // 16 floats vp + 4 floats camera_pos = 20 f32 = 80 bytes
+      "usage": ["uniform", "copy-dst"],
+      "label": "renderer3d-billboard-scene-ubo"
+    })
+    _billboardSceneBg = device.createBindGroup({
+      "layout":  _billboardSceneBgl,
+      "entries": [{ "binding": 0, "buffer": _billboardSceneUbo }]
+    })
+    _billboardSampler = device.createSampler({
+      "magFilter":   "linear",
+      "minFilter":   "linear",
+      "addressModeU":"clamp-to-edge",
+      "addressModeV":"clamp-to-edge",
+      "label":       "renderer3d-billboard-sampler"
+    })
+    _billboardMatBgCache = {}     // texture id → BindGroup
 
     _sceneUbo = device.createBuffer({
       "size":  Renderer3D.SCENE_UBO_BYTES_,
@@ -1468,6 +1627,101 @@ class Renderer3D {
     }
   }
 
+  /// Instanced billboard draw. `instanceBuffer` is a storage
+  /// buffer laid out as `array<BillboardInstance>` with 16 f32
+  /// per slot — see `BILLBOARD_WGSL_` for the field order, or
+  /// pack via [Renderer3D.writeBillboardInstance]. Each billboard
+  /// is a spherical camera-facing quad; the VS performs the
+  /// camera-orient math per instance so the CPU never re-orients.
+  ///
+  /// Issues one `pass.draw(6, instanceCount)` — no vertex / index
+  /// buffer needed. Uses `blend: "alpha"` and `depthWriteEnabled:
+  /// false` so soft-edged particle sprites composite correctly
+  /// over the opaque scene without obscuring each other.
+  ///
+  /// @param {Texture} texture
+  /// @param {Buffer} instanceBuffer
+  /// @param {Num} instanceCount
+  drawBillboardN(texture, instanceBuffer, instanceCount) {
+    if (_pass == null) Fiber.abort("Renderer3D.drawBillboardN: call beginFrame first.")
+    if (instanceCount <= 0) return
+    if (!_sceneCommitted) commitScene_()
+    var pass = _pass
+    pass.setPipeline(_billboardPipeline)
+    pass.setBindGroup(0, _billboardSceneBg)
+    pass.setBindGroup(1, instanceBindGroupFor_(instanceBuffer))
+    pass.setBindGroup(2, billboardMatBindGroupFor_(texture))
+    pass.draw(6, instanceCount)
+  }
+
+  // BindGroup cache for the billboard pipeline's (texture, sampler)
+  // group 2. Keyed by texture id so a particle system that re-uses
+  // the same atlas across frames hits the cache.
+  billboardMatBindGroupFor_(texture) {
+    var existing = _billboardMatBgCache[texture.id]
+    if (existing != null) return existing
+    var bg = _device.createBindGroup({
+      "layout":  _billboardMaterialBgl,
+      "entries": [
+        { "binding": 0, "texture": texture.view },
+        { "binding": 1, "sampler": _billboardSampler }
+      ]
+    })
+    _billboardMatBgCache[texture.id] = bg
+    return bg
+  }
+
+  /// Pack one billboard instance into a 16-f32 slot at
+  /// `slotIndex` of `out`. Slot stride is
+  /// `Renderer3D.FLOATS_PER_BILLBOARD_` (16). Pre-allocate `out`
+  /// as `Float32Array.new(capacity * 16)`; upload via
+  /// `instanceBuffer.writeFloats(0, out)`.
+  ///
+  /// `(ox, oy, oz)` is the world-space origin (the billboard
+  /// centre). `(sx, sy)` is the billboard's world-space size.
+  /// `(u0, v0, u1, v1)` is the UV rectangle into the bound
+  /// texture. `rotation` rotates around the camera-forward axis
+  /// (radians). `lodIndex` is reserved for compute-LOD pipelines
+  /// (Phase 11.6 GPU path).
+  ///
+  /// @param {Float32Array} out
+  /// @param {Num} slotIndex
+  /// @param {Num} ox
+  /// @param {Num} oy
+  /// @param {Num} oz
+  /// @param {Num} sx
+  /// @param {Num} sy
+  /// @param {Num} u0
+  /// @param {Num} v0
+  /// @param {Num} u1
+  /// @param {Num} v1
+  /// @param {Num} r
+  /// @param {Num} g
+  /// @param {Num} b
+  /// @param {Num} a
+  /// @param {Num} rotation
+  /// @param {Num} lodIndex
+  static writeBillboardInstance(out, slotIndex, ox, oy, oz, sx, sy,
+                                u0, v0, u1, v1, r, g, b, a, rotation, lodIndex) {
+    var off = slotIndex * 16
+    out[off]      = ox
+    out[off + 1]  = oy
+    out[off + 2]  = oz
+    out[off + 3]  = sx
+    out[off + 4]  = sy
+    out[off + 5]  = u0
+    out[off + 6]  = v0
+    out[off + 7]  = u1
+    out[off + 8]  = v1
+    out[off + 9]  = r
+    out[off + 10] = g
+    out[off + 11] = b
+    out[off + 12] = a
+    out[off + 13] = rotation
+    out[off + 14] = lodIndex
+    out[off + 15] = 0
+  }
+
   // Get or build the BindGroup that points at `buf` for the
   // instanced pipeline's group 1.
   instanceBindGroupFor_(buf) {
@@ -1730,6 +1984,18 @@ class Renderer3D {
     }
     _sceneUbo.writeFloats(0, _sceneUboFloats)
     _sceneCommitted = true
+
+    // Slim billboard scene UBO: vp + camera_pos. Reuses the same
+    // values we already packed into the main scene UBO so any
+    // billboard pass within the frame stays consistent with the
+    // 3D scene's projection.
+    var bbf = []
+    appendMat4_(bbf, _vp)
+    bbf.add(_cameraPos.x)
+    bbf.add(_cameraPos.y)
+    bbf.add(_cameraPos.z)
+    bbf.add(0)
+    _billboardSceneUbo.writeFloats(0, bbf)
   }
 
   // Look up (or build) the BindGroup for `material`. The cache

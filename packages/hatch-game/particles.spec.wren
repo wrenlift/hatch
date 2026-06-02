@@ -1,7 +1,7 @@
 // @hatch:game/particles — CPU-driven particle simulation and
 // Renderer2D batch integration.
 
-import "./particles"   for ParticleSystem, Particles
+import "./particles"   for ParticleSystem, ParticleSystem3D, Particles
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -295,8 +295,154 @@ Test.describe("Particles registry") {
     Particles.clear()
   }
 
-  Test.it("rejects non-ParticleSystem") {
-    Expect.that(Fn.new { Particles.register("oops") }).toAbort()
+  // Pre-relaxation, Particles.register aborted on non-ParticleSystem
+  // arguments. Switched to duck-typing so ParticleSystem3D (and any
+  // future caller-defined system shape) plugs into the same pump —
+  // see the dedicated cross-shape test below.
+}
+
+// Minimal stand-ins for the GPU types ParticleSystem3D touches.
+// We never actually upload to or render from a real GPU here —
+// the spec exercises the sim path + the buffer.writeFloats / draw
+// call shape only.
+class MockBuf3D {
+  construct new() {
+    _writes = 0
+    _last   = null
+  }
+  writeFloats(off, data) {
+    _writes = _writes + 1
+    _last   = data
+  }
+  destroy {}
+  writes { _writes }
+  last   { _last }
+}
+
+class MockDev3D {
+  construct new() { _buffers = [] }
+  createBuffer(desc) {
+    var b = MockBuf3D.new()
+    _buffers.add(b)
+    return b
+  }
+  buffers { _buffers }
+}
+
+class MockRenderer3D {
+  construct new() {
+    _calls = []
+  }
+  drawBillboardN(tex, buf, count) {
+    _calls.add([tex, buf, count])
+  }
+  calls { _calls }
+}
+
+Test.describe("ParticleSystem3D construct") {
+  Test.it("aborts when 'texture' is missing") {
+    var dev = MockDev3D.new()
+    var e = Fiber.new { ParticleSystem3D.new(dev, {}) }.try()
+    Expect.that(e).toContain("texture")
+  }
+
+  Test.it("aborts when 'opts' is not a Map") {
+    var dev = MockDev3D.new()
+    var e = Fiber.new { ParticleSystem3D.new(dev, "nope") }.try()
+    Expect.that(e).toContain("Map")
+  }
+
+  Test.it("allocates an instance buffer at full capacity") {
+    var dev = MockDev3D.new()
+    var sys = ParticleSystem3D.new(dev, {
+      "texture": MockTexture.new(1),
+      "capacity": 64
+    })
+    Expect.that(dev.buffers.count).toBe(1)
+    Expect.that(sys.capacity).toBe(64)
+    Expect.that(sys.liveCount).toBe(0)
+  }
+}
+
+Test.describe("ParticleSystem3D.burst + update") {
+  Test.it("burst spawns particles, update ages and expires them") {
+    var dev = MockDev3D.new()
+    var sys = ParticleSystem3D.new(dev, {
+      "texture":  MockTexture.new(1),
+      "capacity": 16,
+      "lifetime": [0.5, 0.5],
+      "gravity":  [0, 0, 0]
+    })
+    sys.burst(5)
+    Expect.that(sys.liveCount).toBe(5)
+    // Tick past lifetime — every slot should expire.
+    sys.update(1.0)
+    Expect.that(sys.liveCount).toBe(0)
+  }
+
+  Test.it("burst respects capacity") {
+    var dev = MockDev3D.new()
+    var sys = ParticleSystem3D.new(dev, {
+      "texture":  MockTexture.new(1),
+      "capacity": 4,
+      "lifetime": [10, 10]
+    })
+    sys.burst(99)
+    Expect.that(sys.liveCount).toBe(4)
+  }
+
+  Test.it("emissionRate auto-emits while playing") {
+    var dev = MockDev3D.new()
+    var sys = ParticleSystem3D.new(dev, {
+      "texture":      MockTexture.new(1),
+      "capacity":     32,
+      "emissionRate": 10,
+      "lifetime":     [10, 10]
+    })
+    Expect.that(sys.isPlaying).toBe(true)
+    sys.update(1.0)   // 10 particles/sec × 1 sec = 10 spawns.
+    Expect.that(sys.liveCount).toBe(10)
+  }
+}
+
+Test.describe("ParticleSystem3D.draw") {
+  Test.it("uploads instance bytes and dispatches one drawBillboardN") {
+    var dev = MockDev3D.new()
+    var r   = MockRenderer3D.new()
+    var sys = ParticleSystem3D.new(dev, {
+      "texture":  MockTexture.new(7),
+      "capacity": 8,
+      "lifetime": [10, 10]
+    })
+    sys.burst(3)
+    sys.draw(r)
+    var buf = dev.buffers[0]
+    Expect.that(buf.writes).toBe(1)
+    Expect.that(r.calls.count).toBe(1)
+    Expect.that(r.calls[0][0].id).toBe(7)
+    Expect.that(r.calls[0][2]).toBe(3)
+  }
+
+  Test.it("skips entirely when no particles are alive") {
+    var dev = MockDev3D.new()
+    var r   = MockRenderer3D.new()
+    var sys = ParticleSystem3D.new(dev, {"texture": MockTexture.new(1)})
+    sys.draw(r)
+    Expect.that(dev.buffers[0].writes).toBe(0)
+    Expect.that(r.calls.count).toBe(0)
+  }
+}
+
+Test.describe("Particles.register accepts both 2D and 3D systems") {
+  Test.it("ducks-types via the update(dt) method") {
+    var dev = MockDev3D.new()
+    var s3d = ParticleSystem3D.new(dev, {"texture": MockTexture.new(1)})
+    var s2d = ParticleSystem.new({"texture": MockTexture.new(2)})
+    Particles.clear()
+    Particles.register(s3d)
+    Particles.register(s2d)
+    Expect.that(Particles.count).toBe(2)
+    Particles.clear()
   }
 }
 
