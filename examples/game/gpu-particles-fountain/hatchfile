@@ -1,0 +1,9 @@
+name        = "gpu-particles-fountain"
+version     = "0.1.0"
+entry       = "main"
+description = "50,000 particles integrated entirely in a compute shader via GpuParticleSystem3D. CPU only seeds new spawn slots at the emission rate; per-frame pos/vel/colour interpolation runs on the GPU against a persistent storage buffer that the billboard pipeline reads directly."
+
+[dependencies]
+"@hatch:game" = { path = "../../../packages/hatch-game" }
+"@hatch:gpu"  = { path = "../../../packages/hatch-gpu" }
+"@hatch:math" = { path = "../../../packages/hatch-math" }
