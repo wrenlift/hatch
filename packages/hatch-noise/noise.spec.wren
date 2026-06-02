@@ -132,4 +132,109 @@ Test.describe("Noise.fillSimplex2") {
   }
 }
 
+Test.describe("Noise.worley2 / worley3") {
+  Test.it("returns deterministic values for the same args") {
+    var a = Noise.worley2(0.3, 0.7, 42)
+    var b = Noise.worley2(0.3, 0.7, 42)
+    Expect.that(a).toBe(b)
+    var c = Noise.worley3(0.3, 0.7, 0.5, 42)
+    var d = Noise.worley3(0.3, 0.7, 0.5, 42)
+    Expect.that(c).toBe(d)
+  }
+
+  Test.it("varies under seed change") {
+    var a = Noise.worley2(1.0, 2.0, 7)
+    var b = Noise.worley2(1.0, 2.0, 999)
+    Expect.that(a == b).toBe(false)
+  }
+}
+
+Test.describe("Noise.ridgedFbm2 / ridgedFbm3") {
+  Test.it("returns finite numbers in roughly [0, 1.1]") {
+    // Ridged fBM is [0, 1] in the limit but accumulates slightly
+    // higher under low-octave settings; we allow 1.1 headroom.
+    for (i in 0...20) {
+      var v = Noise.ridgedFbm2(i * 0.13, i * 0.21, 1337, 4, 2.0, 0.5)
+      Expect.that(v >= 0).toBe(true)
+      Expect.that(v <= 1.1).toBe(true)
+    }
+  }
+
+  Test.it("respects octave count") {
+    var single = Noise.ridgedFbm2(1.5, 2.5, 7, 1, 2.0, 0.5)
+    var many   = Noise.ridgedFbm2(1.5, 2.5, 7, 6, 2.0, 0.5)
+    // Different octave count should produce a different number.
+    Expect.that(single == many).toBe(false)
+  }
+}
+
+Test.describe("Noise.fillPerlin2 / fillValue2 / fillWorley2") {
+  Test.it("fills the same number of cells fillSimplex2 does") {
+    var a = Float32Array.new(16)
+    var b = Float32Array.new(16)
+    var c = Float32Array.new(16)
+    Noise.fillPerlin2(a, 0, 0, 0.1, 0.1, 4, 4, 1)
+    Noise.fillValue2(b, 0, 0, 0.1, 0.1, 4, 4, 1)
+    Noise.fillWorley2(c, 0, 0, 0.1, 0.1, 4, 4, 1)
+    // Every cell touched (no NaN sentinels remaining at default
+    // zero) — at least ONE non-zero entry per fill since the noise
+    // varies over the sampled grid.
+    var anyA = false
+    var anyB = false
+    var anyC = false
+    for (i in 0...16) {
+      if (a[i] != 0) anyA = true
+      if (b[i] != 0) anyB = true
+      if (c[i] != 0) anyC = true
+    }
+    Expect.that(anyA).toBe(true)
+    Expect.that(anyB).toBe(true)
+    Expect.that(anyC).toBe(true)
+  }
+
+  Test.it("each variant produces a different field for the same args") {
+    var p = Float32Array.new(4)
+    var v = Float32Array.new(4)
+    Noise.fillPerlin2(p, 0, 0, 0.25, 0.25, 2, 2, 99)
+    Noise.fillValue2(v, 0, 0, 0.25, 0.25, 2, 2, 99)
+    var diff = false
+    for (i in 0...4) {
+      if (p[i] != v[i]) diff = true
+    }
+    Expect.that(diff).toBe(true)
+  }
+}
+
+Test.describe("Noise.fillSimplex3") {
+  Test.it("populates a 3D grid in z-outermost, y, x order") {
+    var w = 3
+    var h = 3
+    var d = 3
+    var out = Float32Array.new(w * h * d)
+    Noise.fillSimplex3(out, 0, 0, 0, 0.1, 0.1, 0.1, w, h, d, 7)
+    // Compare each cell to the scalar sample at the same coords.
+    var idx = 0
+    for (z in 0...d) {
+      for (y in 0...h) {
+        for (x in 0...w) {
+          var s = Noise.simplex3(x * 0.1, y * 0.1, z * 0.1, 7)
+          // f32 round-trip: cell within a tiny epsilon of the
+          // double-precision scalar.
+          var delta = out[idx] - s
+          if (delta < 0) delta = -delta
+          Expect.that(delta < 0.00001).toBe(true)
+          idx = idx + 1
+        }
+      }
+    }
+  }
+
+  Test.it("rejects an undersized target") {
+    var e = Fiber.new {
+      Noise.fillSimplex3(Float32Array.new(4), 0, 0, 0, 1, 1, 1, 2, 2, 2, 1)
+    }.try()
+    Expect.that(e).toContain("need 8")
+  }
+}
+
 Test.run()
