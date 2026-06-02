@@ -211,6 +211,10 @@ class WaterPipeline {
       @group(0) @binding(2) var depth_samp: sampler;
       @group(0) @binding(3) var reflection_tex: texture_2d<f32>;
       @group(0) @binding(4) var reflection_samp: sampler;
+      // Per-impact splash ring buffer. Each slot is
+      // vec4(x, z, spawn_time, amplitude); amplitude == 0 marks an
+      // empty slot the FS can skip cheaply.
+      @group(0) @binding(5) var<storage, read> impacts: array<vec4<f32>, 32>;
       @group(1) @binding(0) var<uniform> draw_u: DrawUniforms;
 
       // Tiny hash for the wave field. We don't include the full
@@ -401,6 +405,38 @@ class WaterPipeline {
         return sum;
       }
 
+      // Per-impact splash rings — analytic gradient of the
+      // sum-of-rings height field. One pass through the 32 slots
+      // returns dh/dx + dh/dz directly, replacing four finite-diff
+      // taps of a scalar height fn (4× iteration count). Early-out
+      // on |d - radius| > 3 half-widths skips impacts whose ring is
+      // far from this fragment — most slots at any given moment.
+      fn impact_grad(world_xz: vec2<f32>, t: f32, lifetime: f32,
+                     speed: f32, half_w: f32) -> vec2<f32> {
+        var g: vec2<f32> = vec2<f32>(0.0, 0.0);
+        let hw2 = half_w * half_w;
+        for (var i: i32 = 0; i < 32; i = i + 1) {
+          let impact = impacts[i];
+          let amp    = impact.w;
+          if (amp <= 0.0) { continue; }
+          let age = t - impact.z;
+          if (age < 0.0 || age >= lifetime) { continue; }
+          let center = vec2<f32>(impact.x, impact.y);
+          let diff   = world_xz - center;
+          let d      = length(diff);
+          if (d < 0.0001) { continue; }
+          let radius = age * speed;
+          let band   = d - radius;
+          if (abs(band) > half_w * 3.0) { continue; }
+          let ring   = exp(-(band * band) / hw2);
+          let fade   = 1.0 - clamp(age / lifetime, 0.0, 1.0);
+          // dh/dp = ring * (-2 band / hw²) * (p − c) / |p − c|.
+          let coeff  = ring * fade * amp * (-2.0 * band / hw2);
+          g = g + (diff / d) * coeff;
+        }
+        return g;
+      }
+
       @fragment
       fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         // Subtle high-frequency normal perturbation. Strength is
@@ -432,6 +468,19 @@ class WaterPipeline {
           let rdz = ripple_height(in.world.xz + vec2<f32>(0.0, r_eps), t, r_density, r_life, r_speed, r_cell)
                   - ripple_height(in.world.xz - vec2<f32>(0.0, r_eps), t, r_density, r_life, r_speed, r_cell);
           bump = bump + vec3<f32>(-rdx, 0.0, -rdz) * r_str;
+        }
+
+        // Per-impact splash rings — analytic gradient (one pass
+        // over the 32 slots) replaces what was four finite-diff
+        // taps. Gated off when `ripple_scale.y` (impact strength)
+        // ≤ 0 so dry scenes skip the loop entirely.
+        let imp_str = scene.ripple_scale.y;
+        if (imp_str > 0.001) {
+          let imp_life   = max(scene.ripple_scale.z, 0.1);
+          let imp_speed  = max(scene.ripple_scale.w, 0.1);
+          let imp_half_w = 0.04;
+          let ig = impact_grad(in.world.xz, t, imp_life, imp_speed, imp_half_w);
+          bump = bump + vec3<f32>(-ig.x, 0.0, -ig.y) * imp_str;
         }
         let N = normalize(normalize(in.normal) + bump);
         let V = normalize(scene.camera_pos.xyz - in.world);
@@ -570,6 +619,14 @@ class WaterPipeline {
   static SCENE_UBO_FLOATS_ { 72 }
   static DRAW_UBO_BYTES_  { 64 }
 
+  // Per-impact splash ring capacity. 32 slots at ~0.8 s lifetime
+  // = ~40 splashes/sec on rotation — plenty visually since rings
+  // overlap heavily past ~20 concurrent. Capacity drives a fixed
+  // per-fragment shader loop, so smaller = faster.
+  // Each entry: vec4(x, z, spawn_time, amplitude), 16 bytes.
+  static IMPACT_CAP_   { 32 }
+  static IMPACT_BYTES_ { 512 }
+
   /// Build the pipeline against the host device.
   ///
   /// @param {Device} device
@@ -598,7 +655,11 @@ class WaterPipeline {
         // camera mirrored across the water plane. Sampled with a
         // filtering sampler so the reflection edges read smooth.
         { "binding": 3, "visibility": ["fragment"], "kind": "texture" },
-        { "binding": 4, "visibility": ["fragment"], "kind": "sampler" }
+        { "binding": 4, "visibility": ["fragment"], "kind": "sampler" },
+        // Per-impact splash ring buffer. The FS iterates 64 slots
+        // each fragment; empty slots short-circuit on amp == 0 so
+        // dry-weather frames pay essentially no cost.
+        { "binding": 5, "visibility": ["fragment"], "kind": "read-only-storage" }
       ],
       "label": "water-scene-bgl"
     })
@@ -727,6 +788,20 @@ class WaterPipeline {
       "label":        "water-shore-depth-sampler"
     })
 
+    // Per-impact splash storage buffer + matching CPU scratchpad.
+    // Slots are written round-robin via `addRipple`; the FS skips
+    // entries whose amplitude is zero, so the buffer can start
+    // fully zeroed and stays valid even before any rain falls.
+    _impactBuf = device.createBuffer({
+      "size":  WaterPipeline.IMPACT_BYTES_,
+      "usage": ["storage", "copy-dst"],
+      "label": "water-impacts-ssbo"
+    })
+    _impactArr     = Float32Array.new(WaterPipeline.IMPACT_CAP_ * 4)
+    _impactNext    = 0
+    _impactDirty   = false
+    _lastFrameTime = null
+
     rebuildSceneBindGroup_()
 
     // Per-draw UBO pool (one slot per draw in a frame). Same
@@ -799,6 +874,14 @@ class WaterPipeline {
     _rippleLifetime = 0.4
     _rippleSpeed    = 0.6
     _rippleCellSize = 0.6
+
+    // Per-impact ring defaults. Strength 0 → the FS skips the
+    // 64-slot loop entirely. Lifetime 0.8 s × speed 0.7 m/s gives
+    // rings that reach ~0.56 m before fading — readable as
+    // individual splashes even at orbit-camera distance.
+    _impactStrength = 0.0
+    _impactLifetime = 0.8
+    _impactSpeed    = 0.7
 
     _pass = null
   }
@@ -978,6 +1061,53 @@ class WaterPipeline {
     _rippleCellSize = cellSize < 0.05 ? 0.05 : cellSize
   }
 
+  /// Tune the per-impact splash ring effect. Each `addRipple(x, z)`
+  /// call places one ring in a 64-slot round-robin buffer; the
+  /// shader spawns an expanding ring centred at (x, z), fading
+  /// out over `lifetime` seconds.
+  ///
+  /// Pass `strength = 0` to disable; the FS short-circuits and
+  /// the storage-buffer loop costs essentially nothing.
+  ///
+  /// @param {Num} strength   Amplitude of each ring's normal
+  ///                         perturbation. 0..1.5 sensible.
+  /// @param {Num} lifetime   Seconds per ring. Default 0.8.
+  /// @param {Num} speed      Outward expansion speed (m/s).
+  ///                         Default 0.7.
+  setImpactRipple(strength, lifetime, speed) {
+    _impactStrength = strength < 0 ? 0 : strength
+    _impactLifetime = lifetime <= 0 ? 0.8 : lifetime
+    _impactSpeed    = speed
+  }
+
+  /// Change only the impact-ring strength. Useful for a rain-on/off
+  /// toggle once `setImpactRipple` configured lifetime/speed.
+  /// @param {Num} strength
+  setImpactStrength(strength) { _impactStrength = strength < 0 ? 0 : strength }
+
+  /// Register one splash point at world (x, z). The shader picks
+  /// up the ring on the next `beginFrame`. Call from a particle-
+  /// system death event so streaks hitting the water leave visible
+  /// splashes. The buffer is round-robin — if 64 impacts are still
+  /// alive when a 65th lands, the oldest slot is overwritten.
+  ///
+  /// @param {Num} x   World X (m).
+  /// @param {Num} z   World Z (m).
+  addRipple(x, z) {
+    var off = _impactNext * 4
+    _impactArr[off]     = x
+    _impactArr[off + 1] = z
+    // Stamp with the last `beginFrame` time so the shader's
+    // `t - spawn_time` aligns with `scene.time_amp_scale.x`.
+    // Falls back to 0 before the first frame so impacts queued
+    // during setup still surface immediately.
+    var nowT = _lastFrameTime == null ? 0 : _lastFrameTime
+    _impactArr[off + 2] = nowT
+    _impactArr[off + 3] = 1.0
+    _impactNext = (_impactNext + 1) % WaterPipeline.IMPACT_CAP_
+    _impactDirty = true
+  }
+
   /// Bind a Fog object to the water shader. Subsequent frames
   /// fade the body to `fog.color` over `[fog.start, fog.end]` (or
   /// via exp² when `fog.curve != 0`). Calling once after the sky
@@ -1073,11 +1203,22 @@ class WaterPipeline {
     putF_(f, 65, "rippleDensity",  _rippleDensity)
     putF_(f, 66, "rippleLifetime", _rippleLifetime)
     putF_(f, 67, "rippleSpeed",    _rippleSpeed)
-    putF_(f, 68, "rippleCellSize", _rippleCellSize)
-    putF_(f, 69, "rippleReserved1", 0)
-    putF_(f, 70, "rippleReserved2", 0)
-    putF_(f, 71, "rippleReserved3", 0)
+    putF_(f, 68, "rippleCellSize",   _rippleCellSize)
+    putF_(f, 69, "impactStrength",   _impactStrength)
+    putF_(f, 70, "impactLifetime",   _impactLifetime)
+    putF_(f, 71, "impactSpeed",      _impactSpeed)
     _sceneUbo.writeFloatsN(0, _sceneUboFloats, WaterPipeline.SCENE_UBO_FLOATS_)
+
+    // Stamp this frame's time so subsequent `addRipple` calls
+    // queue impacts on the same clock the shader samples.
+    _lastFrameTime = time
+    // Upload the impact ring buffer when at least one entry has
+    // changed since the last frame. Empty-slot amplitude (0)
+    // stays valid so a single static upload covers the FS path.
+    if (_impactDirty) {
+      _impactBuf.writeFloats(0, _impactArr)
+      _impactDirty = false
+    }
 
     pass.setPipeline(_pipeline)
     pass.setBindGroup(0, _sceneBindGroup)
@@ -1142,11 +1283,12 @@ class WaterPipeline {
     _sceneBindGroup = _device.createBindGroup({
       "layout":  _sceneBgl,
       "entries": [
-        { "binding": 0, "buffer":  _sceneUbo, "size": WaterPipeline.SCENE_UBO_BYTES_ },
+        { "binding": 0, "buffer":  _sceneUbo,   "size": WaterPipeline.SCENE_UBO_BYTES_ },
         { "binding": 1, "view":    _depthView },
         { "binding": 2, "sampler": _depthSampler },
         { "binding": 3, "view":    _reflectionView },
-        { "binding": 4, "sampler": _reflectionSampler }
+        { "binding": 4, "sampler": _reflectionSampler },
+        { "binding": 5, "buffer":  _impactBuf, "size": WaterPipeline.IMPACT_BYTES_ }
       ]
     })
   }
