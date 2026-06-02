@@ -613,9 +613,13 @@ class ParticleSystem3D {
   }
 
   // Inline PRNG. Same shape as the 2D ParticleSystem path —
-  // a single-cell holder for the lazy Random instance.
+  // a single-cell holder for the lazy Random instance. Wren's
+  // Random requires an explicit seed; we hash the wall clock so
+  // every new system gets a distinct stream.
   random_() {
-    if (RANDOM_HOLDER_[0] == null) RANDOM_HOLDER_[0] = Random.new()
+    if (RANDOM_HOLDER_[0] == null) {
+      RANDOM_HOLDER_[0] = Random.new((System.clock * 1000000).floor)
+    }
     return RANDOM_HOLDER_[0].float()
   }
 
