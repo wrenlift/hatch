@@ -1,0 +1,7 @@
+name        = "audio-buses"
+version     = "0.1.0"
+entry       = "main"
+description = "Open the audio context, scale the per-bus volumes, and play a one-shot through the SFX bus. Showcases @hatch:audio's named buses (master / music / sfx / ui) — the surface a settings panel binds to."
+
+[dependencies]
+"@hatch:audio" = { path = "../../../packages/hatch-audio" }

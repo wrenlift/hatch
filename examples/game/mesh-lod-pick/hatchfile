@@ -1,0 +1,7 @@
+name        = "mesh-lod-pick"
+version     = "0.1.0"
+entry       = "main"
+description = "Build a MeshLOD with three (stub) detail tiers and pick the right tier for instances at varying distances from the camera. Shows the CPU half of the instanced-LOD pipeline."
+
+[dependencies]
+"@hatch:gpu" = { path = "../../../packages/hatch-gpu" }

@@ -1,0 +1,9 @@
+name        = "bvh-cull"
+version     = "0.1.0"
+entry       = "main"
+description = "Build a BVH over a grid of AABBs, run a frustum cull, print the visible ids. Showcases @hatch:spatial's BVH + queryFrustum / Frustum.cull plumbing."
+
+[dependencies]
+"@hatch:spatial" = { path = "../../../packages/hatch-spatial" }
+"@hatch:gpu"     = { path = "../../../packages/hatch-gpu" }
+"@hatch:math"    = { path = "../../../packages/hatch-math" }

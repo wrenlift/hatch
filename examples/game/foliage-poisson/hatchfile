@@ -1,0 +1,7 @@
+name        = "foliage-poisson"
+version     = "0.1.0"
+entry       = "main"
+description = "Poisson-disc + heightmap-slope foliage scatter. Generates a fbm heightmap with @hatch:noise, then runs Foliage.fromHeightmap to pick points that respect both minimum spacing and a slope window. Prints the resulting (x, z) set."
+
+[dependencies]
+"@hatch:game"  = { path = "../../../packages/hatch-game" }
