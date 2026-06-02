@@ -47,6 +47,12 @@ foreign class AudioCore {
 
   #!symbol = "wlift_audio_active_voices"
   foreign static activeVoices()
+
+  #!symbol = "wlift_audio_set_group_volume"
+  foreign static setGroupVolume(name, volume)
+
+  #!symbol = "wlift_audio_group_volume"
+  foreign static groupVolume(name)
 }
 
 class Audio {
@@ -57,10 +63,11 @@ class Audio {
 
   /// Trigger immediate playback.
   ///
-  /// | Option   | Type   | Notes                  |
-  /// |----------|--------|------------------------|
-  /// | `volume` | `Num`  | In `0..=1`, default 1. |
-  /// | `loop`   | `Bool` | Default `false`.       |
+  /// | Option   | Type     | Notes                                                                 |
+  /// |----------|----------|-----------------------------------------------------------------------|
+  /// | `volume` | `Num`    | In `0..=1`, default 1.                                                |
+  /// | `loop`   | `Bool`   | Default `false`.                                                      |
+  /// | `group`  | `String` | One of `"master"` / `"music"` / `"sfx"` / `"ui"`. Default `"sfx"`.    |
   static play(sound) { play(sound, {}) }
   static play(sound, options) {
     if (!(options is Map)) options = {}
@@ -74,12 +81,53 @@ class Audio {
   /// Number of voices currently playing. Useful for diagnostics
   /// and for capping concurrent plays from the game side.
   static activeVoices { AudioCore.activeVoices() }
+
+  /// Address an audio bus by name. The returned `AudioGroup` is a
+  /// thin handle around the named bus — set `.volume` to scale
+  /// every voice playing on that bus.
+  ///
+  /// Built-in bus names: `"master"` (multiplied last over every
+  /// voice), `"music"`, `"sfx"` (default for `Audio.play`),
+  /// `"ui"`. Settings tabs typically expose master + music + sfx
+  /// as independent sliders.
+  ///
+  /// @param {String} name
+  /// @returns {AudioGroup}
+  static group(name) { AudioGroup.new_(name) }
+}
+
+/// Thin handle to one of the mixer's named buses. Independent
+/// volumes are how every game ships master / music / SFX
+/// settings; `master` multiplies after every other bus, so it
+/// acts as the global volume.
+///
+/// Construct via [Audio.group]; don't instantiate directly.
+class AudioGroup {
+  construct new_(name) { _name = name }
+
+  /// The bus name (`"master"` / `"music"` / `"sfx"` / `"ui"`).
+  /// @returns {String}
+  name { _name }
+
+  /// Current bus volume. Reads back the host-side scalar so a
+  /// settings panel can populate slider positions on load.
+  /// @returns {Num}
+  volume { AudioCore.groupVolume(_name) }
+
+  /// Set the bus volume. Values are clamped to `0..=∞` host-side;
+  /// callers usually keep them in `0..=1` and let `master`
+  /// supply the final scale.
+  /// @param {Num} v
+  volume=(v) { AudioCore.setGroupVolume(_name, v) }
+
+  toString { "AudioGroup(%(_name))" }
 }
 
 class Sound {
-  /// Decode a WAV byte buffer into a Sound. Pixels live in the
-  /// mixer's PCM cache for the lifetime of the process unless
-  /// explicitly unloaded.
+  /// Decode a WAV or OGG Vorbis byte buffer into a Sound. PCM
+  /// frames live in the mixer's cache for the lifetime of the
+  /// process unless explicitly unloaded. Format dispatch is by
+  /// magic number — `RIFF...` → WAV, `OggS` → OGG Vorbis.
   static load(bytes) { Sound.new_(AudioCore.soundLoad(bytes)) }
 
   construct new_(id) { _id = id }
