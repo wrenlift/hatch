@@ -119,7 +119,7 @@ import "./foliage" for Foliage
 // Environmental forces. Today: Wind — noise-driven 3D vector
 // field with time evolution. Drop into particle integrators,
 // foliage sway, water surface ripples.
-import "./weather" for Wind
+import "./weather" for Wind, Weather
 
 // Water surfaces. Subdivided plane mesh + a noise-driven wave
 // height sampler that's shared between CPU buoyancy queries and

@@ -2,9 +2,26 @@
 // determinism, base-direction contribution, gust decorrelation,
 // and the in-place apply helper.
 
-import "./weather"    for Wind
+import "./weather"    for Wind, Weather
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
+
+// GPU stand-ins. Weather.rain / Weather.snow only need
+// device.createBuffer + a Texture-shaped opaque so they can
+// hand them to ParticleSystem3D.
+class MockBuf {
+  construct new() {}
+  writeFloats(off, data) {}
+  destroy {}
+}
+class MockDev {
+  construct new() {}
+  createBuffer(desc) { MockBuf.new() }
+}
+class MockTex {
+  construct new(id) { _id = id }
+  id { _id }
+}
 
 Test.describe("Wind.sample") {
   Test.it("is deterministic in (opts, x, y, z, t)") {
@@ -73,6 +90,62 @@ Test.describe("Wind.apply") {
     var v = [1, 2, 3]
     var returned = Wind.apply({ "baseStrength": 0, "gust": 0 }, 0, 0, 0, 0, 1, v)
     Expect.that(returned == v).toBe(true)
+  }
+}
+
+Test.describe("Weather.rain") {
+  Test.it("aborts when opts.texture is missing") {
+    var dev = MockDev.new()
+    var e = Fiber.new { Weather.rain(dev, {}) }.try()
+    Expect.that(e).toContain("texture")
+  }
+
+  Test.it("builds a ParticleSystem3D at the requested capacity") {
+    var dev = MockDev.new()
+    var sys = Weather.rain(dev, {
+      "texture":  MockTex.new(1),
+      "capacity": 256
+    })
+    Expect.that(sys.capacity).toBe(256)
+    Expect.that(sys.isPlaying).toBe(true)
+  }
+}
+
+Test.describe("Weather.snow") {
+  Test.it("uses larger default capacity than rain") {
+    var dev = MockDev.new()
+    var rain = Weather.rain(dev, {"texture": MockTex.new(1)})
+    var snow = Weather.snow(dev, {"texture": MockTex.new(2)})
+    Expect.that(snow.capacity > rain.capacity).toBe(true)
+  }
+
+  Test.it("opts.intensity is honoured") {
+    var dev = MockDev.new()
+    var sys = Weather.snow(dev, {
+      "texture":   MockTex.new(1),
+      "intensity": 1
+    })
+    Expect.that(sys.liveCount).toBe(0)
+    sys.update(1.0)
+    // emissionRate = 1 → one spawn per second.
+    Expect.that(sys.liveCount).toBe(1)
+  }
+}
+
+Test.describe("Weather.fog") {
+  Test.it("returns a Fog with overridden density / colour") {
+    var fog = Weather.fog({
+      "density": 0.05,
+      "color":   [0.5, 0.6, 0.7]
+    })
+    Expect.that(fog.density).toBe(0.05)
+    Expect.that(fog.color[0]).toBe(0.5)
+  }
+
+  Test.it("opts == null falls back to plain Fog defaults") {
+    var fog = Weather.fog(null)
+    // Default density per fog.wren is 0.020.
+    Expect.that(fog.density).toBe(0.020)
   }
 }
 
