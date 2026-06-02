@@ -13,8 +13,8 @@
 // inline, building meshes on demand and disposing leaving
 // chunks. For massive worlds where chunk loads would spike the
 // frame, swap in a fiber-driven async streamer wrapping the same
-// chunk-by-chunk API — Phase 8a's AssetLoader infrastructure
-// fits cleanly.
+// chunk-by-chunk API — `@hatch:assets` `AssetLoader` is the
+// obvious composition target.
 //
 // ## Example
 //
