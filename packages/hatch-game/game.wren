@@ -95,6 +95,7 @@ import "./animation" for Tween, Tweens, Clip, AnimationPlayer, Behaviors
 // existing batch pipeline.
 import "./particles"     for ParticleSystem, ParticleSystem3D, Particles
 import "./gpu_particles" for GpuParticleSystem3D
+import "./decals"        for Decal, DecalLayer, Decals
 import "./debug"     for FrameTimer, DebugOverlay
 
 // Fullscreen post-processing chain. Setting `g.postFX = PostFX.new(g)`
@@ -786,6 +787,9 @@ class Game {
       // explicit timing skip `Particles.register` and call
       // `system.update(dt)` themselves.
       if (Particles != null) Particles.update(g.dt)
+      // Age registered decal layers. Drops expired decals so user
+      // code never has to remember to drain them between frames.
+      if (Decals    != null) Decals.update(g.dt)
 
       // Poll the live window size every frame instead of relying
       // on `WindowEvent::Resized` reaching us through the event
