@@ -1,5 +1,5 @@
 name        = "@hatch:noise"
-version     = "0.1.0"
+version     = "0.2.0"
 entry       = "noise"
 description = "Procedural noise primitives — 2D + 3D Simplex / Perlin / Value scalars, fractal Brownian motion octave-sum, and a batched Float32Array heightmap sampler. Backed by the `noise` crate so terrain generators, foliage scatter, weather simulations, and texture authoring all share the same deterministic, seeded implementations."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:noise"
