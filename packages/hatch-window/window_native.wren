@@ -73,6 +73,20 @@ foreign class WindowCore {
   /// @returns {Map}
   #!symbol = "wlift_window_handle"
   foreign static handle(id)
+
+  /// Confine or release the cursor inside the window. Used for
+  /// FPS-style mouselook so the cursor can't leave the viewport.
+  /// @param {Num} id
+  /// @param {Bool} lock
+  #!symbol = "wlift_window_set_cursor_lock"
+  foreign static setCursorLock(id, lock)
+
+  /// Show or hide the OS cursor over the window. Pair with
+  /// [setCursorLock] for the standard FPS / pointer-trapped mode.
+  /// @param {Num} id
+  /// @param {Bool} hide
+  #!symbol = "wlift_window_set_cursor_visible"
+  foreign static setCursorVisible(id, hide)
 }
 
 /// Public Window class. `Window.create({...})` returns an
@@ -164,6 +178,17 @@ class Window {
   /// whole point of the BYO-window contract.
   /// @returns {Map}
   handle { WindowCore.handle(_id) }
+
+  /// Confine the cursor inside the window (for FPS mouselook).
+  /// Cursor warps back to centre and `mouseMoved` events keep
+  /// flowing as relative deltas the controller can integrate.
+  /// @param {Bool} lock
+  lockCursor(lock) { WindowCore.setCursorLock(_id, lock) }
+
+  /// Show or hide the OS cursor over the window. Independent of
+  /// [lockCursor]; FPS titles call both.
+  /// @param {Bool} hide
+  hideCursor(hide) { WindowCore.setCursorVisible(_id, hide) }
 
   /// Release the window. Idempotent.
   destroy {

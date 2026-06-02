@@ -61,11 +61,11 @@
 //! |---|---|
 //! | Keyboard | `"KeyA"`, `"Space"`, `"Escape"`, `"ArrowLeft"` — winit-style codes |
 //! | Mouse buttons | `"MouseLeft"`, `"MouseRight"`, `"MouseMiddle"` |
-//! | Gamepad (planned) | `"GamepadButtonA"`, `"GamepadAxisLX+"`, `"GamepadAxisLX-"` |
+//! | Gamepad buttons | `"GamepadButtonA"`, `"GamepadButtonB"`, `"GamepadDPadUp"`, `"GamepadLeftTrigger"`, ... |
+//! | Gamepad axes | `"GamepadAxisLX"`, `"GamepadAxisLY"`, `"GamepadAxisRX"`, `"GamepadAxisRY"`, `"GamepadAxisLZ"`, `"GamepadAxisRZ"` |
 //!
-//! Gamepad codes are accepted by the API today; the
-//! `@hatch:window` backend lights them up later. Until then they
-//! resolve to inactive bindings and produce no events / value.
+//! Gamepad bindings are honoured natively (via gilrs in the
+//! `@hatch:window` plugin). Buttons resolve to 0/1; axes to -1..1.
 //!
 //! ## Why a static facade?
 //!
