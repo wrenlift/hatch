@@ -22,9 +22,10 @@
 //   p.vy = p.vy + w[1] * dt
 //   p.vz = p.vz + w[2] * dt
 
-import "@hatch:noise" for Noise
-import "./particles"  for ParticleSystem3D
-import "./fog"        for Fog
+import "@hatch:noise"   for Noise
+import "./particles"    for ParticleSystem3D
+import "./gpu_particles" for GpuParticleSystem3D
+import "./fog"          for Fog
 
 /// Static namespace for the wind sampler. Deterministic: same
 /// `(opts, x, y, z, t)` → identical vector across runs / machines.
@@ -159,9 +160,17 @@ class Weather {
   /// | `lifetime`   | `[Num, Num]`| `[0.6, 1.0]`         | Seconds.                                    |
   /// | `color`      | `[r,g,b,a]` | `[0.7, 0.8, 0.95, 0.4]` | Translucent water-blue.                |
   ///
+  /// `opts.gpu = true` swaps the CPU `ParticleSystem3D` backing
+  /// for the compute-driven `GpuParticleSystem3D`. GPU mode scales
+  /// well past 100k drops at no CPU cost — at the price of losing
+  /// the death-event hook (kill plane + per-impact rings) that
+  /// the CPU sim exposes for the water-strike pattern. Use GPU
+  /// for massive storms; stay on CPU when you need every drop's
+  /// strike location.
+  ///
   /// @param {Device} device
   /// @param {Map} opts
-  /// @returns {ParticleSystem3D}
+  /// @returns {ParticleSystem3D | GpuParticleSystem3D}
   static rain(device, opts) {
     if (opts == null) Fiber.abort("Weather.rain: opts is required")
     var tex = opts["texture"]
@@ -175,7 +184,7 @@ class Weather {
     var width    = opts.containsKey("width")     ? opts["width"]     : 0.04
     var life     = opts.containsKey("lifetime")  ? opts["lifetime"]  : [0.6, 1.0]
     var color    = opts.containsKey("color")     ? opts["color"]     : [0.7, 0.8, 0.95, 0.4]
-    return ParticleSystem3D.new(device, {
+    var cfg = {
       "texture":      tex,
       "capacity":     capacity,
       "emissionRate": rate,
@@ -187,7 +196,10 @@ class Weather {
       "gravity":      [0, 0, 0],   // velocity already carries the fall
       "size":         [width, length_],
       "color":        [color, color]
-    })
+    }
+    var useGpu = opts.containsKey("gpu") ? opts["gpu"] : false
+    if (useGpu) return GpuParticleSystem3D.new(device, cfg)
+    return ParticleSystem3D.new(device, cfg)
   }
 
   /// Configure a snow column. Same shape as `rain` but with
@@ -221,7 +233,7 @@ class Weather {
     var size     = opts.containsKey("size")      ? opts["size"]      : 0.18
     var life     = opts.containsKey("lifetime")  ? opts["lifetime"]  : [4.0, 6.0]
     var color    = opts.containsKey("color")     ? opts["color"]     : [1.0, 1.0, 1.0, 0.85]
-    return ParticleSystem3D.new(device, {
+    var cfg = {
       "texture":      tex,
       "capacity":     capacity,
       "emissionRate": rate,
@@ -232,7 +244,10 @@ class Weather {
       "gravity":      [0, 0, 0],
       "size":         [size, size],
       "color":        [color, color]
-    })
+    }
+    var useGpu = opts.containsKey("gpu") ? opts["gpu"] : false
+    if (useGpu) return GpuParticleSystem3D.new(device, cfg)
+    return ParticleSystem3D.new(device, cfg)
   }
 
   /// Configure an aerial fog. Wraps `Fog` (see `./fog`) with
