@@ -1912,7 +1912,7 @@ class Renderer2D {
       "entries": [
         { "binding": 0, "buffer":  _ubo },
         { "binding": 1, "buffer":  instanceBuffer },
-        { "binding": 2, "texture": texture.view },
+        { "binding": 2, "view":    texture.createView() },
         { "binding": 3, "sampler": _sampler }
       ]
     })

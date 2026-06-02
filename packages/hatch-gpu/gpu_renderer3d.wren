@@ -1663,7 +1663,7 @@ class Renderer3D {
     var bg = _device.createBindGroup({
       "layout":  _billboardMaterialBgl,
       "entries": [
-        { "binding": 0, "texture": texture.view },
+        { "binding": 0, "view":    texture.createView() },
         { "binding": 1, "sampler": _billboardSampler }
       ]
     })
