@@ -5,7 +5,7 @@
 // the comparison operator (strict `<`) so a future refactor can't
 // silently swap it for `<=` and shift every bucket boundary.
 
-import "./gpu" for Camera3D, Frustum, Lod
+import "./gpu" for Camera3D, Frustum, Lod, MeshLOD
 import "@hatch:math"   for Vec3
 import "@hatch:time"   for Clock
 import "@hatch:test"   for Test
@@ -155,6 +155,81 @@ Test.describe("Lod + Frustum cull exit-gate") {
     Expect.that(close > 0).toBe(true)
     Expect.that(mid > 0).toBe(true)
     Expect.that(culled > 0).toBe(true)
+  }
+}
+
+// Tiny stub Mesh — MeshLOD never reads any GPU state in unit
+// tests, only `pickIndex` and `meshAt`. A bare object with no
+// fields lets us exercise the API without standing up a Device.
+class StubMesh_ {
+  construct new(id) { _id = id }
+  id { _id }
+}
+
+Test.describe("Lod.selectN") {
+  Test.it("returns the first tier whose threshold the distance hasn't exceeded") {
+    // Thresholds at squared 100 / 400 / 900 → distances 10 / 20 / 30.
+    var thresholds = [100, 400, 900]
+    // distance 5 (sq=25) → tier 0.
+    Expect.that(Lod.selectN(0, 0, 0, 5, 0, 0, thresholds)).toBe(0)
+    // distance 15 (sq=225) → tier 1.
+    Expect.that(Lod.selectN(0, 0, 0, 15, 0, 0, thresholds)).toBe(1)
+    // distance 25 (sq=625) → tier 2.
+    Expect.that(Lod.selectN(0, 0, 0, 25, 0, 0, thresholds)).toBe(2)
+    // distance 100 (sq=10000) → past all → tier == thresholds.count.
+    Expect.that(Lod.selectN(0, 0, 0, 100, 0, 0, thresholds)).toBe(3)
+  }
+
+  Test.it("treats each threshold boundary as exclusive (strict <)") {
+    // distance exactly 10 (sq=100) — equal to the first threshold —
+    // crosses into tier 1, matching select3 semantics.
+    Expect.that(Lod.selectN(0, 0, 0, 10, 0, 0, [100, 400])).toBe(1)
+  }
+}
+
+Test.describe("MeshLOD") {
+  Test.it("aborts when distancesSq.count != meshes.count - 1") {
+    var hi  = StubMesh_.new(0)
+    var mid = StubMesh_.new(1)
+    var lo  = StubMesh_.new(2)
+    var e = Fiber.new {
+      // 3 meshes, only 1 threshold — should need 2.
+      MeshLOD.new([hi, mid, lo], [625])
+    }.try()
+    Expect.that(e).toContain("distancesSq.count must be")
+  }
+
+  Test.it("picks the highest-detail mesh inside the closest tier") {
+    var hi  = StubMesh_.new(0)
+    var mid = StubMesh_.new(1)
+    var lo  = StubMesh_.new(2)
+    // Tiers: hi for sq<100, mid for sq<400, lo otherwise.
+    var lod = MeshLOD.new([hi, mid, lo], [100, 400])
+    // Camera at origin, instance 5 away → tier 0.
+    Expect.that(lod.pickIndex(0, 0, 0, 5, 0, 0)).toBe(0)
+    Expect.that(lod.meshAt(0).id).toBe(0)
+    // 15 away → tier 1.
+    Expect.that(lod.pickIndex(0, 0, 0, 15, 0, 0)).toBe(1)
+    // 50 away → tier 2.
+    Expect.that(lod.pickIndex(0, 0, 0, 50, 0, 0)).toBe(2)
+    Expect.that(lod.meshAt(2).id).toBe(2)
+  }
+
+  Test.it("fromDistances pre-squares world-space thresholds") {
+    var hi = StubMesh_.new(0)
+    var lo = StubMesh_.new(1)
+    var lod = MeshLOD.fromDistances([hi, lo], [10])
+    Expect.that(lod.pickIndex(0, 0, 0, 5, 0, 0)).toBe(0)
+    Expect.that(lod.pickIndex(0, 0, 0, 12, 0, 0)).toBe(1)
+  }
+
+  Test.it("meshAt clamps out-of-range indices") {
+    var hi  = StubMesh_.new(0)
+    var mid = StubMesh_.new(1)
+    var lo  = StubMesh_.new(2)
+    var lod = MeshLOD.new([hi, mid, lo], [100, 400])
+    Expect.that(lod.meshAt(-1).id).toBe(0)
+    Expect.that(lod.meshAt(99).id).toBe(2)
   }
 }
 
