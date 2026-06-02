@@ -1,0 +1,7 @@
+name        = "clip-curves"
+version     = "0.1.0"
+entry       = "main"
+description = "Sample the three Clip interpolation modes — linear, step, and Hermite cubic — at fixed intervals to show their distinct curve shapes. Exercises Clip.new + Clip.withInterpolations from @hatch:game."
+
+[dependencies]
+"@hatch:game" = { path = "../../../packages/hatch-game" }

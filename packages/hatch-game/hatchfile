@@ -27,7 +27,7 @@ readme   = "README.md"
 # Terrain module wraps @hatch:noise's batched fillSimplex2 to
 # produce heightmap Meshes; everything else in @hatch:game can
 # still be used without ever touching Terrain.
-"@hatch:noise"  = "0.1.0"
+"@hatch:noise"  = { path = "../hatch-noise" }
 
 [spec-dependencies]
 "@hatch:test"   = "0.2.1"

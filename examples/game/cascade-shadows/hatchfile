@@ -1,0 +1,8 @@
+name        = "cascade-shadows"
+version     = "0.1.0"
+entry       = "main"
+description = "Compute cascaded-shadow-map split distances + per-cascade light-space view-projection matrices. Drives @hatch:gpu's CascadeShadows.splits / cascadeMatrix and prints the result so the data can be fed to a multi-cascade depth pass."
+
+[dependencies]
+"@hatch:gpu"  = { path = "../../../packages/hatch-gpu" }
+"@hatch:math" = { path = "../../../packages/hatch-math" }
