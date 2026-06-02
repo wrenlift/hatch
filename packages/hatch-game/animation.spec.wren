@@ -380,4 +380,50 @@ Test.describe("Behaviors.wire (facade)") {
   }
 }
 
+Test.describe("Clip.withInterpolations") {
+  Test.it("step interpolation holds previous value until next keyframe") {
+    var c = Clip.withInterpolations("step", 1.0, {
+      "x": [[0, 10], [0.5, 20], [1.0, 30]]
+    }, {"x": "step"})
+    Expect.that(c.sample(0)["x"]).toBe(10)
+    // Just before the second key — still 10.
+    Expect.that(c.sample(0.49)["x"]).toBe(10)
+    // At the second key — 20.
+    Expect.that(c.sample(0.5)["x"]).toBe(20)
+    Expect.that(c.sample(0.75)["x"]).toBe(20)
+    Expect.that(c.sample(1.0)["x"]).toBe(30)
+  }
+
+  Test.it("cubic Hermite at the keyframe endpoints reads the keyframe values") {
+    // Two keyframes with zero tangents at both ends: at u=0 the
+    // result is p0, at u=1 it's p1, regardless of tangent values.
+    var c = Clip.withInterpolations("cubic", 1.0, {
+      "y": [[0, 0, 0, 0], [1.0, 100, 0, 0]]
+    }, {"y": "cubic"})
+    Expect.that(c.sample(0)["y"]).toBe(0)
+    Expect.that(c.sample(1.0)["y"]).toBe(100)
+  }
+
+  Test.it("cubic Hermite midpoint with zero tangents matches Hermite basis") {
+    // At u=0.5 with all tangents zero, the cubic reduces to
+    // h00(0.5)*p0 + h01(0.5)*p1 = 0.5*p0 + 0.5*p1 — same as
+    // linear, by construction.
+    var c = Clip.withInterpolations("cubic", 1.0, {
+      "y": [[0, 0, 0, 0], [1.0, 100, 0, 0]]
+    }, {"y": "cubic"})
+    Expect.that(c.sample(0.5)["y"]).toBe(50)
+  }
+
+  Test.it("linear is the default for tracks not listed in interps") {
+    var c = Clip.withInterpolations("mix", 1.0, {
+      "linTrack":  [[0, 0], [1.0, 10]],
+      "stepTrack": [[0, 100], [1.0, 200]]
+    }, {"stepTrack": "step"})
+    // linTrack falls back to linear.
+    Expect.that(c.sample(0.5)["linTrack"]).toBe(5)
+    // stepTrack holds the first keyframe.
+    Expect.that(c.sample(0.5)["stepTrack"]).toBe(100)
+  }
+}
+
 Test.run()
