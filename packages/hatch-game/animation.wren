@@ -270,7 +270,7 @@ class Tween {
 /// same shape covers UI prop animation, camera shake curves, and
 /// any other keyframed data.
 class Clip {
-  /// Build a clip.
+  /// Build a clip with linearly-interpolated tracks.
   ///
   /// @param {String} name. Identifier used by `AnimationPlayer.play`.
   /// @param {Num} duration. Total clip duration in seconds.
@@ -283,6 +283,32 @@ class Clip {
     _name     = name
     _duration = duration
     _tracks   = tracks
+    _interps  = {}     // trackName → "linear" | "step" | "cubic"
+  }
+
+  /// Build a clip with per-track interpolation. `interps` is a
+  /// `Map<String, String>` keyed by track name; values are one of
+  /// `"linear"` (default, matches `Clip.new`), `"step"` (no
+  /// interpolation — hold the previous keyframe until the next
+  /// fires), or `"cubic"` (Hermite cubic, glTF 2.0 CUBICSPLINE
+  /// shape). Tracks marked `"cubic"` carry 4-element keyframes
+  /// `[time, value, inTangent, outTangent]`; linear / step tracks
+  /// keep the 2-element `[time, value]` format.
+  ///
+  /// @param {String} name
+  /// @param {Num} duration
+  /// @param {Map} tracks
+  /// @param {Map} interps. `Map<String, String>`. Missing entries
+  ///   default to `"linear"`.
+  construct withInterpolations(name, duration, tracks, interps) {
+    if (!(name is String))      Fiber.abort("Clip.withInterpolations: name must be a String")
+    if (!(duration is Num))     Fiber.abort("Clip.withInterpolations: duration must be a Num")
+    if (!(tracks is Map))       Fiber.abort("Clip.withInterpolations: tracks must be a Map")
+    if (!(interps is Map))      Fiber.abort("Clip.withInterpolations: interps must be a Map")
+    _name     = name
+    _duration = duration
+    _tracks   = tracks
+    _interps  = interps
   }
 
   /// Clip name. @returns {String}
@@ -291,6 +317,8 @@ class Clip {
   duration  { _duration }
   /// Track keyframes. @returns {Map<String, List>}
   tracks    { _tracks }
+  /// Per-track interpolation kinds. @returns {Map<String, String>}
+  interpolations { _interps }
 
   /// Sample every track at `t` seconds. `t` is clamped to
   /// `0..duration`. Returns a fresh `Map<String, Num>` of
@@ -326,9 +354,35 @@ class Clip {
         i = i + 1
       }
       var span = next[0] - prev[0]
+      var interp = _interps.containsKey(key) ? _interps[key] : "linear"
       if (span <= 0) {
         out[key] = prev[1]
+      } else if (interp == "step") {
+        // Step: hold the previous keyframe's value until t
+        // reaches the next keyframe's time — then snap to it.
+        out[key] = clamped >= next[0] ? next[1] : prev[1]
+      } else if (interp == "cubic") {
+        // Hermite cubic with per-keyframe in/out tangents,
+        // matching the glTF 2.0 CUBICSPLINE shape:
+        //   P(u) = (2u³ - 3u² + 1)·p0
+        //        + (u³ - 2u² + u)·m0·span
+        //        + (-2u³ + 3u²)·p1
+        //        + (u³ - u²)·m1·span
+        // m0 = prev.outTangent, m1 = next.inTangent.
+        var u  = (clamped - prev[0]) / span
+        var u2 = u * u
+        var u3 = u2 * u
+        var p0 = prev[1]
+        var p1 = next[1]
+        var m0 = prev.count > 3 ? prev[3] : 0
+        var m1 = next.count > 2 ? next[2] : 0
+        var h00 = 2 * u3 - 3 * u2 + 1
+        var h10 = u3 - 2 * u2 + u
+        var h01 = -2 * u3 + 3 * u2
+        var h11 = u3 - u2
+        out[key] = h00 * p0 + h10 * m0 * span + h01 * p1 + h11 * m1 * span
       } else {
+        // "linear" (the default).
         var u = (clamped - prev[0]) / span
         out[key] = prev[1] + (next[1] - prev[1]) * u
       }
