@@ -168,6 +168,11 @@ class Input {
     _mouseY     = 0
     _scrollX    = 0     // edge-triggered scroll delta for this frame
     _scrollY    = 0
+    // Gamepad state. Buttons are 0/1 in the axisMap so
+    // `Actions.bind("Jump", ["GamepadButtonA"])` reads via the
+    // same axis-lookup path that gamepad sticks use. Axes are
+    // signed -1..1 and persist until the next AxisChanged event.
+    _gamepadAxis = {}   // code (String) → Num
   }
 
   // Begin a new frame: clear edge-triggered sets. `down` /
@@ -211,8 +216,25 @@ class Input {
       // consumer reads once per frame.
       _scrollX = _scrollX + e["dx"]
       _scrollY = _scrollY + e["dy"]
+    } else if (t == "gamepadButtonDown") {
+      // Map gamepad buttons into the same axisMap Actions reads
+      // for sticks, but with value 1. Held until the up event.
+      _gamepadAxis[e["code"]] = 1
+    } else if (t == "gamepadButtonUp") {
+      _gamepadAxis.remove(e["code"])
+    } else if (t == "gamepadAxis") {
+      _gamepadAxis[e["code"]] = e["value"]
     }
   }
+
+  /// Snapshot of the current gamepad input as a `Map<String, Num>`
+  /// keyed by binding name (`"GamepadButtonA"`, `"GamepadAxisLX"`,
+  /// ...). Passed to `Actions.update_` as the axisMap argument so
+  /// the same binding lookup that handles keyboard / mouse works
+  /// for sticks and buttons.
+  ///
+  /// @returns {Map}
+  gamepadAxisMap { _gamepadAxis }
 
   // winit returns values like "Code(KeyA)" / "Code(Space)" via
   // Debug formatting. Strip the wrapper so users write friendly
@@ -719,7 +741,7 @@ class Game {
       // in the bundle. Without the guards the first frame aborts at
       // `Null does not implement update_(_)`. Native binds them
       // correctly so the guards are a no-op there.
-      if (Actions   != null) Actions.update_(g.input)
+      if (Actions   != null) Actions.update_(g.input, g.input.gamepadAxisMap)
       // Advance any scheduled tweens. `Tweens.add(t)` is the
       // user-facing entry; this is the matching pump call so user
       // code doesn't have to remember to drive it.
