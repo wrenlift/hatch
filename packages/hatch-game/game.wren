@@ -93,7 +93,7 @@ import "./animation" for Tween, Tweens, Clip, AnimationPlayer, Behaviors
 // frame tick (or call `sys.update(dt)` manually). Output routes
 // through `Renderer2D.drawSpriteTinted` so particles share the
 // existing batch pipeline.
-import "./particles" for ParticleSystem, Particles
+import "./particles" for ParticleSystem, ParticleSystem3D, Particles
 
 // Fullscreen post-processing chain. Setting `g.postFX = PostFX.new(g)`
 // in `setup` re-routes the scene render through an offscreen
