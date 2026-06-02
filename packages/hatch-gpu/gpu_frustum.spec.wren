@@ -84,4 +84,39 @@ Test.describe("Frustum.sphereVisible") {
   }
 }
 
+// Stand-in for @hatch:spatial.BVH that records which `planes` it
+// was handed. Frustum.cull is a one-liner — the spec only needs to
+// prove it forwards Camera3D.frustumPlanes verbatim. End-to-end
+// integration with the real BVH is exercised by @hatch:spatial's
+// own queryFrustum spec.
+class MockBVH_ {
+  construct new() {
+    _calls = 0
+    _planes = null
+  }
+  queryFrustum(planes, out) {
+    _calls = _calls + 1
+    _planes = planes
+    out[0] = 42
+    return 1
+  }
+  calls  { _calls }
+  planes { _planes }
+}
+
+Test.describe("Frustum.cull(bvh, camera)") {
+  Test.it("delegates to bvh.queryFrustum with the camera's planes") {
+    var cam = Camera3D.perspective(60, 1.0, 0.1, 100)
+    cam.lookAt(Vec3.new(0, 0, 5), Vec3.zero, Vec3.unitY)
+    var bvh = MockBVH_.new()
+    var out = List.filled(8, 0)
+    var n = Frustum.cull(bvh, cam, out)
+    Expect.that(n).toBe(1)
+    Expect.that(out[0]).toBe(42)
+    Expect.that(bvh.calls).toBe(1)
+    // Forwarded planes object is the camera's own — same identity.
+    Expect.that(bvh.planes).toBe(cam.frustumPlanes)
+  }
+}
+
 Test.run()
