@@ -182,6 +182,19 @@ class HUD {
     _input    = null
     _activeButton = null    // id of button that received mouseDown
     _hoverButton  = null
+    // Gamepad focus nav. _focusables is the per-frame registration
+    // order of focusable widgets (each `button(...)` call appends
+    // its id during the draw pass). _lastFocusables is the
+    // previous frame's snapshot — used at `beginFrame` to translate
+    // a DPad / stick step into the *current* focused id, since this
+    // frame's list isn't built yet at input-time. _focusedId is the
+    // id that should read as "focused" during this frame's button
+    // calls.
+    _focusables     = []
+    _lastFocusables = []
+    _focusIndex     = -1
+    _focusedId      = null
+    _axisLatched_   = {}      // axis code → last frame's "past threshold" bit
   }
 
   // 1×1 RGBA white texture: every HUD primitive (rectangles, font
@@ -221,8 +234,58 @@ class HUD {
     _renderer = renderer
     _input    = g.input
     _hoverButton = null
-    // Defer click resolution to the actual `button()` call sites;
-    // we just snapshot the input state here.
+    // Snapshot last frame's focusable widgets so DPad / stick nav
+    // can advance through them BEFORE this frame's button() calls
+    // rebuild the list.
+    _lastFocusables = _focusables
+    _focusables     = []
+    // Step focus on gamepad DPad / left-stick edge events. Stick
+    // is read as one step per crossing into ±0.5 — Input's
+    // `gamepadJustPressed` already handles the press/release edge
+    // for DPad buttons; for stick axes we fold the threshold into
+    // a synthetic press-once cadence in `axisStepped_`.
+    if (g.input != null && _lastFocusables.count > 0) {
+      var step = 0
+      if (g.input.gamepadJustPressed("GamepadDPadDown") ||
+          axisStepped_("GamepadAxisLY", g.input, 0.5)) step = 1
+      if (g.input.gamepadJustPressed("GamepadDPadUp") ||
+          axisStepped_("GamepadAxisLY", g.input, -0.5)) step = -1
+      if (step != 0) {
+        if (_focusIndex < 0) {
+          _focusIndex = step > 0 ? 0 : _lastFocusables.count - 1
+        } else {
+          _focusIndex = ((_focusIndex + step) % _lastFocusables.count + _lastFocusables.count) % _lastFocusables.count
+        }
+      }
+      if (_focusIndex >= 0 && _focusIndex < _lastFocusables.count) {
+        _focusedId = _lastFocusables[_focusIndex]
+      } else {
+        _focusedId = null
+      }
+    } else if (_lastFocusables.count == 0) {
+      _focusIndex = -1
+      _focusedId  = null
+    }
+  }
+
+  // True only on the frame the named axis CROSSES `threshold` from
+  // the wrong side — gives the analog stick the same one-step-per-
+  // tap cadence as the DPad. State lives in `_axisLatched`.
+  axisStepped_(code, input, threshold) {
+    var v = 0
+    if (input.gamepadAxisMap != null && input.gamepadAxisMap.containsKey(code)) {
+      v = input.gamepadAxisMap[code]
+    }
+    if (_axisLatched_ == null) _axisLatched_ = {}
+    var was = _axisLatched_.containsKey(code) ? _axisLatched_[code] : false
+    var now
+    if (threshold > 0) {
+      now = v >= threshold
+    } else {
+      now = v <= threshold
+    }
+    _axisLatched_[code] = now
+    return now && !was
   }
 
   /// Finish the frame. Releases the per-frame renderer reference.
@@ -390,8 +453,13 @@ class HUD {
       Fiber.abort("HUD.button: call beginFrame(g, renderer) first.")
     }
     var id = "%(x):%(y):%(text)"
+    // Register this widget into the per-frame focusable list so
+    // next frame's `beginFrame` can step DPad / stick nav through
+    // it. Registration order = navigation order.
+    _focusables.add(id)
     var hovering = pointInside_(_input.mouseX, _input.mouseY, x, y, w, h)
     if (hovering) _hoverButton = id
+    var focused = (id == _focusedId)
 
     var pressed = false
     if (hovering && _input.mouseJustPressed("left")) {
@@ -403,9 +471,18 @@ class HUD {
       }
       _activeButton = null
     }
+    // Gamepad A → press the focused button. Doesn't drive an
+    // active-press state since the button-down → button-up cadence
+    // is one frame on most pads; we just resolve `pressed` on the
+    // edge.
+    if (focused && _input.gamepadJustPressed("GamepadButtonA")) {
+      pressed = true
+    }
 
     var active = _activeButton == id && hovering
-    var bgKey  = active ? "bgActive" : (hovering ? "bgHover" : "bg")
+    // Focused-but-not-mouse-active reads as the hover theme so the
+    // visual feedback is consistent across pointing devices.
+    var bgKey  = active ? "bgActive" : ((hovering || focused) ? "bgHover" : "bg")
     var fgKey  = active ? "fgActive" : "fg"
     rect(x, y, w, h, theme[bgKey])
     if (theme.containsKey("border") && theme["border"] != null) {

@@ -34,6 +34,32 @@ class MockInput {
   mouseJustPressed(b)  { _justPressed.containsKey(b) }
   mouseJustReleased(b) { _justReleased.containsKey(b) }
 
+  // Gamepad surface — minimal stub. Real `Input` exposes the same
+  // shape from @hatch:game; HUD only reads these getters when a
+  // gamepad event arrives so the mouse-only tests can return
+  // false/empty without surprises.
+  gamepadJustPressed(code)  { _gpPressed != null && _gpPressed.containsKey(code) }
+  gamepadJustReleased(code) { _gpReleased != null && _gpReleased.containsKey(code) }
+  gamepadDown(code)         { _gpDown != null && _gpDown.containsKey(code) }
+  gamepadAxisMap            { _gpAxis }
+
+  // Test helpers.
+  pressGamepad(code) {
+    if (_gpPressed == null) _gpPressed = {}
+    if (_gpDown == null) _gpDown = {}
+    _gpPressed[code] = true
+    _gpDown[code] = true
+  }
+  releaseGamepad(code) {
+    if (_gpReleased == null) _gpReleased = {}
+    _gpReleased[code] = true
+    if (_gpDown != null) _gpDown.remove(code)
+  }
+  setAxis(code, value) {
+    if (_gpAxis == null) _gpAxis = {}
+    _gpAxis[code] = value
+  }
+
   moveTo(x, y) {
     _mx = x
     _my = y
@@ -49,6 +75,8 @@ class MockInput {
   beginFrame {
     _justPressed = {}
     _justReleased = {}
+    if (_gpPressed  != null) _gpPressed  = {}
+    if (_gpReleased != null) _gpReleased = {}
   }
 }
 
@@ -444,6 +472,86 @@ Test.describe("HUDPanel text + divider") {
     panel.divider()
     panel.text("cubes", "1234")
     hud.endFrame
+  }
+}
+
+Test.describe("HUD gamepad navigation") {
+  Test.it("registers focusable widgets in draw order across frames") {
+    var g = MockGameState.new()
+    var r = MockRenderer.new()
+    var hud = HUD.new(g)
+
+    // First frame: draw three buttons, no focus stepped yet.
+    hud.beginFrame(g, r)
+    hud.button("A", 10, 10, 80, 40)
+    hud.button("B", 10, 60, 80, 40)
+    hud.button("C", 10, 110, 80, 40)
+
+    // Reset MockInput edge state between frames, step focus once
+    // (DPad down → first focusable). On the SECOND frame, focused
+    // button should be "A".
+    g.input.beginFrame
+    g.input.pressGamepad("GamepadDPadDown")
+
+    hud.beginFrame(g, r)
+    var pressedA = hud.button("A", 10, 10, 80, 40)
+    var pressedB = hud.button("B", 10, 60, 80, 40)
+    var pressedC = hud.button("C", 10, 110, 80, 40)
+    // No press happens until ButtonA fires — DPad only moves focus.
+    Expect.that(pressedA).toBe(false)
+    Expect.that(pressedB).toBe(false)
+    Expect.that(pressedC).toBe(false)
+  }
+
+  Test.it("GamepadButtonA presses the focused widget") {
+    var g = MockGameState.new()
+    var r = MockRenderer.new()
+    var hud = HUD.new(g)
+
+    // Frame 1: register the focusable set.
+    hud.beginFrame(g, r)
+    hud.button("A", 10, 10, 80, 40)
+    hud.button("B", 10, 60, 80, 40)
+
+    // Step focus to "A" (DPad down once on the next beginFrame).
+    g.input.beginFrame
+    g.input.pressGamepad("GamepadDPadDown")
+    hud.beginFrame(g, r)
+    hud.button("A", 10, 10, 80, 40)
+    hud.button("B", 10, 60, 80, 40)
+
+    // Frame 3: press A while still focused on the first button.
+    g.input.beginFrame
+    g.input.pressGamepad("GamepadButtonA")
+    hud.beginFrame(g, r)
+    var pressedA = hud.button("A", 10, 10, 80, 40)
+    var pressedB = hud.button("B", 10, 60, 80, 40)
+    Expect.that(pressedA).toBe(true)
+    Expect.that(pressedB).toBe(false)
+  }
+
+  Test.it("DPadUp wraps focus when going past the start") {
+    var g = MockGameState.new()
+    var r = MockRenderer.new()
+    var hud = HUD.new(g)
+
+    hud.beginFrame(g, r)
+    hud.button("X", 0, 0, 1, 1)
+    hud.button("Y", 0, 0, 1, 2)
+
+    // Up from "no focus" should land on the LAST entry (wrap).
+    g.input.beginFrame
+    g.input.pressGamepad("GamepadDPadUp")
+    hud.beginFrame(g, r)
+    hud.button("X", 0, 0, 1, 1)
+    hud.button("Y", 0, 0, 1, 2)
+    g.input.beginFrame
+    g.input.pressGamepad("GamepadButtonA")
+    hud.beginFrame(g, r)
+    var pX = hud.button("X", 0, 0, 1, 1)
+    var pY = hud.button("Y", 0, 0, 1, 2)
+    Expect.that(pX).toBe(false)
+    Expect.that(pY).toBe(true)
   }
 }
 

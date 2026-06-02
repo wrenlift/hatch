@@ -173,6 +173,11 @@ class Input {
     // same axis-lookup path that gamepad sticks use. Axes are
     // signed -1..1 and persist until the next AxisChanged event.
     _gamepadAxis = {}   // code (String) → Num
+    // Edge-triggered gamepad button state. Mirrors the keyboard
+    // `_pressed` / `_released` pattern so HUD focus nav + game
+    // logic can both ask `gamepadJustPressed("GamepadButtonA")`.
+    _gamepadPressed  = {}
+    _gamepadReleased = {}
   }
 
   // Begin a new frame: clear edge-triggered sets. `down` /
@@ -186,6 +191,8 @@ class Input {
     _mouseRel = {}
     _scrollX = 0
     _scrollY = 0
+    _gamepadPressed  = {}
+    _gamepadReleased = {}
   }
 
   // Apply one event from the window's pollEvents list.
@@ -219,12 +226,38 @@ class Input {
     } else if (t == "gamepadButtonDown") {
       // Map gamepad buttons into the same axisMap Actions reads
       // for sticks, but with value 1. Held until the up event.
-      _gamepadAxis[e["code"]] = 1
+      var code = e["code"]
+      if (!_gamepadAxis.containsKey(code) || _gamepadAxis[code] != 1) {
+        _gamepadPressed[code] = true
+      }
+      _gamepadAxis[code] = 1
     } else if (t == "gamepadButtonUp") {
-      _gamepadAxis.remove(e["code"])
+      var code = e["code"]
+      _gamepadAxis.remove(code)
+      _gamepadReleased[code] = true
     } else if (t == "gamepadAxis") {
       _gamepadAxis[e["code"]] = e["value"]
     }
+  }
+
+  /// True only on the frame `code` first transitioned to pressed
+  /// (`"GamepadButtonA"`, `"GamepadDPadUp"`, ...). Mirrors the
+  /// keyboard / mouse `justPressed` shape so HUD focus nav and
+  /// game logic share the same edge-triggered idiom.
+  /// @param {String} code
+  /// @returns {Bool}
+  gamepadJustPressed(code) { _gamepadPressed.containsKey(code) }
+
+  /// True only on the frame `code` was released.
+  /// @param {String} code
+  /// @returns {Bool}
+  gamepadJustReleased(code) { _gamepadReleased.containsKey(code) }
+
+  /// True while `code` is held (button down between press / release).
+  /// @param {String} code
+  /// @returns {Bool}
+  gamepadDown(code) {
+    return _gamepadAxis.containsKey(code) && _gamepadAxis[code] == 1
   }
 
   /// Snapshot of the current gamepad input as a `Map<String, Num>`
