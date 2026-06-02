@@ -21,6 +21,12 @@ class Knobs {
       "fogDensity":  { "v": 0.020 },
       "cloudCover":  { "v": 0.42 },
       "fogFlags":    { "expCurve": false },
+      // Rain weather. `intensity` is particles per second (0
+      // disables the emitter); `fallSpeed` is metres/sec
+      // downward.
+      "rainOn":      { "v": false },
+      "rainRate":    { "v": 500.0 },
+      "rainSpeed":   { "v": 14.0 },
 
       // Water surface
       "waterAlpha":  { "v": 0.91 },

@@ -197,6 +197,11 @@ class WaterPipeline {
                                    //   (0 linear, 1 exp²)
         fog_params:   vec4<f32>,   // x=start, y=end, z=density,
                                    //   w=1/(end-start)
+        ripple:       vec4<f32>,   // x=strength (0=off), y=density,
+                                   //   z=lifetime (s), w=speed (m/s)
+        ripple_scale: vec4<f32>,   // x=cellSize (m) — controls
+                                   //   per-sqm ring count + radius;
+                                   //   yzw reserved
       };
       struct DrawUniforms {
         model: mat4x4<f32>,
@@ -353,6 +358,49 @@ class WaterPipeline {
         return v;
       }
 
+      // Procedural rain-ripple field. Each cell in a 0.6 m grid
+      // either fires a ring (if its hash exceeds (1 - density)) or
+      // stays quiet. Firing cells emit a cosine-cross-section ring
+      // that expands outward from a hash-derived in-cell centre,
+      // with the ring fading over `lifetime` and resetting on a
+      // hash-offset phase so neighbouring cells fire out of step.
+      fn ripple_pulse(d: f32, age: f32, lifetime: f32, speed: f32) -> f32 {
+        let radius = age * speed;
+        let band   = abs(d - radius);
+        let half_w = 0.05;
+        let ring   = exp(-(band * band) / (half_w * half_w));
+        let fade   = 1.0 - clamp(age / lifetime, 0.0, 1.0);
+        return ring * fade;
+      }
+
+      // Sum ripple contributions from a 3×3 neighbourhood of cells
+      // around `world_xz`. Each cell only fires if its hash lands
+      // inside the density band; cells that don't fire contribute
+      // zero (the hottest hot path when rain is off).
+      fn ripple_height(world_xz: vec2<f32>, t: f32, density: f32,
+                       lifetime: f32, speed: f32, cell_size: f32) -> f32 {
+        let p  = world_xz / cell_size;
+        let pi = floor(p);
+        var sum: f32 = 0.0;
+        for (var dy: i32 = -1; dy <= 1; dy = dy + 1) {
+          for (var dx: i32 = -1; dx <= 1; dx = dx + 1) {
+            let cell = pi + vec2<f32>(f32(dx), f32(dy));
+            let h    = wh_hash(cell);
+            if (h < 1.0 - density) { continue; }
+            let h2     = wh_hash(cell + vec2<f32>(13.7, 41.3));
+            let center = (cell + vec2<f32>(h, h2)) * cell_size;
+            let d      = distance(world_xz, center);
+            // Per-cell phase offset means the 9 cells in the window
+            // don't all fire at the same time; the surface shows a
+            // shifting field of expanding rings instead of a pulse.
+            let raw    = t + h * 17.31;
+            let age    = raw - floor(raw / lifetime) * lifetime;
+            sum = sum + ripple_pulse(d, age, lifetime, speed);
+          }
+        }
+        return sum;
+      }
+
       @fragment
       fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         // Subtle high-frequency normal perturbation. Strength is
@@ -366,7 +414,25 @@ class WaterPipeline {
         let bump_strength = 0.08;
         let nx = fbm2(bump_p + vec2<f32>(bump_eps, 0.0)) - fbm2(bump_p - vec2<f32>(bump_eps, 0.0));
         let nz = fbm2(bump_p + vec2<f32>(0.0, bump_eps)) - fbm2(bump_p - vec2<f32>(0.0, bump_eps));
-        let bump = vec3<f32>(-nx * bump_strength, 0.0, -nz * bump_strength);
+        var bump = vec3<f32>(-nx * bump_strength, 0.0, -nz * bump_strength);
+
+        // Rain ripples — gated entirely off when strength ≤ 0 so
+        // dry-weather frames pay zero ripple cost. `cell_size` ties
+        // the ring count + radius to the surface scale (small cells
+        // for ocean, larger for ponds).
+        let r_str = scene.ripple.x;
+        if (r_str > 0.001) {
+          let r_density = scene.ripple.y;
+          let r_life    = scene.ripple.z;
+          let r_speed   = scene.ripple.w;
+          let r_cell    = max(scene.ripple_scale.x, 0.05);
+          let r_eps     = max(r_cell * 0.07, 0.015);
+          let rdx = ripple_height(in.world.xz + vec2<f32>(r_eps, 0.0), t, r_density, r_life, r_speed, r_cell)
+                  - ripple_height(in.world.xz - vec2<f32>(r_eps, 0.0), t, r_density, r_life, r_speed, r_cell);
+          let rdz = ripple_height(in.world.xz + vec2<f32>(0.0, r_eps), t, r_density, r_life, r_speed, r_cell)
+                  - ripple_height(in.world.xz - vec2<f32>(0.0, r_eps), t, r_density, r_life, r_speed, r_cell);
+          bump = bump + vec3<f32>(-rdx, 0.0, -rdz) * r_str;
+        }
         let N = normalize(normalize(in.normal) + bump);
         let V = normalize(scene.camera_pos.xyz - in.world);
         let NdotV = max(dot(N, V), 0.0);
@@ -495,10 +561,13 @@ class WaterPipeline {
     "
   }
 
-  // Scene UBO byte size — 6 × vec4 (96) + mat4x4 (64) = 160. Padded
-  // to 256 so any future field added inside the 16-byte alignment
-  // rule has room without a wgpu validation error mid-flight.
-  static SCENE_UBO_BYTES_ { 256 }
+  // Scene UBO byte size — mat4x4 (64) + 14 × vec4 (224) = 288;
+  // padded up to 320 (next 64-byte boundary) so adding one or two
+  // more vec4 fields later doesn't force a wgpu reallocation.
+  static SCENE_UBO_BYTES_ { 320 }
+  // How many floats we actually upload each frame. Bump in lockstep
+  // with SCENE_UBO_BYTES_ / 4 if you grow the layout.
+  static SCENE_UBO_FLOATS_ { 72 }
   static DRAW_UBO_BYTES_  { 64 }
 
   /// Build the pipeline against the host device.
@@ -717,6 +786,20 @@ class WaterPipeline {
     _fogDensity  = 0.0
     _fogCurve    = 0.0
 
+    // Rain-ripple defaults. Strength 0 disables the effect entirely
+    // (the FS short-circuits on `ripple.x <= 0.001`), so dry frames
+    // pay zero ripple cost. Density 0.35 means ~35%% of cells in
+    // the cell grid fire at any moment; lifetime × speed sets the
+    // outer radius before a ring dissolves. Cell size sets both
+    // the grid spacing AND the natural per-sqm ring count — small
+    // cells (0.2–0.3 m) read as ocean-scale spatter; larger
+    // (0.6–0.8 m) reads as pond-scale plops.
+    _rippleStrength = 0.0
+    _rippleDensity  = 0.35
+    _rippleLifetime = 0.4
+    _rippleSpeed    = 0.6
+    _rippleCellSize = 0.6
+
     _pass = null
   }
 
@@ -848,6 +931,53 @@ class WaterPipeline {
   /// @param {Num} bandMeters
   setShoreBand(bandMeters) { _shoreBand = bandMeters }
 
+  /// Configure the rain-ripple field. The water shader runs a
+  /// procedural ring field gated entirely off when `strength <= 0`,
+  /// so dry-weather frames cost nothing extra.
+  ///
+  /// Typical use: call `setRippleScale(cellSize)` once at setup
+  /// to pick ocean / lake / pond scale, then per-frame drive
+  /// `strength` (and optionally `density`) from rain intensity.
+  ///
+  /// @param {Num} strength   Amplitude of the normal perturbation.
+  ///                         0 disables; sensible range 0..1.5.
+  /// @param {Num} density    Fraction of grid cells firing per
+  ///                         cycle, 0..1. Default 0.35.
+  /// @param {Num} lifetime   Seconds each ring takes to expand and
+  ///                         fade. Default 0.4.
+  /// @param {Num} speed      Outward expansion speed (m/s). Default
+  ///                         0.6.
+  setRipple(strength, density, lifetime, speed) {
+    _rippleStrength = strength < 0 ? 0 : strength
+    _rippleDensity  = density
+    _rippleLifetime = lifetime <= 0 ? 0.4 : lifetime
+    _rippleSpeed    = speed
+  }
+
+  /// Change only the ripple strength. Useful for a rain-on/off
+  /// toggle that picks up density/lifetime/speed/cellSize defaults
+  /// configured once at setup.
+  /// @param {Num} strength
+  setRippleStrength(strength) { _rippleStrength = strength < 0 ? 0 : strength }
+
+  /// Change only the firing density (rings per cell per cycle).
+  /// Drive this from rain intensity so heavier rain shows visibly
+  /// more rings, not just stronger ones.
+  /// @param {Num} density   0..1.
+  setRippleDensity(density) { _rippleDensity = density }
+
+  /// Set the ripple grid cell size in metres. This is the single
+  /// knob that scales rings to the body of water:
+  ///  - Ocean / large lake:  0.18–0.30 m  (small, dense spatter)
+  ///  - Pond / still water:  0.55–0.80 m  (larger, sparser rings)
+  /// Each firing cell emits one ring; ring radius is capped at the
+  /// cell radius before fade, so smaller cells = smaller AND more
+  /// numerous rings per square metre.
+  /// @param {Num} cellSize   metres. Clamped to ≥ 0.05.
+  setRippleScale(cellSize) {
+    _rippleCellSize = cellSize < 0.05 ? 0.05 : cellSize
+  }
+
   /// Bind a Fog object to the water shader. Subsequent frames
   /// fade the body to `fog.color` over `[fog.start, fog.end]` (or
   /// via exp² when `fog.curve != 0`). Calling once after the sky
@@ -939,7 +1069,15 @@ class WaterPipeline {
     var fogSpan = _fogEnd - _fogStart
     if (fogSpan < 1.0e-3) fogSpan = 1.0e-3
     putF_(f, 63, "fogInvSpan", 1.0 / fogSpan)
-    _sceneUbo.writeFloatsN(0, _sceneUboFloats, 64)
+    putF_(f, 64, "rippleStrength", _rippleStrength)
+    putF_(f, 65, "rippleDensity",  _rippleDensity)
+    putF_(f, 66, "rippleLifetime", _rippleLifetime)
+    putF_(f, 67, "rippleSpeed",    _rippleSpeed)
+    putF_(f, 68, "rippleCellSize", _rippleCellSize)
+    putF_(f, 69, "rippleReserved1", 0)
+    putF_(f, 70, "rippleReserved2", 0)
+    putF_(f, 71, "rippleReserved3", 0)
+    _sceneUbo.writeFloatsN(0, _sceneUboFloats, WaterPipeline.SCENE_UBO_FLOATS_)
 
     pass.setPipeline(_pipeline)
     pass.setBindGroup(0, _sceneBindGroup)

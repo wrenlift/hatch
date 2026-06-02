@@ -507,6 +507,16 @@ class ParticleSystem3D {
     _emissionAccum = 0
     _liveCount     = 0
     _seed          = 0
+    // Optional screen-space-width override. `_widthScaleRef`
+    // > 0 enables per-particle width scaling by camera distance;
+    // `_cameraEye` is the eye position the current frame's
+    // distance is measured from. Both default to off.
+    _widthScaleRef = 0
+    _cameraEye     = null
+    // Optional uniform rotation around the camera-forward axis
+    // applied to every drawn instance. Used by `Weather.rain` to
+    // slant the streaks with the wind vector.
+    _rotation      = 0
   }
 
   static triple_(opts, key, fx, fy, fz) {
@@ -522,6 +532,12 @@ class ParticleSystem3D {
   isPlaying      { _playing }
   /// Toggle the auto-emitter.
   isPlaying=(b)  { _playing = b }
+  /// Particles spawned per second while playing.
+  /// @returns {Num}
+  emissionRate     { _emissionRate }
+  /// Live-tune the spawn rate. Clamped at 0 — negative rates
+  /// would reverse the emission accumulator and never spawn.
+  emissionRate=(v) { _emissionRate = v < 0 ? 0 : v }
   /// Current live-particle count. @returns {Num}
   liveCount      { _liveCount }
   /// Max simultaneous particles. @returns {Num}
@@ -536,6 +552,58 @@ class ParticleSystem3D {
     _position[1] = y
     _position[2] = z
   }
+
+  /// Push a horizontal drift (m/s) into both min + max of the
+  /// spawn-velocity range. Use to bind rain / snow / dust to a
+  /// per-frame wind field — the Y axis (the dominant fall speed
+  /// in weather presets) is left untouched.
+  ///
+  /// @param {Num} vx  Drift along world +x (m/s).
+  /// @param {Num} vz  Drift along world +z (m/s).
+  setWindDrift(vx, vz) {
+    _velMin[0] = vx
+    _velMax[0] = vx
+    _velMin[2] = vz
+    _velMax[2] = vz
+  }
+
+  /// Enable distance-scaled width so particles read at roughly
+  /// constant screen-space thickness regardless of how close they
+  /// are to the camera. `refDistance` is the world distance at
+  /// which the configured `width` reads unchanged; closer
+  /// particles shrink proportionally, farther particles grow.
+  /// Pass `0` to disable (the default).
+  ///
+  /// Used by `Weather.rain` so streaks don't fatten into blobs as
+  /// they pass near the camera; ParticleSystem3D also needs the
+  /// current camera eye (see `setCameraEye`) so it can compute
+  /// per-particle distance each frame.
+  ///
+  /// @param {Num} refDistance
+  setScreenSpaceWidth(refDistance) { _widthScaleRef = refDistance }
+
+  /// Inform the system of the camera eye position. Required when
+  /// `setScreenSpaceWidth` is active; ignored otherwise. Call
+  /// once per frame, before `draw`.
+  ///
+  /// @param {Num} x
+  /// @param {Num} y
+  /// @param {Num} z
+  setCameraEye(x, y, z) {
+    if (_cameraEye == null) _cameraEye = [0, 0, 0]
+    _cameraEye[0] = x
+    _cameraEye[1] = y
+    _cameraEye[2] = z
+  }
+
+  /// Uniform billboard rotation (radians) applied to every drawn
+  /// instance, around the camera-forward axis. `Weather.rain`
+  /// drives this from the wind vector so streaks slant rather than
+  /// drifting horizontally.
+  /// @returns {Num}
+  rotation      { _rotation }
+  /// Set the uniform billboard rotation in radians.
+  rotation=(v)  { _rotation = v }
 
   /// Spawn `n` particles immediately, regardless of `playing` or
   /// `emissionRate`. Used for explosions, hit FX, one-shots.
@@ -588,9 +656,19 @@ class ParticleSystem3D {
     if (_playing && _emissionRate > 0) {
       _emissionAccum = _emissionAccum + _emissionRate * dt
       while (_emissionAccum >= 1) {
-        if (!spawnOne_()) break
+        if (!spawnOne_()) {
+          // Capacity full — pending spawns can't land. Clamp the
+          // accumulator so it doesn't grow unbounded across frames
+          // and dump a burst once particles start dying.
+          if (_emissionAccum > 1) _emissionAccum = 1
+          break
+        }
         _emissionAccum = _emissionAccum - 1
       }
+    } else if (!_playing) {
+      // Don't carry pending spawns across a pause/resume — picks up
+      // immediately on resume instead of a backlog snap.
+      _emissionAccum = 0
     }
   }
 
@@ -631,8 +709,23 @@ class ParticleSystem3D {
   /// @param {Renderer3D} renderer
   draw(renderer) {
     if (_liveCount == 0) return
-    var sx = _size[0]
+    var sxBase = _size[0]
     var sy = _size[1]
+    var rot = _rotation
+    // When screen-space width is on AND we have an eye position,
+    // per-particle X width tracks `min(1, dist / refDistance)` so
+    // particles close to the camera shrink and particles far away
+    // hold their configured thickness. Without an eye we fall back
+    // to the unscaled width to avoid silently sizing to zero.
+    var widthScale = _widthScaleRef > 0 && _cameraEye != null
+    var ex = 0
+    var ey = 0
+    var ez = 0
+    if (widthScale) {
+      ex = _cameraEye[0]
+      ey = _cameraEye[1]
+      ez = _cameraEye[2]
+    }
     // Pack each live particle into the instance buffer with
     // colour interpolated from start → end across its life.
     var i = 0
@@ -645,22 +738,47 @@ class ParticleSystem3D {
       var g = _colorStart[1] + (_colorEnd[1] - _colorStart[1]) * t
       var b = _colorStart[2] + (_colorEnd[2] - _colorStart[2]) * t
       var a = _colorStart[3] + (_colorEnd[3] - _colorStart[3]) * t
+      var px = _sim[simOff]
+      var py = _sim[simOff + 1]
+      var pz = _sim[simOff + 2]
+      var sx = sxBase
+      if (widthScale) {
+        var dx = px - ex
+        var dy = py - ey
+        var dz = pz - ez
+        var dist = (dx * dx + dy * dy + dz * dz).sqrt
+        // Square-root falloff: close particles read THINNER (not
+        // invisible) and reach full configured width at the
+        // reference distance. Floor at 22%% so a streak that's
+        // 50 cm from the eye still occupies a few pixels — without
+        // a floor the cubic shrink we used earlier read as "rain
+        // disappears in the foreground".
+        var lin = dist / _widthScaleRef
+        if (lin > 1) lin = 1
+        var scale = lin.sqrt
+        if (scale < 0.22) scale = 0.22
+        sx = sxBase * scale
+        // Mild alpha fade for atmospheric perspective. Close
+        // streaks stay at 65%% of base alpha; reference-distance
+        // streaks at full alpha. Anything lower reads as "missing".
+        a = a * (0.65 + 0.35 * lin)
+      }
       var off = i * 16
-      _inst[off]      = _sim[simOff]      // ox
-      _inst[off + 1]  = _sim[simOff + 1]  // oy
-      _inst[off + 2]  = _sim[simOff + 2]  // oz
+      _inst[off]      = px      // ox
+      _inst[off + 1]  = py      // oy
+      _inst[off + 2]  = pz      // oz
       _inst[off + 3]  = sx
       _inst[off + 4]  = sy
-      _inst[off + 5]  = 0      // u0
-      _inst[off + 6]  = 0      // v0
-      _inst[off + 7]  = 1      // u1
-      _inst[off + 8]  = 1      // v1
+      _inst[off + 5]  = 0       // u0
+      _inst[off + 6]  = 0       // v0
+      _inst[off + 7]  = 1       // u1
+      _inst[off + 8]  = 1       // v1
       _inst[off + 9]  = r
       _inst[off + 10] = g
       _inst[off + 11] = b
       _inst[off + 12] = a
-      _inst[off + 13] = 0      // rotation — fixed for now
-      _inst[off + 14] = 0      // lodIndex
+      _inst[off + 13] = rot     // rotation
+      _inst[off + 14] = 0       // lodIndex
       _inst[off + 15] = 0
       i = i + 1
     }

@@ -22,7 +22,7 @@
 import "@hatch:game"    for Game,
                             Water, WaterPipeline,
                             SkyboxPipeline,
-                            Weather,
+                            Weather, Particles,
                             PostFX
 import "./knobs"        for Knobs
 import "./wind"         for Wind
@@ -138,6 +138,12 @@ class ProceduralWorld is Game {
     _lastShoreDepthView_ = g.depthView
     // Allocate the planar-reflection target sized to the surface.
     _water.resize(g.width, g.height)
+    // Ocean scale: tiny, dense ring spatter. Larger bodies of water
+    // call for small cells so rings read as raindrops striking a
+    // sheet, not plops in a pond. Pond / lake scenes should use
+    // 0.55–0.80 m via the same setter.
+    _water.setRippleScale(0.22)
+    _water.setRipple(0.0, 0.18, 0.32, 0.55)
 
     // ── Camera (orbit) ──────────────────────────────────────────
     _yaw      = 0.6
@@ -231,6 +237,52 @@ class ProceduralWorld is Game {
     // is applied on top of this at rebuild time so grass can be
     // dense while bushes/trees stay sparse.
     _foliage = FoliageScene.new(g, heightDb, _terrain, _knobs, _waterY, _seed)
+
+    // ── Weather ─────────────────────────────────────────────────
+    // 1×1 white pixel as the rain streak sprite — keeps the asset
+    // pipeline simple. A real game would load a vertical-streak PNG
+    // with soft-edge alpha for nicer-looking drops.
+    _rainTex = g.device.createTexture({
+      "width": 1, "height": 1, "format": "rgba8unorm",
+      "usage": ["texture-binding", "copy-dst"]
+    })
+    g.device.writeTexture(_rainTex, ByteArray.fromList([255, 255, 255, 255]),
+                          {"width": 1, "height": 1, "bytesPerRow": 4})
+    // Bigger spawn area + thicker streaks + higher capacity than
+    // Weather.rain's defaults: the procedural-world camera looks
+    // out across the island from elevation, so a tight column
+    // tracking the eye reads as nothing under most orbit angles.
+    // The HUD's `rain rate` slider drives `_rain.emissionRate`
+    // per frame so the player can dial the storm up or off.
+    _rain = Weather.rain(g.device, {
+      "texture":   _rainTex,
+      // Capacity = max rate × avg-lifetime. At slider max 1500 ×
+      // 2.0s avg lifetime we want ~3000 live particles; the 3500
+      // budget gives a little headroom without burning CPU on
+      // unused slots — every live particle costs an Mat-pack write
+      // and a sqrt per frame.
+      "capacity":  3500,
+      "intensity": 0,          // start off; HUD toggle turns it on
+      "area":      [80, 80],
+      "fallSpeed": 14,
+      // Slim streaks. Real raindrops are sub-mm wide; 0.04 m
+      // reads as a thin streak mid-distance while the ~3 m
+      // length keeps far streaks legible. Length up, width down
+      // — the same total ink, thinner shape.
+      "length":    3.0,
+      "width":     0.04,
+      // Lifetime × fallSpeed = fall distance. 1.8–2.2s × 14m/s
+      // ≈ 25–30 m of fall, comfortably tree-canopy → water from
+      // a target+20 spawn.
+      "lifetime":  [1.8, 2.2],
+      // Translucent base — the per-particle alpha further fades
+      // close-camera streaks so they read as a diffuse curtain
+      // rather than opaque chalk lines. Low alpha so the curtain
+      // reads as atmospheric drizzle, not painted lines.
+      "color":     [0.82, 0.88, 0.98, 0.32]
+    })
+    _rain.isPlaying = false   // toggled by the ATMO HUD's "rain" switch
+    Particles.register(_rain)
 
     // ── Stats ───────────────────────────────────────────────────
     _fpsCounter   = 0
@@ -536,6 +588,43 @@ class ProceduralWorld is Game {
     var fc = _foliage.counts
     _visibleCount = fc[0] + fc[1] + fc[2] + fc[3] + fc[4]
     _culledCount  = 0
+
+    // Rain — picks up live HUD edits, then renders the curtain.
+    // Spawn at the camera's LOOK target (where the user is looking
+    // by definition), not the eye — when the camera looks down at
+    // the island, the eye-centred column sits above the frustum
+    // and the user sees nothing. Anchoring on `_camera.target`
+    // puts the column squarely where the player's looking.
+    _rain.isPlaying    = _knobs["rainOn"]["v"]
+    _rain.emissionRate = _knobs["rainRate"]["v"]
+    // Wind drifts the rain horizontally — same baseX/baseZ ×
+    // strength the foliage sway and water flow sample. The
+    // foliage-wind sliders now visibly tilt the curtain too.
+    var windStrR = _windOpts["baseStrength"] * (1 + _windOpts["gust"] * 0.7)
+    var windVxR = _windOpts["baseX"] * windStrR
+    var windVzR = _windOpts["baseZ"] * windStrR
+    _rain.setWindDrift(windVxR, windVzR)
+    // Streaks slant toward the wind direction instead of moving
+    // bodily sideways: rotate every billboard around the
+    // camera-forward axis by atan2(|wind|, fallSpeed), so the
+    // streak's long axis aligns with the velocity vector.
+    var windMag = (windVxR * windVxR + windVzR * windVzR).sqrt
+    _rain.rotation = (-windMag).atan(14)
+    // Screen-space width: streaks closer than 25m to the eye
+    // shrink proportionally so they read as thin lines, not blobs.
+    _rain.setScreenSpaceWidth(25)
+    _rain.setCameraEye(eye.x, eye.y, eye.z)
+    // Spawn 20m above a point biased toward the camera's look
+    // direction. Pure-target anchoring breaks close-camera shots —
+    // streaks all fall around the look-at point and never appear
+    // in the foreground. Sliding the column 30%% of the way back
+    // toward the eye keeps the curtain visible whether the camera
+    // is in overview (distance 90) or zoomed in tight (distance 8).
+    var t = _camera.target
+    var rainX = eye.x + (t.x - eye.x) * 0.35
+    var rainZ = eye.z + (t.z - eye.z) * 0.35
+    _rain.setPosition(rainX, t.y + 20, rainZ)
+    _rain.draw(_renderer)
     _renderer.endFrame()
 
     // End the terrain pass so we can re-open a follow-up where the
@@ -595,6 +684,23 @@ class ProceduralWorld is Game {
     _fog.density = _knobs["fogDensity"]["v"]
     _fog.curve   = _knobs["fogFlags"]["expCurve"] ? 1 : 0
     _water.setFog(_fog)
+    // Rain → water ripples. Both the density (rings per square
+    // metre firing) AND the strength (per-ring amplitude) scale
+    // with the rain-rate slider — so a light shower shows a sparse
+    // soft spatter and a downpour fills the surface with sharper
+    // rings. Off-state passes strength 0 and the shader skips the
+    // whole ripple branch.
+    var rippleStr = 0.0
+    var rippleDens = 0.0
+    if (_knobs["rainOn"]["v"]) {
+      var rateNorm = _knobs["rainRate"]["v"] / 1500.0
+      if (rateNorm > 1) rateNorm = 1
+      if (rateNorm < 0) rateNorm = 0
+      rippleStr  = 0.05 + rateNorm * 0.55
+      rippleDens = 0.08 + rateNorm * 0.55
+    }
+    _water.setRippleStrength(rippleStr)
+    _water.setRippleDensity(rippleDens)
     _water.beginFrame(pass, _camera, _waterTime)
     _water.draw(_waterMesh, waterModel)
     _water.endFrame()
@@ -659,6 +765,8 @@ class ProceduralWorld is Game {
     _panelAtmo.slider("fog dens",  _knobs["fogDensity"], "v",  0.0, 0.08)
     _panelAtmo.toggle("fog exp²",  _knobs["fogFlags"], "expCurve")
     _panelAtmo.slider("clouds",    _knobs["cloudCover"], "v",  0.0, 1.0)
+    _panelAtmo.toggle("rain",      _knobs["rainOn"],     "v")
+    _panelAtmo.slider("rain rate", _knobs["rainRate"],   "v",  0.0, 1500.0)
     _hud.endFrame
     _hudRenderer.endPass()
     _hudRenderer.flush(g.pass)
