@@ -22,7 +22,7 @@
 
 // Wren imports must be single-line, hence the long lists.
 #!native
-import "gpu_native" for GpuCore, Gpu, Device, Buffer, ShaderModule, Shader, Texture, TextureView, Sampler, BindGroupLayout, PipelineLayout, BindGroup, RenderPipeline, ComputePipeline, CommandEncoder, RenderPass, ComputePass, Camera2D, Renderer2D, Sprite, Camera3D, Frustum, Lod, Light, Mesh, Material, Renderer3D, LivePipeline, Surface, SurfaceFrame
+import "gpu_native" for GpuCore, Gpu, Device, Buffer, ShaderModule, Shader, Texture, TextureView, Sampler, BindGroupLayout, PipelineLayout, BindGroup, RenderPipeline, ComputePipeline, CommandEncoder, RenderPass, ComputePass, Camera2D, Renderer2D, Sprite, Camera3D, Frustum, Lod, MeshLOD, Light, Mesh, Material, Renderer3D, LivePipeline, Surface, SurfaceFrame
 
 #!wasm
 import "gpu_web" for GpuCore, Gpu, Device, Buffer, ShaderModule, Shader, Texture, TextureView, Sampler, BindGroupLayout, PipelineLayout, BindGroup, RenderPipeline, ComputePipeline, CommandEncoder, RenderPass, ComputePass, Camera2D, Renderer2D, Sprite, Camera3D, Frustum, Lod, Light, Mesh, Material, Renderer3D, LivePipeline, Surface, SurfaceFrame

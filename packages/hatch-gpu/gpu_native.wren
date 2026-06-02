@@ -2331,6 +2331,121 @@ class Lod {
     if (d2 < t1sq) return 1
     return 2
   }
+
+  /// N-tier LOD by squared distance. `distancesSq` is a sorted
+  /// ascending list of squared thresholds (`[t0², t1², ...]`).
+  /// Returns the LOD index — the first tier whose threshold the
+  /// distance hasn't yet exceeded, or `distancesSq.count` for
+  /// "past all tiers" (the lowest detail). Use when a scene wants
+  /// more than three LOD levels; `select3` stays the inline-able
+  /// fast path for the common 3-tier case.
+  ///
+  /// @param {Num} eyeX
+  /// @param {Num} eyeY
+  /// @param {Num} eyeZ
+  /// @param {Num} cx
+  /// @param {Num} cy
+  /// @param {Num} cz
+  /// @param {List} distancesSq
+  /// @returns {Num}
+  static selectN(eyeX, eyeY, eyeZ, cx, cy, cz, distancesSq) {
+    var dx = cx - eyeX
+    var dy = cy - eyeY
+    var dz = cz - eyeZ
+    var d2 = dx * dx + dy * dy + dz * dz
+    var i = 0
+    while (i < distancesSq.count) {
+      if (d2 < distancesSq[i]) return i
+      i = i + 1
+    }
+    return distancesSq.count
+  }
+}
+
+/// A `Mesh` plus distance thresholds keyed to alternate detail
+/// levels. Callers pass an array of meshes (highest detail first)
+/// and the squared distances at which each lower tier kicks in.
+/// `pick(eye, centre)` returns the right Mesh for an instance at
+/// `centre` viewed from `eye`; `Renderer3D.drawInstancedLOD`
+/// consumes a parallel array of per-LOD instance buffers + counts
+/// to issue one drawIndexed per tier.
+///
+/// ## Example
+///
+/// ```wren
+/// var trunk = MeshLOD.new(
+///   [trunkHi, trunkMid, trunkLow],
+///   // Switch to mid at 25m, low at 80m.
+///   [25 * 25, 80 * 80]
+/// )
+/// for (inst in instances) {
+///   var lod = trunk.pickIndex(camera.eye, inst.centre)
+///   instanceBuffers[lod].appendInstance(inst.model)
+/// }
+/// renderer.drawInstancedLOD(trunk, material, instanceBuffers)
+/// ```
+class MeshLOD {
+  /// Build a MeshLOD. `meshes[0]` is the highest detail; later
+  /// meshes are progressively lower-poly. `distancesSq` has one
+  /// fewer entry than `meshes` — `distancesSq[i]` is the squared
+  /// distance below which `meshes[i]` is used; beyond the last
+  /// threshold the lowest-detail mesh (`meshes[count - 1]`) wins.
+  ///
+  /// @param {List<Mesh>} meshes. At least one entry.
+  /// @param {List<Num>} distancesSq. Sorted ascending. Must have
+  ///   `meshes.count - 1` entries.
+  construct new(meshes, distancesSq) {
+    if (!(meshes is List) || meshes.count < 1) {
+      Fiber.abort("MeshLOD.new: meshes must be a non-empty List")
+    }
+    if (!(distancesSq is List)) {
+      Fiber.abort("MeshLOD.new: distancesSq must be a List")
+    }
+    if (distancesSq.count != meshes.count - 1) {
+      Fiber.abort("MeshLOD.new: distancesSq.count must be meshes.count - 1")
+    }
+    _meshes      = meshes
+    _distancesSq = distancesSq
+  }
+
+  /// Convenience constructor accepting world-space distances; the
+  /// MeshLOD pre-squares them internally so the hot path stays
+  /// sqrt-free.
+  /// @param {List<Mesh>} meshes
+  /// @param {List<Num>} distances
+  static fromDistances(meshes, distances) {
+    if (!(distances is List)) {
+      Fiber.abort("MeshLOD.fromDistances: distances must be a List")
+    }
+    var sq = []
+    for (d in distances) sq.add(d * d)
+    return MeshLOD.new(meshes, sq)
+  }
+
+  /// Number of LOD tiers (== `meshes.count`).
+  count    { _meshes.count }
+  meshes   { _meshes }
+
+  /// LOD index for an instance at `(cx, cy, cz)` viewed from
+  /// `(eyeX, eyeY, eyeZ)`. Returns a value in `0..count - 1`.
+  ///
+  /// @returns {Num}
+  pickIndex(eyeX, eyeY, eyeZ, cx, cy, cz) {
+    var lod = Lod.selectN(eyeX, eyeY, eyeZ, cx, cy, cz, _distancesSq)
+    if (lod >= _meshes.count) return _meshes.count - 1
+    return lod
+  }
+
+  /// Mesh for the LOD level at `index`. Clamped to the last
+  /// available mesh on out-of-range indices.
+  ///
+  /// @param {Num} index
+  /// @returns {Mesh}
+  meshAt(index) {
+    if (index < 0) return _meshes[0]
+    if (index >= _meshes.count) return _meshes[_meshes.count - 1]
+    return _meshes[index]
+  }
 }
 
 /// Frustum-vs-volume tests against a `Camera3D.frustumPlanes`

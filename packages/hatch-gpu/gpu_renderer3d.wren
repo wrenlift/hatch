@@ -1419,6 +1419,55 @@ class Renderer3D {
     pass.drawIndexed(mesh.indexCount, instanceCount)
   }
 
+  /// Multi-LOD instanced draw. Issues one `drawIndexed` per LOD
+  /// tier, picking the right `Mesh` out of `lodMesh` (a `MeshLOD`)
+  /// for each one. `buckets` is a parallel list — one entry per
+  /// LOD level — where each entry is either:
+  ///
+  ///   - `null` (skip that tier — no instances), or
+  ///   - a `Map { "buffer": Buffer, "count": Num }`
+  ///
+  /// The caller partitions its instance set into per-LOD buckets
+  /// (via `MeshLOD.pickIndex` per instance + a fast scatter into
+  /// pre-allocated Float32Array scratchpads), then dispatches one
+  /// `drawInstancedLOD` for the whole scene's worth of foliage /
+  /// crowd / asteroid instances.
+  ///
+  /// @param {MeshLOD} lodMesh
+  /// @param {Material} material
+  /// @param {List<Map?>} buckets. Length must equal `lodMesh.count`.
+  drawInstancedLOD(lodMesh, material, buckets) {
+    if (_pass == null) Fiber.abort("Renderer3D.drawInstancedLOD: call beginFrame first.")
+    // Duck-typed: lodMesh exposes `count` (Num) and `meshAt(i)`
+    // (Mesh). MeshLOD lives in the package's entry file
+    // (gpu_native.wren) which imports this one, so a hard `is`
+    // check would close a circular dep we don't want.
+    if (buckets.count != lodMesh.count) {
+      Fiber.abort("Renderer3D.drawInstancedLOD: buckets.count (%(buckets.count)) must match lodMesh.count (%(lodMesh.count))")
+    }
+    if (!_sceneCommitted) commitScene_()
+    var entry = bindGroupFor_(material)
+    var pass = _pass
+    pass.setPipeline(_instancedPipeline)
+    pass.setBindGroup(0, _sceneBindGroup)
+    pass.setBindGroup(2, entry["bg"])
+    var i = 0
+    while (i < buckets.count) {
+      var bucket = buckets[i]
+      if (bucket != null) {
+        var count = bucket["count"]
+        if (count > 0) {
+          var mesh = lodMesh.meshAt(i)
+          pass.setBindGroup(1, instanceBindGroupFor_(bucket["buffer"]))
+          pass.setVertexBuffer(0, mesh.vertexBuffer)
+          pass.setIndexBuffer(mesh.indexBuffer, "uint32")
+          pass.drawIndexed(mesh.indexCount, count)
+        }
+      }
+      i = i + 1
+    }
+  }
+
   // Get or build the BindGroup that points at `buf` for the
   // instanced pipeline's group 1.
   instanceBindGroupFor_(buf) {
