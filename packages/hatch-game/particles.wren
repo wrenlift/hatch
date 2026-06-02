@@ -517,6 +517,20 @@ class ParticleSystem3D {
     // applied to every drawn instance. Used by `Weather.rain` to
     // slant the streaks with the wind vector.
     _rotation      = 0
+    // Optional kill plane: when `_killPlaneOn`, any particle
+    // crossing `y <= _killPlaneY` during `update` dies immediately
+    // (independent of lifetime) and its position is queued for
+    // observers via `consumeDeaths`. Used by `Weather.rain` to
+    // emit per-impact splash points at the water surface.
+    _killPlaneOn = false
+    _killPlaneY  = 0
+    // Death-position queue. Flat triple-per-event Float32Array
+    // sized to capacity * 3 — at most `capacity` particles can
+    // die in a single `update` (slot count is finite). `_deathCount`
+    // tracks how many entries are valid this frame; `consumeDeaths`
+    // hands the queue out and clears it.
+    _deaths      = Float32Array.new(_capacity * 3)
+    _deathCount  = 0
   }
 
   static triple_(opts, key, fx, fy, fz) {
@@ -605,6 +619,48 @@ class ParticleSystem3D {
   /// Set the uniform billboard rotation in radians.
   rotation=(v)  { _rotation = v }
 
+  /// Configure a horizontal kill plane in world space. Particles
+  /// crossing `y <= y_plane` during `update` die immediately and
+  /// have their pre-death position queued for `consumeDeaths`.
+  /// Useful for rain hitting water / floor / windshield.
+  ///
+  /// @param {Num} y_plane   Y threshold (m).
+  setKillPlane(y_plane) {
+    _killPlaneOn = true
+    _killPlaneY  = y_plane
+  }
+
+  /// Disable the kill plane (particles die only by lifetime).
+  clearKillPlane() { _killPlaneOn = false }
+
+  /// Number of particles that died this frame. Cleared on the next
+  /// `update`; consumers must call `consumeDeaths` (or read
+  /// `deathPositions`) before the next tick or the data is lost.
+  /// @returns {Num}
+  deathCount { _deathCount }
+
+  /// Position triples (x, y, z) for every particle that died this
+  /// frame, packed in a Float32Array of length `_deathCount * 3`.
+  /// The array slot is reused across frames — observers should
+  /// read it within the same frame the deaths happened.
+  /// @returns {Float32Array}
+  deathPositions { _deaths }
+
+  /// Convenience: hand the death buffer to a callback and clear
+  /// it. The callback receives (x, y, z) for each death, in
+  /// emission order. Equivalent to iterating `deathPositions` to
+  /// length `deathCount * 3`.
+  /// @param {Fn} fn   `Fn.new { |x, y, z| ... }`
+  consumeDeaths(fn) {
+    var i = 0
+    while (i < _deathCount) {
+      var off = i * 3
+      fn.call(_deaths[off], _deaths[off + 1], _deaths[off + 2])
+      i = i + 1
+    }
+    _deathCount = 0
+  }
+
   /// Spawn `n` particles immediately, regardless of `playing` or
   /// `emissionRate`. Used for explosions, hit FX, one-shots.
   /// @param {Num} n
@@ -621,34 +677,51 @@ class ParticleSystem3D {
   /// `isPlaying`.
   /// @param {Num} dt
   update(dt) {
+    _deathCount = 0
     var i = 0
     // Compact: walk the sim array, integrate alive slots, drop
     // expired ones by swapping with the last-live slot.
     while (i < _liveCount) {
       var off = i * 8
       var age = _sim[off + 6] + dt
+      // Lifetime death.
       if (age >= _sim[off + 7]) {
-        // Expired — swap with the last-live slot. Decrements
-        // liveCount; recheck this index next iter so the swapped-
-        // in slot also gets integrated.
-        _liveCount = _liveCount - 1
-        if (i != _liveCount) {
-          var srcOff = _liveCount * 8
-          var k = 0
-          while (k < 8) {
-            _sim[off + k] = _sim[srcOff + k]
-            k = k + 1
-          }
-        }
+        recordDeath_(_sim[off], _sim[off + 1], _sim[off + 2])
+        killSlot_(i)
         continue
       }
-      // Integrate.
-      _sim[off + 3] = _sim[off + 3] + _gravity[0] * dt - _sim[off + 3] * _drag * dt
-      _sim[off + 4] = _sim[off + 4] + _gravity[1] * dt - _sim[off + 4] * _drag * dt
-      _sim[off + 5] = _sim[off + 5] + _gravity[2] * dt - _sim[off + 5] * _drag * dt
-      _sim[off]     = _sim[off]     + _sim[off + 3] * dt
-      _sim[off + 1] = _sim[off + 1] + _sim[off + 4] * dt
-      _sim[off + 2] = _sim[off + 2] + _sim[off + 5] * dt
+      // Integrate position into a fresh local first so we can
+      // test the kill plane against the would-be-new Y without
+      // committing the write if we're going to swap-delete anyway.
+      var nvx = _sim[off + 3] + _gravity[0] * dt - _sim[off + 3] * _drag * dt
+      var nvy = _sim[off + 4] + _gravity[1] * dt - _sim[off + 4] * _drag * dt
+      var nvz = _sim[off + 5] + _gravity[2] * dt - _sim[off + 5] * _drag * dt
+      var nx  = _sim[off]     + nvx * dt
+      var ny  = _sim[off + 1] + nvy * dt
+      var nz  = _sim[off + 2] + nvz * dt
+      // Kill-plane crossing — particle crosses y = killPlaneY this
+      // tick. Record the death at the crossing point (linear
+      // interpolation between previous Y and would-be-new Y) so
+      // splash points sit on the plane, not somewhere below it.
+      if (_killPlaneOn && ny <= _killPlaneY) {
+        var prevY = _sim[off + 1]
+        var u = 1.0
+        var span = prevY - ny
+        if (span > 0.00001) u = (prevY - _killPlaneY) / span
+        if (u < 0) u = 0
+        if (u > 1) u = 1
+        var hx = _sim[off]     + (nx - _sim[off])     * u
+        var hz = _sim[off + 2] + (nz - _sim[off + 2]) * u
+        recordDeath_(hx, _killPlaneY, hz)
+        killSlot_(i)
+        continue
+      }
+      _sim[off + 3] = nvx
+      _sim[off + 4] = nvy
+      _sim[off + 5] = nvz
+      _sim[off]     = nx
+      _sim[off + 1] = ny
+      _sim[off + 2] = nz
       _sim[off + 6] = age
       i = i + 1
     }
@@ -688,6 +761,35 @@ class ParticleSystem3D {
     _sim[off + 7] = _lifetime[0] + random_() * (_lifetime[1] - _lifetime[0])
     _liveCount = _liveCount + 1
     return true
+  }
+
+  // Free the slot at index `i` by swap-with-last; the swapped-in
+  // particle then gets integrated on the next loop iteration
+  // (`continue` keeps the loop variable at `i`).
+  killSlot_(i) {
+    _liveCount = _liveCount - 1
+    if (i != _liveCount) {
+      var off    = i * 8
+      var srcOff = _liveCount * 8
+      var k = 0
+      while (k < 8) {
+        _sim[off + k] = _sim[srcOff + k]
+        k = k + 1
+      }
+    }
+  }
+
+  // Push one death event to the queue. Quietly drops the event
+  // if the buffer is full — shouldn't happen because the buffer
+  // is sized for the full capacity and at most `capacity` deaths
+  // can occur per tick.
+  recordDeath_(x, y, z) {
+    if (_deathCount >= _capacity) return
+    var off = _deathCount * 3
+    _deaths[off]     = x
+    _deaths[off + 1] = y
+    _deaths[off + 2] = z
+    _deathCount = _deathCount + 1
   }
 
   // Inline PRNG. Same shape as the 2D ParticleSystem path —

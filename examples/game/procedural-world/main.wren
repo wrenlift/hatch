@@ -138,12 +138,18 @@ class ProceduralWorld is Game {
     _lastShoreDepthView_ = g.depthView
     // Allocate the planar-reflection target sized to the surface.
     _water.resize(g.width, g.height)
-    // Ocean scale: tiny, dense ring spatter. Larger bodies of water
-    // call for small cells so rings read as raindrops striking a
-    // sheet, not plops in a pond. Pond / lake scenes should use
-    // 0.55–0.80 m via the same setter.
-    _water.setRippleScale(0.22)
-    _water.setRipple(0.0, 0.18, 0.32, 0.55)
+    // Ocean scale. The hash-grid ripple field stays very faint —
+    // it's just an atmospheric haze; the visible rings come from
+    // per-impact splashes (one ring per actual rain drop), which
+    // already tie ring count to rain rate. A busy hash-grid on top
+    // reads as dimpled metal, not water.
+    _water.setRippleScale(0.5)
+    _water.setRipple(0.0, 0.06, 0.4, 0.6)
+    // Per-impact splash rings — each rain particle that hits the
+    // water surface gets its own expanding ring. Lifetime 0.85 s
+    // × speed 0.65 m/s = rings reach ~0.55 m before fading;
+    // strength is set per-frame from rain-on state.
+    _water.setImpactRipple(0.0, 0.85, 0.65)
 
     // ── Camera (orbit) ──────────────────────────────────────────
     _yaw      = 0.6
@@ -282,6 +288,10 @@ class ProceduralWorld is Game {
       "color":     [0.82, 0.88, 0.98, 0.32]
     })
     _rain.isPlaying = false   // toggled by the ATMO HUD's "rain" switch
+    // Streaks die when they cross the water surface, and the
+    // crossing position is queued for the WaterPipeline so each
+    // drop becomes a visible splash ring.
+    _rain.setKillPlane(_waterY)
     Particles.register(_rain)
 
     // ── Stats ───────────────────────────────────────────────────
@@ -624,6 +634,19 @@ class ProceduralWorld is Game {
     var rainX = eye.x + (t.x - eye.x) * 0.35
     var rainZ = eye.z + (t.z - eye.z) * 0.35
     _rain.setPosition(rainX, t.y + 20, rainZ)
+    // Forward this frame's water-strike events into the water's
+    // splash-ring buffer. `consumeDeaths` clears the queue after
+    // dispatch so each impact only fires once.
+    if (_knobs["rainOn"]["v"]) {
+      var n = _rain.deathCount
+      var dp = _rain.deathPositions
+      var di = 0
+      while (di < n) {
+        var dOff = di * 3
+        _water.addRipple(dp[dOff], dp[dOff + 2])
+        di = di + 1
+      }
+    }
     _rain.draw(_renderer)
     _renderer.endFrame()
 
@@ -692,15 +715,22 @@ class ProceduralWorld is Game {
     // whole ripple branch.
     var rippleStr = 0.0
     var rippleDens = 0.0
+    var impactStr = 0.0
     if (_knobs["rainOn"]["v"]) {
       var rateNorm = _knobs["rainRate"]["v"] / 1500.0
       if (rateNorm > 1) rateNorm = 1
       if (rateNorm < 0) rateNorm = 0
-      rippleStr  = 0.05 + rateNorm * 0.55
-      rippleDens = 0.08 + rateNorm * 0.55
+      // Hash-grid stays subtle at every rate — it's atmospheric
+      // haze around the per-impact rings, not the main effect.
+      rippleStr  = 0.02 + rateNorm * 0.08
+      rippleDens = 0.03 + rateNorm * 0.10
+      // Per-impact rings carry the rain story — one ring per drop.
+      // Visible count tracks rain rate directly via Phase B.
+      impactStr  = 0.20 + rateNorm * 0.50
     }
     _water.setRippleStrength(rippleStr)
     _water.setRippleDensity(rippleDens)
+    _water.setImpactStrength(impactStr)
     _water.beginFrame(pass, _camera, _waterTime)
     _water.draw(_waterMesh, waterModel)
     _water.endFrame()
