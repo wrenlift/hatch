@@ -108,7 +108,8 @@ import "./chain" for PostFX, PostPass
 // Heightmap-driven terrain mesh generation. Composes @hatch:noise
 // + @hatch:gpu's Mesh path; lives here because procedural worlds
 // are a scene-level concern, not a pure-algorithm one.
-import "./terrain" for Terrain
+import "./terrain"        for Terrain
+import "./terrain_chunks" for TerrainChunk, TerrainStreamer
 
 // Jittered-grid instanced scatter for grass / trees / rocks /
 // asteroids. Returns parallel Float32Array columns ready to feed
