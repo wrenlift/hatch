@@ -2477,6 +2477,24 @@ class Frustum {
     }
     return true
   }
+
+  /// Fill `out` (an `Int32Array` / `List`) with the `id`s of items
+  /// in `bvh` whose AABBs aren't fully outside the camera frustum.
+  /// Returns the number of indices written.
+  ///
+  /// Thin wrapper over `bvh.queryFrustum(camera.frustumPlanes, out)`
+  /// — most game code constructs the BVH once at scene load, then
+  /// calls `Frustum.cull` each frame to pull the visible-instance
+  /// set out for `Renderer3D.drawMeshInstanced` /
+  /// `drawInstancedLOD` / `drawBillboardN`.
+  ///
+  /// @param {BVH} bvh
+  /// @param {Camera3D} camera
+  /// @param {Int32Array|List} out
+  /// @returns {Num}
+  static cull(bvh, camera, out) {
+    return bvh.queryFrustum(camera.frustumPlanes, out)
+  }
 }
 
 /// -- Light -------------------------------------------------------
