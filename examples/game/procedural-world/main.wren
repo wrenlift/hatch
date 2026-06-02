@@ -22,7 +22,7 @@
 import "@hatch:game"    for Game,
                             Water, WaterPipeline,
                             SkyboxPipeline,
-                            Fog,
+                            Weather,
                             PostFX
 import "./knobs"        for Knobs
 import "./wind"         for Wind
@@ -128,11 +128,7 @@ class ProceduralWorld is Game {
     // false-horizon distance is a hard contract (everything past
     // `end` is fully horizon-coloured). Colour binds to the sky's
     // horizon triple so the world's hue matches the visible sky.
-    _fog = Fog.new()
-    _fog.color = [0.96, 0.86, 0.72]
-    _fog.start = 60.0
-    _fog.end   = 130.0
-    _fog.curve = 0
+    _fog = Weather.fog({"color": [0.96, 0.86, 0.72], "start": 60.0, "end": 130.0, "curve": 0})
     _water.setFog(_fog)
     // Shore foam — sample the scene depth so foam fades in along
     // the coastline. Near/far must match the camera's perspective
