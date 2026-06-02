@@ -1,0 +1,7 @@
+name        = "terrain-stream"
+version     = "0.1.0"
+entry       = "main"
+description = "Move a focus point through a noise-driven terrain; TerrainStreamer keeps a fixed-radius window of TerrainChunks loaded around it, spawning/despawning as the focus moves. Console output traces the load/unload diff so the streaming behaviour is visible without a window."
+
+[dependencies]
+"@hatch:game" = { path = "../../../packages/hatch-game" }

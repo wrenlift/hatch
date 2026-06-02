@@ -33,8 +33,29 @@ Built on `@hatch:game`. Subclass `Game`, override `config` / `setup` / `update` 
 | [game/sprite-grid](game/sprite-grid/) | `@hatch:gpu` Renderer2D batching (~430 sprites in one flush), WASD/arrow polling |
 | [game/cube-3d](game/cube-3d/) | Renderer3D + Camera3D + Light + Mesh.cube/plane, depth attachment, Renderer2D HUD overlay on the same pass |
 | [game/ecs](game/ecs/) | `@hatch:ecs` World + components + system functions, 200-entity field with motion + wrap + render systems |
+| [game/instanced-sprites](game/instanced-sprites/) | Renderer2D.drawInstancedSprites — 256 spinning sprites in one storage-buffer-backed instanced draw |
+| [game/billboards](game/billboards/) | Renderer3D.drawBillboardN — 64 camera-facing billboards from a packed Float32Array |
+| [game/weather-demo](game/weather-demo/) | Weather.rain + Weather.fog wired into a Game.run loop |
+| [game/hud-gamepad](game/hud-gamepad/) | HUD focus model — pause menu navigable via DPad/stick + mouse |
 
-Game examples open a window — you need a desktop session, not a headless shell.
+The eight game examples above open a window — you need a desktop session, not a headless shell.
+
+### Console examples — no window required
+
+Pure-Wren demos that exercise a single API surface and print their results. Run from a shell:
+
+| Example | Showcases |
+|---|---|
+| [game/bvh-cull](game/bvh-cull/) | `@hatch:spatial` BVH + `Frustum.cull(bvh, camera)` over a grid of AABBs |
+| [game/quadtree2d](game/quadtree2d/) | `Quadtree2D` insert + radius / AABB queries |
+| [game/noise-worley](game/noise-worley/) | `@hatch:noise` Worley, ridgedFbm2, fillSimplex3, WGSL companion |
+| [game/clip-curves](game/clip-curves/) | `Clip.withInterpolations` — linear / step / cubic-Hermite sampling |
+| [game/foliage-poisson](game/foliage-poisson/) | `Foliage.fromHeightmap` Poisson-disc + slope-aware scatter |
+| [game/cascade-shadows](game/cascade-shadows/) | `CascadeShadows.splits` + `PointShadow.facesFor` math |
+| [game/mesh-lod-pick](game/mesh-lod-pick/) | `MeshLOD.pickIndex` + `Lod.selectN` — per-instance LOD bucketing |
+| [game/terrain-stream](game/terrain-stream/) | `TerrainStreamer` load / unload diff (mock device) |
+| [game/audio-buses](game/audio-buses/) | `Audio.group` master / music / sfx / ui bus volumes |
+| [game/frame-timer](game/frame-timer/) | `FrameTimer` rolling-window FPS / avg ms / 1%-low |
 
 ```sh
 cd hatch/examples/game/bouncing-ball
