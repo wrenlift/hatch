@@ -1681,8 +1681,9 @@ class Renderer3D {
   /// centre). `(sx, sy)` is the billboard's world-space size.
   /// `(u0, v0, u1, v1)` is the UV rectangle into the bound
   /// texture. `rotation` rotates around the camera-forward axis
-  /// (radians). `lodIndex` is reserved for compute-LOD pipelines
-  /// (Phase 11.6 GPU path).
+  /// (radians). `lodIndex` is reserved for the GPU-driven LOD
+  /// path that consumes the same instance buffer from a compute
+  /// pass.
   ///
   /// @param {Float32Array} out
   /// @param {Num} slotIndex
