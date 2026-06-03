@@ -87,6 +87,16 @@ foreign class WindowCore {
   /// @param {Bool} hide
   #!symbol = "wlift_window_set_cursor_visible"
   foreign static setCursorVisible(id, hide)
+
+  /// Show or hide the OS window itself. Useful for opening hidden
+  /// (`create` descriptor `"visible": false`), running GPU / asset
+  /// init, painting a real first frame, and only then flipping
+  /// visible — avoids the brief OS-default-background flash that
+  /// otherwise sits between window create and first present.
+  /// @param {Num} id
+  /// @param {Bool} visible
+  #!symbol = "wlift_window_set_visible"
+  foreign static setVisible(id, visible)
 }
 
 /// Public Window class. `Window.create({...})` returns an
@@ -189,6 +199,19 @@ class Window {
   /// [lockCursor]; FPS titles call both.
   /// @param {Bool} hide
   hideCursor(hide) { WindowCore.setCursorVisible(_id, hide) }
+
+  /// Show or hide the OS window itself. Open hidden with
+  /// `Window.create({"visible": false, ...})`, run GPU init + first
+  /// paint, then call `window.show()` (or `setVisible(true)`).
+  /// Eliminates the OS-default-background flash on first launch.
+  /// @param {Bool} visible
+  setVisible(visible) { WindowCore.setVisible(_id, visible) }
+
+  /// Convenience: `setVisible(true)`.
+  show { WindowCore.setVisible(_id, true) }
+
+  /// Convenience: `setVisible(false)`.
+  hide { WindowCore.setVisible(_id, false) }
 
   /// Release the window. Idempotent.
   destroy {

@@ -703,11 +703,22 @@ class Game {
     // afterwards so the surface configure / first render see the
     // page's actual layout dimensions instead of the descriptor's
     // (possibly default) numbers.
+    // Open the native window HIDDEN. The OS background — white on
+    // macOS — would otherwise be visible behind every frame until
+    // the first wgpu present lands, and Gpu.requestDevice +
+    // surface.configure + depth-attachment creation between create
+    // and first paint can take a non-trivial chunk of a second on
+    // first launch. With `visible: false`, the user sees no window
+    // at all until init + first clear paint are done, at which
+    // point `window.show` flips it in one step.
+    //
+    // On web the canvas is page-owned and `visible` is ignored.
     var winDesc = {
       "title":     c["title"],
       "width":     c["width"],
       "height":    c["height"],
-      "resizable": c["resizable"]
+      "resizable": c["resizable"],
+      "visible":   false
     }
     if (c["canvas"] is String) winDesc["canvas"] = c["canvas"]
     var window = Window.create(winDesc)
@@ -794,9 +805,18 @@ class Game {
       }
     }
 
-    // First paint: window is now visible to the user even though
-    // setup() hasn't begun.
+    // First paint: clears the swap chain to the configured
+    // background colour BEFORE the window flips visible — no white
+    // flash. A couple of redundant pumps + paints let winit settle
+    // the initial display cycle (NSWindow's first present can take
+    // 1–2 ticks past create to register correctly on macOS).
     paintLoadingFrame.call()
+    paintLoadingFrame.call()
+
+    // Now reveal the fully-painted window. From the user's point
+    // of view the app pops up already showing the configured
+    // background — no flash, no resize-on-show, no partial frame.
+    window.setVisible(true)
 
     // Setup pump. Run instance.setup(g) inside a Fiber and pump
     // events + paint between its yields. Setups that never yield

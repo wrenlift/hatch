@@ -15,7 +15,11 @@ readme   = "README.md"
 # publishing @hatch:game itself — path deps don't resolve for
 # downstream consumers of the registry bundle.
 [dependencies]
-"@hatch:window" = "0.2.11"
+# Path dep so the in-tree `window_native.wren` (Window.setVisible /
+# show / hide + open-hidden initial state) picks up locally during
+# the lifecycle iteration. Revert to a version pin before publishing
+# @hatch:game (path deps don't resolve for downstream consumers).
+"@hatch:window" = { path = "../hatch-window" }
 "@hatch:gpu"    = { path = "../hatch-gpu" }
 "@hatch:time"   = "0.1.2"
 "@hatch:math"   = "0.1.5"
