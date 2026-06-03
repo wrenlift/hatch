@@ -278,10 +278,50 @@ class Gltf {
   /// `0 ... state["imageCount"]`. PNG decode is the dominant
   /// cost — one queue entry per image lets the loading bar reflect
   /// the actual work being done.
+  ///
+  /// This is the SYNCHRONOUS variant — the decode blocks the
+  /// calling frame. For multi-second PNGs (4K skin textures, HDR
+  /// environment maps), use `beginImageDecodeAt` +
+  /// `finishImageUploadAt` instead so the work runs on a worker
+  /// thread and the game loop keeps rendering.
   static uploadImageAt(state, device, idx) {
     var scene = state["scene"]
     if (scene == null) Fiber.abort("Gltf.uploadImageAt: call Gltf.assemble first")
     scene.uploadImageAt_(device, idx)
+  }
+
+  /// Async decode — stage 1. Kicks off a worker-thread PNG/JPEG
+  /// decode for `_imageSources[idx]`. Returns an
+  /// `ImageDecodeHandle` the caller polls each frame; once it's
+  /// ready, pair with `finishImageUploadAt` for the GPU upload.
+  /// Returns `null` if the image slot has no source.
+  static beginImageDecodeAt(state, idx) {
+    var scene = state["scene"]
+    if (scene == null) Fiber.abort("Gltf.beginImageDecodeAt: call Gltf.assemble first")
+    return scene.beginImageDecodeAt_(idx)
+  }
+
+  /// Async decode — stage 2. Drains a ready `ImageDecodeHandle`
+  /// into a GPU texture stored at the matching image slot. Aborts
+  /// if the handle isn't ready yet (caller's poll loop is
+  /// responsible). Pass `null` for `handle` when the source slot
+  /// is empty.
+  static finishImageUploadAt(state, device, idx, handle) {
+    var scene = state["scene"]
+    if (scene == null) Fiber.abort("Gltf.finishImageUploadAt: call Gltf.assemble first")
+    scene.finishImageUploadAt_(device, idx, handle)
+  }
+
+  /// Async decode — already-decoded `Image` variant. The drained
+  /// `image` (typically from an `ImageDecodeHandle.result`) is
+  /// uploaded straight to the GPU at slot `idx`, honouring the
+  /// material's sRGB flag. Designed for `AssetLoader.queueDecode`,
+  /// which drains the handle on the caller's behalf and hands the
+  /// finishFn the already-decoded `Image`.
+  static uploadDecodedImageAt(state, device, idx, image) {
+    var scene = state["scene"]
+    if (scene == null) Fiber.abort("Gltf.uploadDecodedImageAt: call Gltf.assemble first")
+    scene.uploadDecodedImageAt_(device, idx, image)
   }
 
   /// Upload one mesh's GPU buffers (VBO / IBO + per-primitive
@@ -1223,25 +1263,77 @@ class GltfScene {
       _imageTextures[idx] = null
       return
     }
-    var bytes = null
-    if (src["kind"] == "bytes") {
-      bytes = src["bytes"]
-    } else {
-      // "buffer" — slice from the matching loaded buffer.
-      var bufIdx = src["buffer"]
-      var srcBuf = _buffers[bufIdx]
-      var off = src["byteOffset"]
-      var len = src["byteLength"]
-      bytes = ByteArray.new(len)
-      var k = 0
-      while (k < len) {
-        bytes[k] = srcBuf[off + k]
-        k = k + 1
-      }
-    }
+    var bytes = sourceBytesAt_(idx)
     var img = Image.decode(bytes)
     var fmt = (src["sRGB"] == true) ? "rgba8unorm-srgb" : "rgba8unorm"
     _imageTextures[idx] = device.uploadImage(img, { "format": fmt })
+  }
+
+  // Build the raw PNG/JPG bytes for `_imageSources[idx]`. Embedded
+  // images slice from the right `_buffers[bufIdx]`; external
+  // images just hand back the pre-loaded ByteArray. Shared by both
+  // the synchronous `uploadImageAt_` and the async
+  // `beginImageDecodeAt_` paths so the slicing math has one home.
+  sourceBytesAt_(idx) {
+    var src = _imageSources[idx]
+    if (src == null) return null
+    if (src["kind"] == "bytes") return src["bytes"]
+    var bufIdx = src["buffer"]
+    var srcBuf = _buffers[bufIdx]
+    var off = src["byteOffset"]
+    var len = src["byteLength"]
+    var bytes = ByteArray.new(len)
+    var k = 0
+    while (k < len) {
+      bytes[k] = srcBuf[off + k]
+      k = k + 1
+    }
+    return bytes
+  }
+
+  // Async decode path. Stage 1 — stage the bytes + kick off a
+  // worker-thread decode for image `idx`. Returns an
+  // `ImageDecodeHandle` the caller polls each frame; once the
+  // handle is ready, pair it with `finishImageUploadAt_` to land
+  // the GPU texture.
+  beginImageDecodeAt_(idx) {
+    while (_imageTextures.count <= idx) _imageTextures.add(null)
+    var src = _imageSources[idx]
+    if (src == null) {
+      _imageTextures[idx] = null
+      return null
+    }
+    var bytes = sourceBytesAt_(idx)
+    return Image.decodeBegin(bytes)
+  }
+
+  // Async decode path. Stage 2 — drain `handle.result` (must be
+  // ready; the caller's poll loop is responsible) and upload the
+  // decoded RGBA8 to the GPU. Stores the resulting Texture in
+  // `_imageTextures[idx]`.
+  finishImageUploadAt_(device, idx, handle) {
+    while (_imageTextures.count <= idx) _imageTextures.add(null)
+    var src = _imageSources[idx]
+    if (src == null || handle == null) {
+      _imageTextures[idx] = null
+      return
+    }
+    uploadDecodedImageAt_(device, idx, handle.result)
+  }
+
+  // Async decode path. Stage 2 — already-drained `Image` variant.
+  // The asset loader's `queueDecode` drains the handle on the
+  // caller's behalf and passes the `Image` to finishFn; this is
+  // the matching entry point.
+  uploadDecodedImageAt_(device, idx, image) {
+    while (_imageTextures.count <= idx) _imageTextures.add(null)
+    var src = _imageSources[idx]
+    if (src == null || image == null) {
+      _imageTextures[idx] = null
+      return
+    }
+    var fmt = (src["sRGB"] == true) ? "rgba8unorm-srgb" : "rgba8unorm"
+    _imageTextures[idx] = device.uploadImage(image, { "format": fmt })
   }
 
   // Upload one mesh's GPU buffers. Streaming `Gltf.uploadMeshAt`

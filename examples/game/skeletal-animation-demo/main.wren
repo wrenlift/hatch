@@ -103,7 +103,16 @@ class SkeletalDemo is Game {
     i = 0
     while (i < state["imageCount"]) {
       var idx = i
-      _loader.queue("img_upload_%(idx)", Fn.new { Gltf.uploadImageAt(state, device, idx) })
+      // Worker-thread PNG decode. queueDecode kicks off Image
+      // .decodeBegin on the entry's first tick, polls the handle
+      // each subsequent frame WITHOUT blocking, and only fires
+      // onProgress + advances the queue once the worker reports
+      // ready. The HUD progress bar advances by one tick per
+      // completed image, but the game-loop renders at full rate
+      // throughout — the window animates while textures decode.
+      _loader.queueDecode("img_upload_%(idx)",
+        Fn.new { Gltf.beginImageDecodeAt(state, idx) },
+        Fn.new {|img| Gltf.uploadDecodedImageAt(state, device, idx, img) })
       i = i + 1
     }
     // Mesh count is only known after `assemble`. We can't size the
