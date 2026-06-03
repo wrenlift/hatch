@@ -53,7 +53,13 @@ class Renderer3D {
   // Vertex layout: 3 pos + 3 normal + 2 uv. Tangent comes via
   // screen-space derivatives in the fragment shader (see
   // `Shader.normalMapping`), so we don't extend the layout.
-  static FLOATS_PER_VERTEX_ { 8 }
+  // Vertex layout (12 floats / 48 bytes):
+  //   pos.xyz (3) + normal.xyz (3) + uv.xy (2) + tangent.xyzw (4)
+  // Tangent.xyz is the tangent direction; tangent.w is the
+  // bitangent handedness (+1 / -1) following the glTF spec. A
+  // tangent of all zeros signals "no tangent" and tells the
+  // fragment shader to fall back to screen-space-derivative TBN.
+  static FLOATS_PER_VERTEX_ { 12 }
 
   /// Number of f32 per billboard instance in the buffer
   /// `drawBillboardN` reads. Layout:
@@ -159,10 +165,11 @@ class Renderer3D {
   // Uniform block sizes. Computed from the WGSL structs.
   //
   // Scene = vp(64) + camera(16) + ambient(16) + counts(16)
-  //       + light_vp(64) + shadow_params(16)
+  //       + light_vp(64) + shadow_params(16) + wind(16)
+  //       + env_top(16) + env_horizon(16) + env_bottom(16)
   //       + dir × 32 + point × 32 + spot × 64
-  //       = 112 + 80 + 128 + 256 + 256 = 832 bytes.
-  static SCENE_UBO_BYTES_  { 848 }
+  //       = 64 + 16 + 16 + 16 + 64 + 16 + 16 + 48 + 128 + 256 + 256 = 896 bytes.
+  static SCENE_UBO_BYTES_  { 896 }
   static DRAW_UBO_BYTES_   { 128 }       // model(64) + normal_mat(64)
   static MAT_UBO_BYTES_    { 64 }        // 4 vec4s
   static SHADOW_UBO_BYTES_ { 128 }       // light_vp(64) + model(64) per draw
@@ -189,6 +196,14 @@ class Renderer3D {
         shadow_params: vec4<f32>,
         // xy = wind direction (unit, xz plane), z = time, w = strength
         wind:          vec4<f32>,
+        // 3-band environment for image-based lighting. Sampled by
+        // surface direction (N for diffuse, reflect(-V, N) for
+        // specular). Solid-colour bands lerped by `direction.y`
+        // give curved metals a credible reflection gradient with
+        // no cubemap binding.
+        env_top:       vec4<f32>,
+        env_horizon:   vec4<f32>,
+        env_bottom:    vec4<f32>,
         dir_lights:    array<DirLight,   4>,
         point_lights:  array<PointLight, 8>,
         spot_lights:   array<SpotLight,  4>,
@@ -257,15 +272,17 @@ class Renderer3D {
       }
 
       struct VsIn  {
-        @location(0) pos:    vec3<f32>,
-        @location(1) normal: vec3<f32>,
-        @location(2) uv:     vec2<f32>,
+        @location(0) pos:     vec3<f32>,
+        @location(1) normal:  vec3<f32>,
+        @location(2) uv:      vec2<f32>,
+        @location(3) tangent: vec4<f32>,
       };
       struct VsOut {
-        @builtin(position) clip:   vec4<f32>,
-        @location(0)       world:  vec3<f32>,
-        @location(1)       normal: vec3<f32>,
-        @location(2)       uv:     vec2<f32>,
+        @builtin(position) clip:    vec4<f32>,
+        @location(0)       world:   vec3<f32>,
+        @location(1)       normal:  vec3<f32>,
+        @location(2)       uv:      vec2<f32>,
+        @location(3)       tangent: vec4<f32>,
       };
 
       // Apply wind-driven sway to a model-local vertex. Bends the
@@ -288,18 +305,67 @@ class Renderer3D {
       @vertex
       fn vs_main(in: VsIn) -> VsOut {
         var o: VsOut;
-        // Anchor world position of the instance origin (so all
-        // vertices of one instance share the same phase) — read
-        // from model's translation column.
         let anchor = vec3<f32>(draw_u.model[3].x, draw_u.model[3].y, draw_u.model[3].z);
         let local_swayed = apply_sway(in.pos, anchor, mat.alpha.w);
         let world_pos  = draw_u.model * vec4<f32>(local_swayed, 1.0);
         let world_norm = (draw_u.normal_mat * vec4<f32>(in.normal, 0.0)).xyz;
-        o.clip   = scene.vp * world_pos;
-        o.world  = world_pos.xyz;
-        o.normal = world_norm;
-        o.uv     = in.uv;
+        // Transform tangent into world space via the model matrix
+        // (not normal_mat — tangent rotates with the surface, no
+        // inverse-transpose needed). Bitangent sign rides in .w.
+        let world_tan  = (draw_u.model * vec4<f32>(in.tangent.xyz, 0.0)).xyz;
+        o.clip    = scene.vp * world_pos;
+        o.world   = world_pos.xyz;
+        o.normal  = world_norm;
+        o.uv      = in.uv;
+        o.tangent = vec4<f32>(world_tan, in.tangent.w);
         return o;
+      }
+
+      // Build the world-space normal from a tangent-space normal
+      // sample. When the mesh ships a non-zero tangent attribute,
+      // use the explicit TBN frame (high-frequency surface detail
+      // resolved correctly). When tangent is zero (built-in
+      // primitives, legacy meshes), fall back to the screen-space-
+      // derivative cotangent frame.
+      fn surface_normal(
+        N0: vec3<f32>,
+        in_tangent: vec4<f32>,
+        world_pos: vec3<f32>,
+        uv: vec2<f32>,
+        sampled_xy: vec2<f32>,
+        scale: f32,
+      ) -> vec3<f32> {
+        let xy = sampled_xy * scale;
+        let z = sqrt(saturate(1.0 - dot(xy, xy)));
+        let n_t = vec3<f32>(xy, z);
+        let tlen2 = dot(in_tangent.xyz, in_tangent.xyz);
+        if (tlen2 > 0.0001) {
+          // Re-orthonormalise the supplied tangent against the
+          // interpolated normal (Gram-Schmidt) — interpolation
+          // across the triangle can shear the tangent off the
+          // surface plane.
+          let T = normalize(in_tangent.xyz - N0 * dot(N0, in_tangent.xyz));
+          let B = cross(N0, T) * in_tangent.w;
+          let tbn = mat3x3<f32>(T, B, N0);
+          return normalize(tbn * n_t);
+        }
+        return perturb_normal(N0, world_pos, uv, sampled_xy, scale);
+      }
+
+      // 3-band environment sampler: lerps bottom→horizon→top by
+      // `direction.y`. Returns linear-RGB irradiance scaled by
+      // each band's .w intensity. When all three bands are zero
+      // (no setEnvironment call), returns zero so the legacy flat
+      // ambient still drives the look.
+      fn env_sample(dir: vec3<f32>) -> vec3<f32> {
+        let y = clamp(dir.y, -1.0, 1.0);
+        var c: vec3<f32>;
+        if (y >= 0.0) {
+          c = mix(scene.env_horizon.rgb, scene.env_top.rgb, y);
+        } else {
+          c = mix(scene.env_horizon.rgb, scene.env_bottom.rgb, -y);
+        }
+        return c;
       }
 
       @fragment
@@ -309,12 +375,48 @@ class Renderer3D {
         //    creates the texture with `*-srgb` format, the
         //    sampler does the decode; otherwise we'd `srgb_to_linear`).
         let albedo_sample = textureSample(albedo_tex, samp, in.uv);
-        let base_color = mat.albedo_color * albedo_sample;
+        var base_color = mat.albedo_color * albedo_sample;
 
         // 2. Alpha mask: glTF spec says mask = discard below cutoff.
+        //    For MASK foliage textures (trees, grasses, petals), the
+        //    transparent texels often hold stale white RGB; bilinear
+        //    filtering and mipmaps then bleed that white into leaf-
+        //    edge fragments that still pass the alpha cutoff. Damp
+        //    only the low-alpha AND low-chroma fragments (the
+        //    whitish silhouette pixels); saturated leaf/grass colour
+        //    and antialiased canopy interiors pass through untouched.
         let alpha_mode = mat.alpha.x;
-        if (alpha_mode == 1.0 && base_color.a < mat.alpha.y) {
-          discard;
+        if (alpha_mode == 1.0) {
+          if (base_color.a < mat.alpha.y) { discard; }
+          let edge_lo = mat.alpha.y;
+          let edge_hi = min(mat.alpha.y + 0.4, 1.0);
+          let alpha_damp = smoothstep(edge_lo, edge_hi, albedo_sample.a);
+          let mx2 = max(max(base_color.r, base_color.g), base_color.b);
+          let mn2 = min(min(base_color.r, base_color.g), base_color.b);
+          let sat2 = (mx2 - mn2) / max(mx2, 0.0001);
+          let sat_damp = smoothstep(0.10, 0.30, sat2);
+          let damp = max(alpha_damp, sat_damp);
+          base_color = vec4<f32>(base_color.rgb * damp, base_color.a);
+        }
+
+        // 2b. Universal anti-whitebleed for OPAQUE foliage assets
+        //     (grass / tip strips on white backgrounds): when the
+        //     texel reads as near-white AND extremely desaturated,
+        //     damp toward black. Tight thresholds (lum > 0.85,
+        //     sat < 0.10) so legitimately bright surfaces (Boden
+        //     floor, painted walls, paper, sand) barely trigger
+        //     while bilinear/mip drift into a texture's white
+        //     border gets visibly suppressed.
+        {
+          let mx = max(max(base_color.r, base_color.g), base_color.b);
+          let mn = min(min(base_color.r, base_color.g), base_color.b);
+          let sat = (mx - mn) / max(mx, 0.0001);
+          // Gate on mx <= 1.0 — HDR-range albedo (e.g. the Boden
+          // floor's intentional (2.2, 2.2, 2.3) factor) passes
+          // through untouched; only LDR-bright + low-chroma fragments
+          // (the actual whitebleed signature) get damped.
+          let bleed = saturate((mx - 0.85) * 6.0) * saturate(0.10 - sat) * 10.0 * step(mx, 1.0);
+          base_color = vec4<f32>(base_color.rgb * saturate(1.0 - bleed), base_color.a);
         }
 
         // 3. Metallic + roughness: factor × MR.b / MR.g per glTF.
@@ -322,13 +424,25 @@ class Renderer3D {
         let metallic  = mat.factors.x * mr_sample.b;
         let roughness = mat.factors.y * mr_sample.g;
 
-        // 4. Normal: sample tangent-space xy, perturb the geo normal.
+        // 4. Normal: sample tangent-space xy, build TBN from vertex
+        //    tangent when available, otherwise screen-space.
         let N0 = normalize(in.normal);
         let n_sample = textureSample(normal_tex, samp, in.uv).xy * 2.0 - vec2<f32>(1.0);
-        let N = perturb_normal(N0, in.world, in.uv, n_sample, mat.factors.z);
+        let N = surface_normal(N0, in.tangent, in.world, in.uv, n_sample, mat.factors.z);
 
         // 5. View direction.
         let V = normalize(scene.camera_pos.xyz - in.world);
+
+        // Compute the primary directional caster's shadow factor
+        // once, up-front. Reused for both direct light attenuation
+        // (below) and ambient/IBL attenuation (further down) so
+        // shadow regions are visibly darker against the lit ones —
+        // ACES tonemap otherwise collapses the dynamic range.
+        var primary_shadow = 1.0;
+        if (scene.counts.x > 0.0) {
+          let primary_L = normalize(-scene.dir_lights[0].dir_intensity.xyz);
+          primary_shadow = shadow_factor(in.world, N, primary_L);
+        }
 
         // 6. Direct lighting: sum every active light's contribution.
         var Lo = vec3<f32>(0.0);
@@ -342,7 +456,7 @@ class Renderer3D {
           // (always index 0 — the renderer reorders the dir-light
           // list so the shadow caster lands first).
           if (i == 0u) {
-            radiance = radiance * shadow_factor(in.world, N, L);
+            radiance = radiance * primary_shadow;
           }
           Lo = Lo + pbr_direct(N, V, L, base_color.rgb, metallic, roughness, radiance);
         }
@@ -372,12 +486,37 @@ class Renderer3D {
           Lo = Lo + pbr_direct(N, V, L, base_color.rgb, metallic, roughness, radiance);
         }
 
-        // 7. Ambient + AO. Treat ambient as a cheap IBL stand-in
-        //    — multiplied with base_color so dielectric tint
-        //    surfaces still pick up the sky / room colour.
+        // 7. Image-based lighting. Sample the 3-band environment
+        //    (top / horizon / bottom) by surface normal for diffuse
+        //    irradiance and by the reflection vector for specular.
+        //    Roughness blurs the spec sample toward the diffuse one
+        //    (cheap fake of prefiltered-cubemap miplevels). Metals
+        //    pick up the env colour directly via Fresnel-weighted
+        //    F0 mixing; dielectrics scatter it diffusely. Adds the
+        //    legacy flat ambient on top so callers that don't set
+        //    an environment still get a base fill.
         let ao_sample = textureSample(occlusion_tex, samp, in.uv).r;
         let ao = mix(1.0, ao_sample, mat.factors.w);
-        let ambient_term = scene.ambient.rgb * base_color.rgb * ao;
+        let env_n = env_sample(N);
+        let R     = reflect(-V, N);
+        let env_r = mix(env_sample(R), env_n, roughness * roughness);
+        let F0    = mix(vec3<f32>(0.04), base_color.rgb, metallic);
+        let NdotV_amb = max(dot(N, V), 0.0);
+        let F_amb = F0 + (vec3<f32>(1.0) - F0) * pow(1.0 - NdotV_amb, 5.0);
+        // MASK foliage shouldn't grazing-reflect like a polished
+        // dielectric — at edge-on view (NoV → 0) Schlick would
+        // drive kS toward 1.0 and the env_r horizon colour would
+        // wash silhouette pixels. Clamp kS back to F0 so leaves /
+        // grass blades stay matte at silhouettes.
+        var kS = F_amb;
+        if (alpha_mode == 1.0) { kS = F0; }
+        let kD    = (vec3<f32>(1.0) - kS) * (1.0 - metallic);
+        let diffuse_ibl  = kD * base_color.rgb * env_n;
+        let specular_ibl = kS * env_r;
+        // Shadow attenuates direct lighting only — Blinc / Filament
+        // standard. Indirect ambient + IBL stays at full intensity.
+        let ambient_term = (diffuse_ibl + specular_ibl) * ao
+                         + scene.ambient.rgb * base_color.rgb * ao;
 
         // 8. Emissive. Added on top — never tonemapped against
         //    indirectly, but the final ACES pass still touches it.
@@ -410,6 +549,14 @@ class Renderer3D {
         shadow_params: vec4<f32>,
         // xy = wind direction (unit, xz plane), z = time, w = strength
         wind:          vec4<f32>,
+        // 3-band environment for image-based lighting. Sampled by
+        // surface direction (N for diffuse, reflect(-V, N) for
+        // specular). Solid-colour bands lerped by `direction.y`
+        // give curved metals a credible reflection gradient with
+        // no cubemap binding.
+        env_top:       vec4<f32>,
+        env_horizon:   vec4<f32>,
+        env_bottom:    vec4<f32>,
         dir_lights:    array<DirLight,   4>,
         point_lights:  array<PointLight, 8>,
         spot_lights:   array<SpotLight,  4>,
@@ -464,15 +611,17 @@ class Renderer3D {
       }
 
       struct VsIn  {
-        @location(0) pos:    vec3<f32>,
-        @location(1) normal: vec3<f32>,
-        @location(2) uv:     vec2<f32>,
+        @location(0) pos:     vec3<f32>,
+        @location(1) normal:  vec3<f32>,
+        @location(2) uv:      vec2<f32>,
+        @location(3) tangent: vec4<f32>,
       };
       struct VsOut {
-        @builtin(position) clip:   vec4<f32>,
-        @location(0)       world:  vec3<f32>,
-        @location(1)       normal: vec3<f32>,
-        @location(2)       uv:     vec2<f32>,
+        @builtin(position) clip:    vec4<f32>,
+        @location(0)       world:   vec3<f32>,
+        @location(1)       normal:  vec3<f32>,
+        @location(2)       uv:      vec2<f32>,
+        @location(3)       tangent: vec4<f32>,
       };
 
       fn apply_sway(local_pos: vec3<f32>, anchor_world: vec3<f32>, sway: f32) -> vec3<f32> {
@@ -495,19 +644,88 @@ class Renderer3D {
         let local_swayed = apply_sway(in.pos, anchor, mat.alpha.w);
         let world_pos  = draw_u.model * vec4<f32>(local_swayed, 1.0);
         let world_norm = (draw_u.normal_mat * vec4<f32>(in.normal, 0.0)).xyz;
-        o.clip   = scene.vp * world_pos;
-        o.world  = world_pos.xyz;
-        o.normal = world_norm;
-        o.uv     = in.uv;
+        let world_tan  = (draw_u.model * vec4<f32>(in.tangent.xyz, 0.0)).xyz;
+        o.clip    = scene.vp * world_pos;
+        o.world   = world_pos.xyz;
+        o.normal  = world_norm;
+        o.uv      = in.uv;
+        o.tangent = vec4<f32>(world_tan, in.tangent.w);
         return o;
+      }
+
+      // Vertex-tangent TBN with screen-space-derivative fallback —
+      // same shape as the non-instanced PBR shader.
+      fn surface_normal(
+        N0: vec3<f32>,
+        in_tangent: vec4<f32>,
+        world_pos: vec3<f32>,
+        uv: vec2<f32>,
+        sampled_xy: vec2<f32>,
+        scale: f32,
+      ) -> vec3<f32> {
+        let xy = sampled_xy * scale;
+        let z = sqrt(saturate(1.0 - dot(xy, xy)));
+        let n_t = vec3<f32>(xy, z);
+        let tlen2 = dot(in_tangent.xyz, in_tangent.xyz);
+        if (tlen2 > 0.0001) {
+          let T = normalize(in_tangent.xyz - N0 * dot(N0, in_tangent.xyz));
+          let B = cross(N0, T) * in_tangent.w;
+          let tbn = mat3x3<f32>(T, B, N0);
+          return normalize(tbn * n_t);
+        }
+        return perturb_normal(N0, world_pos, uv, sampled_xy, scale);
+      }
+
+      // 3-band environment sampler: lerps bottom→horizon→top by
+      // `direction.y`. Returns linear-RGB irradiance scaled by
+      // each band's .w intensity. When all three bands are zero
+      // (no setEnvironment call), returns zero so the legacy flat
+      // ambient still drives the look.
+      fn env_sample(dir: vec3<f32>) -> vec3<f32> {
+        let y = clamp(dir.y, -1.0, 1.0);
+        var c: vec3<f32>;
+        if (y >= 0.0) {
+          c = mix(scene.env_horizon.rgb, scene.env_top.rgb, y);
+        } else {
+          c = mix(scene.env_horizon.rgb, scene.env_bottom.rgb, -y);
+        }
+        return c;
       }
 
       @fragment
       fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let albedo_sample = textureSample(albedo_tex, samp, in.uv);
-        let base_color = mat.albedo_color * albedo_sample;
+        var base_color = mat.albedo_color * albedo_sample;
         let alpha_mode = mat.alpha.x;
-        if (alpha_mode == 1.0 && base_color.a < mat.alpha.y) { discard; }
+        // Foliage edge damp: see non-instanced PBR for rationale.
+        // Damp only the low-alpha AND low-chroma fragments — the
+        // whitish silhouette pixels — so saturated leaf/grass
+        // colour and antialiased canopy interiors stay untouched.
+        if (alpha_mode == 1.0) {
+          if (base_color.a < mat.alpha.y) { discard; }
+          let edge_lo = mat.alpha.y;
+          let edge_hi = min(mat.alpha.y + 0.4, 1.0);
+          let alpha_damp = smoothstep(edge_lo, edge_hi, albedo_sample.a);
+          let mx2 = max(max(base_color.r, base_color.g), base_color.b);
+          let mn2 = min(min(base_color.r, base_color.g), base_color.b);
+          let sat2 = (mx2 - mn2) / max(mx2, 0.0001);
+          let sat_damp = smoothstep(0.10, 0.30, sat2);
+          let damp = max(alpha_damp, sat_damp);
+          base_color = vec4<f32>(base_color.rgb * damp, base_color.a);
+        }
+
+        // Universal anti-whitebleed (see non-instanced PBR).
+        {
+          let mx = max(max(base_color.r, base_color.g), base_color.b);
+          let mn = min(min(base_color.r, base_color.g), base_color.b);
+          let sat = (mx - mn) / max(mx, 0.0001);
+          // Gate on mx <= 1.0 — HDR-range albedo (e.g. the Boden
+          // floor's intentional (2.2, 2.2, 2.3) factor) passes
+          // through untouched; only LDR-bright + low-chroma fragments
+          // (the actual whitebleed signature) get damped.
+          let bleed = saturate((mx - 0.85) * 6.0) * saturate(0.10 - sat) * 10.0 * step(mx, 1.0);
+          base_color = vec4<f32>(base_color.rgb * saturate(1.0 - bleed), base_color.a);
+        }
 
         let mr_sample = textureSample(mr_tex, samp, in.uv);
         let metallic  = mat.factors.x * mr_sample.b;
@@ -515,7 +733,7 @@ class Renderer3D {
 
         let N0 = normalize(in.normal);
         let n_sample = textureSample(normal_tex, samp, in.uv).xy * 2.0 - vec2<f32>(1.0);
-        let N = perturb_normal(N0, in.world, in.uv, n_sample, mat.factors.z);
+        let N = surface_normal(N0, in.tangent, in.world, in.uv, n_sample, mat.factors.z);
 
         let V = normalize(scene.camera_pos.xyz - in.world);
         var Lo = vec3<f32>(0.0);
@@ -556,7 +774,21 @@ class Renderer3D {
 
         let ao_sample = textureSample(occlusion_tex, samp, in.uv).r;
         let ao = mix(1.0, ao_sample, mat.factors.w);
-        let ambient_term = scene.ambient.rgb * base_color.rgb * ao;
+        // IBL — same shape as the non-instanced PBR shader.
+        let env_n = env_sample(N);
+        let R     = reflect(-V, N);
+        let env_r = mix(env_sample(R), env_n, roughness * roughness);
+        let F0    = mix(vec3<f32>(0.04), base_color.rgb, metallic);
+        let NdotV_amb = max(dot(N, V), 0.0);
+        let F_amb = F0 + (vec3<f32>(1.0) - F0) * pow(1.0 - NdotV_amb, 5.0);
+        // MASK foliage: clamp kS to F0 (see non-instanced PBR).
+        var kS = F_amb;
+        if (alpha_mode == 1.0) { kS = F0; }
+        let kD    = (vec3<f32>(1.0) - kS) * (1.0 - metallic);
+        let diffuse_ibl  = kD * base_color.rgb * env_n;
+        let specular_ibl = kS * env_r;
+        let ambient_term = (diffuse_ibl + specular_ibl) * ao
+                         + scene.ambient.rgb * base_color.rgb * ao;
         let emissive_sample = textureSample(emissive_tex, samp, in.uv).rgb;
         let emissive = mat.emissive_color.rgb * emissive_sample;
         let hdr = Lo + ambient_term + emissive;
@@ -578,10 +810,14 @@ class Renderer3D {
       };
       @group(0) @binding(0) var<uniform> u: ShadowUniforms;
 
+      // VsIn declares the full vertex layout (including tangent at
+      // location 3) so the shadow pipeline can share its attribute
+      // list with the PBR pipelines; only `pos` is actually read.
       struct VsIn {
-        @location(0) pos:    vec3<f32>,
-        @location(1) normal: vec3<f32>,
-        @location(2) uv:     vec2<f32>,
+        @location(0) pos:     vec3<f32>,
+        @location(1) normal:  vec3<f32>,
+        @location(2) uv:      vec2<f32>,
+        @location(3) tangent: vec4<f32>,
       };
 
       @vertex
@@ -609,10 +845,13 @@ class Renderer3D {
       @group(0) @binding(0) var<uniform> u: ShadowUniforms;
       @group(1) @binding(0) var<storage, read> instances: array<DrawUniforms>;
 
+      // VsIn matches the shared mesh layout (12 floats); only pos
+      // is actually read.
       struct VsIn {
-        @location(0) pos:    vec3<f32>,
-        @location(1) normal: vec3<f32>,
-        @location(2) uv:     vec2<f32>,
+        @location(0) pos:     vec3<f32>,
+        @location(1) normal:  vec3<f32>,
+        @location(2) uv:      vec2<f32>,
+        @location(3) tangent: vec4<f32>,
       };
 
       @vertex
@@ -694,7 +933,8 @@ class Renderer3D {
           "attributes": [
             { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
             { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
-            { "shaderLocation": 2, "offset": 24, "format": "float32x2" }
+            { "shaderLocation": 2, "offset": 24, "format": "float32x2" },
+            { "shaderLocation": 3, "offset": 32, "format": "float32x4" }
           ]
         }]
       },
@@ -705,9 +945,65 @@ class Renderer3D {
       "primitive":    { "topology": "triangle-list", "cullMode": "back" },
       "depthStencil": {
         "format": depthFormat, "depthWriteEnabled": true,
-        "depthCompare": "less"
+        // `less-equal` + a small constant + slope bias kills the
+        // coplanar z-fight that glTF assets routinely hit (panels
+        // exported at exactly the same depth, rotor blades inside
+        // a containing ring, etc.). 1 ulp / 1× slope is the
+        // gentlest knob that resolves the conflict deterministically.
+        "depthCompare":         "less-equal",
+        "depthBias":            2,
+        "depthBiasSlopeScale":  1.0
       },
       "label": "renderer3d-pipeline"
+    })
+
+    // Transparent variant of the PBR pipeline. Shares everything
+    // with `_pipeline` except: standard alpha-blend on the colour
+    // target, depth write OFF (so two stacked transparent fragments
+    // don't z-fight + reject each other), and depth bias dropped
+    // (we don't fight coplanar transparents). Draw order: opaque
+    // first, then transparent — the existing `draw(...)` flow is
+    // immediate-mode so callers naturally interleave; for true
+    // back-to-front correctness use sorted submission.
+    _transparentPipeline = device.createRenderPipeline({
+      "layout": _pipelineLayout,
+      "vertex": {
+        "module": shader, "entryPoint": "vs_main",
+        "buffers": [{
+          "arrayStride": Renderer3D.FLOATS_PER_VERTEX_ * 4,
+          "stepMode": "vertex",
+          "attributes": [
+            { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
+            { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
+            { "shaderLocation": 2, "offset": 24, "format": "float32x2" },
+            { "shaderLocation": 3, "offset": 32, "format": "float32x4" }
+          ]
+        }]
+      },
+      "fragment": {
+        "module": shader, "entryPoint": "fs_main",
+        "targets": [{
+          "format": surfaceFormat,
+          "blend": {
+            "color": {
+              "srcFactor": "src-alpha",
+              "dstFactor": "one-minus-src-alpha",
+              "operation": "add"
+            },
+            "alpha": {
+              "srcFactor": "one",
+              "dstFactor": "one-minus-src-alpha",
+              "operation": "add"
+            }
+          }
+        }]
+      },
+      "primitive":    { "topology": "triangle-list", "cullMode": "back" },
+      "depthStencil": {
+        "format": depthFormat, "depthWriteEnabled": false,
+        "depthCompare": "less-equal"
+      },
+      "label": "renderer3d-pipeline-transparent"
     })
 
     // Instanced pipeline. Same scene + material binding shape; the
@@ -742,7 +1038,8 @@ class Renderer3D {
           "attributes": [
             { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
             { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
-            { "shaderLocation": 2, "offset": 24, "format": "float32x2" }
+            { "shaderLocation": 2, "offset": 24, "format": "float32x2" },
+            { "shaderLocation": 3, "offset": 32, "format": "float32x4" }
           ]
         }]
       },
@@ -753,7 +1050,9 @@ class Renderer3D {
       "primitive":    { "topology": "triangle-list", "cullMode": "back" },
       "depthStencil": {
         "format": depthFormat, "depthWriteEnabled": true,
-        "depthCompare": "less"
+        "depthCompare":         "less-equal",
+        "depthBias":            2,
+        "depthBiasSlopeScale":  1.0
       },
       "label": "renderer3d-instanced-pipeline"
     })
@@ -912,6 +1211,20 @@ class Renderer3D {
     _pass    = null
     _ambient = Vec3.new(0.0, 0.0, 0.0)
     _ambientIntensity = 0.0
+    // 3-band IBL environment. All zero by default so demos that
+    // never call `setEnvironment` keep the legacy ambient-only
+    // look; populated triples make curved metals reflect the
+    // gradient and dielectrics pick up sky tint diffusely.
+    _envTop     = Vec3.new(0, 0, 0)
+    _envHorizon = Vec3.new(0, 0, 0)
+    _envBottom  = Vec3.new(0, 0, 0)
+    // Shadow-driven AO strength on the indirect (ambient + IBL)
+    // term. 0 disables (legacy behaviour — every scene built
+    // before this knob landed); 1 fully attenuates indirect by
+    // the primary shadow factor (drone-showcase look). Most
+    // open-world scenes want 0; studio-lit single-object demos
+    // benefit from ≥0.7.
+    _shadowAOStrength = 0.0
     _dirLights   = []   // each: { dir, color, intensity, castsShadows }
     _pointLights = []   // each: { pos, color, intensity, range }
     _spotLights  = []   // each: { pos, dir, color, intensity, range, innerCos, outerCos }
@@ -984,6 +1297,8 @@ class Renderer3D {
 
     _ambient = Vec3.new(0.0, 0.0, 0.0)
     _ambientIntensity = 0.0
+    // IBL env is NOT reset — it's a scene-wide property a caller
+    // configures once at setup, distinct from per-frame lights.
     _dirLights.clear()
     _pointLights.clear()
     _spotLights.clear()
@@ -1028,6 +1343,66 @@ class Renderer3D {
   setAmbient(color, intensity) {
     _ambient = color
     _ambientIntensity = intensity
+  }
+
+  /// Configure a 3-band IBL environment. The PBR shader samples
+  /// the surface normal against this gradient for diffuse
+  /// irradiance and the reflection vector for specular — curved
+  /// metals catch a sky-toned reflection without needing a real
+  /// cubemap binding. All three colours pass as linear-space
+  /// `Vec3`; pass `Vec3.zero` for each to disable IBL (the
+  /// flat-ambient path is unaffected).
+  ///
+  /// Cheap, no-allocation, no-pipeline-change. Real prefiltered-
+  /// cubemap IBL is a future upgrade.
+  ///
+  /// @param {Vec3} topColor      Zenith (above-horizon) colour.
+  /// @param {Vec3} horizonColor  Horizon colour, dominant at
+  ///                             surface tangent directions.
+  /// @param {Vec3} bottomColor   Nadir (below-horizon / ground)
+  ///                             colour.
+  setEnvironment(topColor, horizonColor, bottomColor) {
+    _envTop     = topColor
+    _envHorizon = horizonColor
+    _envBottom  = bottomColor
+  }
+
+  /// Tune how strongly IBL contributes vs. analytic lighting.
+  /// Diffuse strength multiplies the env-as-irradiance term that
+  /// dielectrics scatter; specular strength multiplies the
+  /// reflection-vector sample that metals pick up. Metals stay
+  /// "shiny" rather than "tinted" by keeping specular strength
+  /// low — the gradient bands don't carry the bright micro-detail
+  /// a real cubemap would, so a strong env_r reads as a uniform
+  /// flat reflection instead of a sharp environment.
+  ///
+  /// Defaults: diffuse 1.0, specular 0.25 — gives dielectrics a
+  /// full env-tinted fill, metals just a hint of reflection.
+  ///
+  /// @param {Num} diffuseStrength    Multiplier on the diffuse
+  ///                                 IBL term. Typical 0.6..1.2.
+  /// @param {Num} specularStrength   Multiplier on the specular
+  ///                                 IBL term. Typical 0.1..0.4 for
+  ///                                 stylised look; 1.0 for
+  ///                                 physically-matched mirror metals.
+  setEnvironmentStrength(diffuseStrength, specularStrength) {
+    _envDiffuseStrength  = diffuseStrength
+    _envSpecularStrength = specularStrength
+  }
+
+  /// Strength of the shadow-driven AO multiplier on the indirect
+  /// (ambient + IBL) term. `0` = off (open-world default — back-
+  /// lit surfaces stay at full indirect, just like before this
+  /// knob existed). `1` = full attenuation (cast shadow drops
+  /// indirect to near-zero in the umbra — desirable for studio-
+  /// lit single-object showcases where the shadow is a focal
+  /// element). Sensible studio range 0.6..0.9.
+  /// @param {Num} strength    0..1
+  setShadowAOStrength(strength) {
+    var s = strength
+    if (s < 0) s = 0
+    if (s > 1) s = 1
+    _shadowAOStrength = s
   }
 
   /// Queue a directional light for this frame. The renderer holds
@@ -1162,17 +1537,37 @@ class Renderer3D {
           "attributes": [
             { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
             { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
-            { "shaderLocation": 2, "offset": 24, "format": "float32x2" }
+            { "shaderLocation": 2, "offset": 24, "format": "float32x2" },
+            { "shaderLocation": 3, "offset": 32, "format": "float32x4" }
           ]
         }]
       },
       // No fragment block — depth-only pass writes nothing to
       // colour attachments (there are none on the shadow pass).
-      "primitive":    { "topology": "triangle-list", "cullMode": "front" },
+      // cullMode: "back" + depthBias is the standard PCF shadow
+      // setup. "front" (the old default here) writes the
+      // far-side of each occluder, which on concave geometry
+      // (rotor rings, panel cavities) lets the actual top-facing
+      // occluder pass through and the shadow map stays cleared —
+      // so shadow_factor returned 1.0 for every fragment.
+      // cullMode "none" + 2 / 2.0. The buster_drone (and most authored
+      // glTF bodies) leaves materials at doubleSided=false. Under
+      // "back" cull, slope-bias blows up at curved silhouettes and
+      // leaves a fragmented hole pattern. Under "front" cull, the
+      // single-sided body sub-meshes (14 in this asset — panels,
+      // generator covers, upper parts, sensor housings) have no
+      // back face to draw at all and contribute zero depth, leaving
+      // the same holes. "none" writes both faces; slope-scale 2.0
+      // tames the silhouette case "front" was guarding against,
+      // and thin double-sided rotors keep working because their
+      // front face is now drawn too.
+      "primitive":    { "topology": "triangle-list", "cullMode": "none" },
       "depthStencil": {
         "format": _shadowDepthFormat,
-        "depthWriteEnabled": true,
-        "depthCompare": "less"
+        "depthWriteEnabled":   true,
+        "depthCompare":        "less",
+        "depthBias":           2,
+        "depthBiasSlopeScale": 2.0
       },
       "label": "renderer3d-shadow-pipeline"
     })
@@ -1206,7 +1601,8 @@ class Renderer3D {
           "attributes": [
             { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
             { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
-            { "shaderLocation": 2, "offset": 24, "format": "float32x2" }
+            { "shaderLocation": 2, "offset": 24, "format": "float32x2" },
+            { "shaderLocation": 3, "offset": 32, "format": "float32x4" }
           ]
         }]
       },
@@ -1527,7 +1923,15 @@ class Renderer3D {
     // Resolve material bind group; rebuild on revision change.
     var entry = bindGroupFor_(material)
     var pass = _pass
-    pass.setPipeline(_pipeline)
+    // Pick the transparent pipeline when the material's alpha mode
+    // is "blend" — gives proper src-alpha blending + no depth-write
+    // for soft-fading edges (Boden floor, glass panels, etc.). All
+    // other alpha modes (opaque, mask) ride the standard PBR pipeline.
+    if (material.alphaMode == "blend") {
+      pass.setPipeline(_transparentPipeline)
+    } else {
+      pass.setPipeline(_pipeline)
+    }
     // Re-bind scene group explicitly so a preceding pipeline
     // switch (e.g. `drawMeshInstanced` → `draw` in the same pass)
     // can't leave slot 0 invalidated. Matches what
@@ -1910,10 +2314,11 @@ class Renderer3D {
     } else {
       appendZeros_(_sceneUboFloats, 16)
     }
-    // shadow_params: x = depth bias, y = PCF radius, z/w reserved.
+    // shadow_params: x = depth bias, y = PCF radius,
+    //                z = shadow-AO strength, w = reserved.
     _sceneUboFloats.add(_shadowBias)
     _sceneUboFloats.add(_shadowPcfRadius)
-    _sceneUboFloats.add(0)
+    _sceneUboFloats.add(_shadowAOStrength)
     _sceneUboFloats.add(0)
     // wind: xy = direction (xz plane), z = time, w = strength.
     // Vertex shaders multiply this by per-material `sway` and a
@@ -1922,6 +2327,21 @@ class Renderer3D {
     _sceneUboFloats.add(_windDirZ)
     _sceneUboFloats.add(_windTime)
     _sceneUboFloats.add(_windStrength)
+    // env_top / env_horizon / env_bottom — 3-band IBL gradient.
+    // All zero by default; `setEnvironment` populates them
+    // per-frame between `beginFrame` and the first draw.
+    _sceneUboFloats.add(_envTop.x)
+    _sceneUboFloats.add(_envTop.y)
+    _sceneUboFloats.add(_envTop.z)
+    _sceneUboFloats.add(0)
+    _sceneUboFloats.add(_envHorizon.x)
+    _sceneUboFloats.add(_envHorizon.y)
+    _sceneUboFloats.add(_envHorizon.z)
+    _sceneUboFloats.add(0)
+    _sceneUboFloats.add(_envBottom.x)
+    _sceneUboFloats.add(_envBottom.y)
+    _sceneUboFloats.add(_envBottom.z)
+    _sceneUboFloats.add(0)
     // dir_lights[0..MAX]; pad slots after the live count with zeros
     // so the shader's loop bound (`scene.counts.x`) governs reads.
     var i = 0

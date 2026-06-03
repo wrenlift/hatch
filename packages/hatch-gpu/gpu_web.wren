@@ -2208,7 +2208,8 @@ class Mesh {
   static cube(device, half) {
     var h = half
     var v = []
-    var pushFace = Fn.new {|nx, ny, nz, p0, p1, p2, p3|
+    // Per-vertex layout: pos + normal + uv + tangent (12 floats).
+    var pushFace = Fn.new {|nx, ny, nz, tx, ty, tz, p0, p1, p2, p3|
       var quad = [p0, p1, p2, p3]
       var uvs  = [[0, 0], [1, 0], [1, 1], [0, 1]]
       var i = 0
@@ -2221,21 +2222,25 @@ class Mesh {
         v.add(nz)
         v.add(uvs[i][0])
         v.add(uvs[i][1])
+        v.add(tx)
+        v.add(ty)
+        v.add(tz)
+        v.add(1.0)
         i = i + 1
       }
     }
 
-    pushFace.call( 1, 0, 0,
+    pushFace.call( 1, 0, 0,   0, 0,  1,
       [ h, -h, -h], [ h, -h,  h], [ h,  h,  h], [ h,  h, -h])
-    pushFace.call(-1, 0, 0,
+    pushFace.call(-1, 0, 0,   0, 0, -1,
       [-h, -h,  h], [-h, -h, -h], [-h,  h, -h], [-h,  h,  h])
-    pushFace.call( 0, 1, 0,
+    pushFace.call( 0, 1, 0,   1, 0,  0,
       [-h,  h, -h], [ h,  h, -h], [ h,  h,  h], [-h,  h,  h])
-    pushFace.call( 0,-1, 0,
+    pushFace.call( 0,-1, 0,   1, 0,  0,
       [-h, -h,  h], [ h, -h,  h], [ h, -h, -h], [-h, -h, -h])
-    pushFace.call( 0, 0, 1,
+    pushFace.call( 0, 0, 1,  -1, 0,  0,
       [ h, -h,  h], [-h, -h,  h], [-h,  h,  h], [ h,  h,  h])
-    pushFace.call( 0, 0,-1,
+    pushFace.call( 0, 0,-1,   1, 0,  0,
       [-h, -h, -h], [ h, -h, -h], [ h,  h, -h], [-h,  h, -h])
 
     var indices = []
@@ -2256,10 +2261,10 @@ class Mesh {
   static plane(device, size) {
     var h = size / 2
     var v = [
-      -h, 0, -h,  0, 1, 0,  0, 0,
-       h, 0, -h,  0, 1, 0,  1, 0,
-       h, 0,  h,  0, 1, 0,  1, 1,
-      -h, 0,  h,  0, 1, 0,  0, 1
+      -h, 0, -h,  0, 1, 0,  0, 0,  1, 0, 0, 1,
+       h, 0, -h,  0, 1, 0,  1, 0,  1, 0, 0, 1,
+       h, 0,  h,  0, 1, 0,  1, 1,  1, 0, 0, 1,
+      -h, 0,  h,  0, 1, 0,  0, 1,  1, 0, 0, 1
     ]
     var indices = [0, 1, 2, 0, 2, 3]
     return Mesh.fromArrays(device, v, indices)

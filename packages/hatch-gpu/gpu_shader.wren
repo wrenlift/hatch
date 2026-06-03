@@ -188,6 +188,12 @@ class Shader {
         let G = smith_g(NoV, NoL, alpha);
         let F = schlick_fresnel(VoH, F0);
 
+        // Specular = D × G × F. The Cook-Torrance `/(4·NoL·NoV)`
+        // divisor is intentionally OMITTED: our `smith_g` is the
+        // visibility variant that bakes the 1/(NoL·NoV) factor in
+        // already. Adding the divisor here exploded specular at
+        // grazing angles (NoL·NoV → 0) and produced white blowout
+        // on foliage / curved meshes.
         let specular = D * G * F;
         let diffuse  = (vec3<f32>(1.0) - F) * (1.0 - metallic) * base_color / PI;
 
