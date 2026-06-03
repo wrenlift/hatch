@@ -760,6 +760,42 @@ class Game {
     g.depthView   = depthView
     g.setViewport_(sw, sh)
 
+    // Pre-paint: render a single clear-color frame and pump events
+    // BEFORE calling setup, so the window appears immediately
+    // instead of waiting for setup() to return. Long-running asset
+    // loads (glTF parse, texture decode) inside setup would
+    // otherwise leave a black / non-responsive window for the
+    // duration. The frame just clears to the configured clear
+    // colour — game code hasn't run yet.
+    {
+      window.pollEvents
+      var frame = surface.acquire()
+      if (frame != null) {
+        var view = frame.view
+        var enc  = device.createCommandEncoder()
+        var attach = {
+          "view":       view,
+          "loadOp":     "clear",
+          "clearValue": c["clearColor"],
+          "storeOp":    "store"
+        }
+        var desc = { "colorAttachments": [attach] }
+        if (depthView != null) {
+          desc["depthStencilAttachment"] = {
+            "view":            depthView,
+            "depthLoadOp":     "clear",
+            "depthClearValue": 1.0,
+            "depthStoreOp":    "store"
+          }
+        }
+        var pass = enc.beginRenderPass(desc)
+        pass.end
+        enc.finish
+        device.submit([enc])
+        frame.present
+      }
+    }
+
     instance.setup(g)
 
     g.lastTime_  = Clock.mono
