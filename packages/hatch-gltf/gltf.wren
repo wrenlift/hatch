@@ -211,8 +211,10 @@ class Gltf {
   static openDir(db, gltfPath) {
     var dir = GltfScene.dirname_(gltfPath)
     var jsonBytes = db.bytes(gltfPath)
-    var jsonText  = Bytes_.asciiString(jsonBytes, 0, jsonBytes.count)
-    var json      = JSON.parse(GltfScene.stripPad_(jsonText))
+    // Skip the bytes→String→ByteArray round-trip the old path did via
+    // Bytes_.asciiString + JSON.parse(text). `parseBytes` walks the
+    // ByteArray directly, dropping the per-character String alloc.
+    var json = JSON.parseBytes(GltfScene.stripPadBytes_(jsonBytes))
     if (!(json is Map)) Fiber.abort("Gltf.openDir: %(gltfPath) did not decode to a JSON object")
 
     var bufArr  = json["buffers"] is List ? json["buffers"] : []
@@ -384,18 +386,14 @@ class Bytes_ {
     return sign * fraction * (2.pow(exp - 127))
   }
 
-  /// Read a UTF-8-ish ASCII string over a byte slice. JSON chunks
-  /// from the wild are UTF-8 by spec but the glTF JSON portion is
-  /// pure ASCII metadata; sticking to raw codepoints keeps the
-  /// parser self-contained.
+  /// Read a UTF-8 ASCII string over a byte slice. Single FFI hop to
+  /// `ByteArray.utf8Slice`; the previous pure-Wren
+  /// `chars.add(String.fromCodePoint(b)); chars.join("")` form was
+  /// O(n) iterations + an O(n) join of one-char Strings, which on a
+  /// 1 MB glTF JSON ran for tens of seconds and froze the window
+  /// during scene load.
   static asciiString(b, off, len) {
-    var chars = []
-    var i = 0
-    while (i < len) {
-      chars.add(String.fromCodePoint(b[off + i]))
-      i = i + 1
-    }
-    return chars.join("")
+    return b.utf8Slice(off, len)
   }
 }
 
@@ -479,6 +477,11 @@ class GltfScene {
   /// `GltfAnimation` — one per `json["animations"][i]`. Empty when
   /// the file carries none.
   animations   { _animations }
+  /// List of uploaded Texture handles, one per `json["images"][i]`.
+  /// Populated by the upload path; entries are `null` until their
+  /// matching image has been decoded + uploaded (or stay `null`
+  /// permanently if the source slot was empty).
+  imageTextures { _imageTextures }
   /// Parsed skins from the glTF document. List of `GltfSkin` —
   /// one per `json["skins"][i]`. Empty when no skins are present.
   skins        { _skins }
@@ -580,6 +583,28 @@ class GltfScene {
       n = n - 1
     }
     return n == s.count ? s : s[0...n]
+  }
+
+  // ByteArray variant. Walks bytes backward looking for trailing
+  // ASCII space (32) or NUL (0), and returns a fresh slice that
+  // drops them. The streaming-loader path calls this so JSON.parseBytes
+  // doesn't see the 4-byte alignment padding that .glb writers append
+  // to the JSON chunk.
+  static stripPadBytes_(b) {
+    var n = b.count
+    while (n > 0) {
+      var c = b[n - 1]
+      if (c != 32 && c != 0) break
+      n = n - 1
+    }
+    if (n == b.count) return b
+    var out = ByteArray.new(n)
+    var i = 0
+    while (i < n) {
+      out[i] = b[i]
+      i = i + 1
+    }
+    return out
   }
 
   // -- Materials ---------------------------------------------------

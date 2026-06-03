@@ -14,7 +14,7 @@ readme   = "README.md"
 [dependencies]
 "@hatch:fs" = "0.1.2"
 "@hatch:hash" = "0.1.1"
-"@hatch:json" = "0.1.5"
+"@hatch:json" = { path = "../hatch-json" }
 
 [spec-dependencies]
 "@hatch:test" = "0.2.1"

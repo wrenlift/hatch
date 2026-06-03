@@ -10,7 +10,7 @@ readme   = "README.md"
 # cache restaging. Revert to matching version pins before publishing
 # @hatch:gltf — path deps don't resolve for downstream consumers.
 [dependencies]
-"@hatch:json" = "0.1.5"
+"@hatch:json" = { path = "../hatch-json" }
 "@hatch:math" = "0.1.5"
 "@hatch:ecs" = "0.2.4"
 "@hatch:gpu" = { path = "../hatch-gpu" }
