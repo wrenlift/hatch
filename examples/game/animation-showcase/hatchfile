@@ -1,0 +1,14 @@
+name        = "animation-showcase"
+version     = "0.1.0"
+entry       = "main"
+description = "Load a buster-drone glTF and play its embedded TRS animation: 100 channels of per-node translation / rotation / scale keyframes drive ECS Transform components each frame. Demonstrates the glTF animation parser plus the existing TransformPropagation + SceneRenderer3D pipeline."
+
+# @hatch:gpu / @hatch:math / @hatch:ecs come transitively through
+# @hatch:game — declaring them again collides on the shared ECS
+# `save` module (see project_gpu_material_collision memory note).
+# @hatch:assets isn't on the game graph so it stays explicit.
+[dependencies]
+"@hatch:game"   = { path = "../../../packages/hatch-game" }
+"@hatch:gltf"   = { path = "../../../packages/hatch-gltf" }
+"@hatch:assets" = { path = "../../../packages/hatch-assets" }
+"@hatch:postfx" = { path = "../../../packages/hatch-postfx" }
