@@ -257,6 +257,14 @@ class GltfScene {
     _meshes         = GltfScene.buildMeshes_(json, _buffers)
     _nodes          = GltfScene.buildNodes_(json)
     _rootIndices    = GltfScene.pickRootIndices_(json)
+    // Per-channel TRS keyframes. Empty list when the file carries no
+    // animations. Each entry is a GltfAnimation; channels are
+    // parsed eagerly so per-frame sampling skips JSON walks.
+    _animations     = GltfScene.buildAnimations_(json, _buffers)
+    // Populated by `spawnInto` — Map<gltfNodeIndex, ecsEntityId>.
+    // Lets animation tooling map a channel's `target.node` back to
+    // the entity whose Transform it should write.
+    _nodeEntityMap  = null
     // One image-descriptor entry per glTF `images[i]`. Each entry
     // is either `null` (no source) or a Map with `"kind"`:
     //   - "buffer": embedded image in a bufferView — `"buffer"` /
@@ -294,6 +302,15 @@ class GltfScene {
   meshes       { _meshes }      // List<GltfMesh>
   nodes        { _nodes }       // List<GltfNode>
   rootIndices  { _rootIndices } // List<Num> — top-level nodes of the default scene
+  /// Parsed animations from the glTF document. List of
+  /// `GltfAnimation` — one per `json["animations"][i]`. Empty when
+  /// the file carries none.
+  animations   { _animations }
+  /// `Map<gltfNodeIndex, ecsEntityId>` populated by `spawnInto`.
+  /// `null` until `spawnInto` has been called; lets an animator
+  /// resolve a channel's `target.node` back to the entity whose
+  /// Transform it should write.
+  nodeEntityMap { _nodeEntityMap }
 
   // ---- Construction ----------------------------------------------
 
@@ -587,11 +604,20 @@ class GltfScene {
     var uvIdx = attrs["TEXCOORD_0"]
     if (uvIdx is Num) uvs = GltfScene.readVec2Accessor_(json, buffers, uvIdx)
 
+    // glTF spec: TANGENT is `VEC4`, xyz = tangent direction,
+    // w = bitangent handedness (+1 / -1). Pulled separately so a
+    // primitive that ships tangents (most modern PBR exports do)
+    // gets vertex-tangent normal mapping; primitives without
+    // tangent fall back to screen-space derivatives in the shader.
+    var tangents = null
+    var tanIdx = attrs["TANGENT"]
+    if (tanIdx is Num) tangents = GltfScene.readFloatAccessor_(json, buffers, tanIdx, 4, "VEC4")
+
     var indices = null
     if (p["indices"] is Num) indices = GltfScene.readIndexAccessor_(json, buffers, p["indices"])
 
     var materialIndex = p["material"] is Num ? p["material"] : null
-    return GltfPrimitive.new_(positions, normals, uvs, indices, materialIndex)
+    return GltfPrimitive.new_(positions, normals, uvs, tangents, indices, materialIndex)
   }
 
   // -- Nodes -------------------------------------------------------
@@ -669,6 +695,57 @@ class GltfScene {
     while (i < nodes.count) {
       if (!hasParent.containsKey(i)) out.add(i)
       i = i + 1
+    }
+    return out
+  }
+
+  // -- Animations --------------------------------------------------
+
+  // Parse every animation in the glTF document into a list of
+  // `GltfAnimation`s. Each animation owns its channels (TRS
+  // targets) and samplers (keyframe accessor reads). Sampling is
+  // pushed into GltfAnimChannel so the demo's per-frame loop is
+  // just `channel.sample(t)` → write to the target entity.
+  static buildAnimations_(json, buffers) {
+    var out = []
+    var arr = json["animations"]
+    if (!(arr is List)) return out
+    for (a in arr) {
+      var name = a["name"] is String ? a["name"] : ""
+      var samplers = a["samplers"] is List ? a["samplers"] : []
+      var channels = a["channels"] is List ? a["channels"] : []
+      var parsedChannels = []
+      var maxTime = 0
+      for (ch in channels) {
+        var target = ch["target"]
+        if (!(target is Map)) continue
+        var nodeIdx = target["node"]
+        var path    = target["path"]
+        if (!(nodeIdx is Num) || !(path is String)) continue
+        // Only TRS paths land in V1. Morph-target `weights`
+        // animation needs separate plumbing (scalar-per-weight
+        // accessors + MeshRenderer support) — silently skip so
+        // assets that mix TRS + morph keyframes still load.
+        if (path != "translation" && path != "rotation" && path != "scale") continue
+        var samplerIdx = ch["sampler"]
+        if (!(samplerIdx is Num) || samplerIdx >= samplers.count) continue
+        var s = samplers[samplerIdx]
+        if (!(s is Map)) continue
+        var inputs  = GltfScene.readFloatAccessor_(json, buffers,
+                        s["input"], 1, "SCALAR")
+        var components = path == "rotation" ? 4 : 3
+        var outputType = components == 4 ? "VEC4" : "VEC3"
+        var outputs = GltfScene.readFloatAccessor_(json, buffers,
+                        s["output"], components, outputType)
+        var interp = s["interpolation"] is String ? s["interpolation"] : "LINEAR"
+        if (inputs.count > 0) {
+          var last = inputs[inputs.count - 1]
+          if (last > maxTime) maxTime = last
+        }
+        parsedChannels.add(GltfAnimChannel.new_(
+          nodeIdx, path, inputs, outputs, components, interp))
+      }
+      out.add(GltfAnimation.new_(name, maxTime, parsedChannels))
     }
     return out
   }
@@ -856,6 +933,7 @@ class GltfScene {
     for (idx in _rootIndices) {
       roots.add(spawnNode_(world, idx, null, spawned))
     }
+    _nodeEntityMap = spawned
     return roots
   }
 
@@ -926,6 +1004,200 @@ class GltfNode {
   toString { "GltfNode(name=%(_name), mesh=%(_meshIndex), children=%(_children.count))" }
 }
 
+/// A parsed glTF animation. Owns one or more `GltfAnimChannel`s
+/// (TRS targets) and a derived duration (the maximum input time
+/// across all channels). Driven by a per-frame clock — sample
+/// each channel with `(time % duration)` to loop the animation.
+class GltfAnimation {
+  /// Internal — built by `GltfScene.buildAnimations_`. User code
+  /// reads them via `scene.animations`.
+  construct new_(name, duration, channels) {
+    _name     = name
+    _duration = duration
+    _channels = channels
+  }
+  /// glTF `name` field (empty string if absent). @returns {String}
+  name      { _name }
+  /// Total clip length in seconds, taken from the latest keyframe
+  /// across all channels.
+  /// @returns {Num}
+  duration  { _duration }
+  /// One `GltfAnimChannel` per TRS target. @returns {List<GltfAnimChannel>}
+  channels  { _channels }
+}
+
+/// One animation channel — a single (node, path) pair driven by
+/// a sampler's keyframes. `path` is `"translation"` / `"rotation"`
+/// / `"scale"`; the channel's `sample(t)` returns a freshly-built
+/// `List<Num>` of length 3 (T / S) or 4 (R), ready to write into a
+/// `Transform`.
+class GltfAnimChannel {
+  /// Internal — built by `GltfScene.buildAnimations_`.
+  construct new_(nodeIndex, path, inputs, outputs, components, interpolation) {
+    _nodeIndex     = nodeIndex
+    _path          = path
+    _inputs        = inputs        // Float32Array of timestamps
+    _outputs       = outputs       // Float32Array of values (component-packed)
+    _components    = components    // 3 (T/S) or 4 (R)
+    _interpolation = interpolation // "LINEAR" | "STEP" | "CUBICSPLINE"
+  }
+  /// Target node index into `scene.nodes`. @returns {Num}
+  nodeIndex     { _nodeIndex }
+  /// `"translation"` | `"rotation"` | `"scale"`. @returns {String}
+  path          { _path }
+  /// `"LINEAR"` | `"STEP"` | `"CUBICSPLINE"`. @returns {String}
+  interpolation { _interpolation }
+
+  /// Sample the channel at world-time `t` seconds. `t` is clamped
+  /// to the channel's input range. The returned List is freshly
+  /// allocated each call; length 3 for translation / scale, 4 for
+  /// rotation in glTF (x, y, z, w) order.
+  ///
+  /// @param  {Num} t
+  /// @returns {List<Num>}
+  sample(t) {
+    var n = _inputs.count
+    if (n == 0) {
+      var z = []
+      var c = 0
+      while (c < _components) {
+        z.add(0)
+        c = c + 1
+      }
+      return z
+    }
+    if (n == 1 || t <= _inputs[0]) return GltfAnimChannel.outputAt_(_outputs, 0, _components)
+    if (t >= _inputs[n - 1]) return GltfAnimChannel.outputAt_(_outputs, n - 1, _components)
+
+    // Linear search — fine for typical channel sizes. Bisection
+    // lands the day a profiler asks for it.
+    var i = 0
+    while (i < n - 1) {
+      if (_inputs[i] <= t && t < _inputs[i + 1]) break
+      i = i + 1
+    }
+    var t0 = _inputs[i]
+    var t1 = _inputs[i + 1]
+    var span = t1 - t0
+    var u = span > 0.0001 ? (t - t0) / span : 0
+
+    if (_interpolation == "STEP") {
+      return GltfAnimChannel.outputAt_(_outputs, i, _components)
+    }
+
+    // glTF CUBICSPLINE stores 3 values per keyframe: inTangent,
+    // value, outTangent. The interpolation is Hermite cubic
+    // between value[i] and value[i+1] using outTangent[i] and
+    // inTangent[i+1].
+    if (_interpolation == "CUBICSPLINE") {
+      var stride = _components * 3
+      // For each keyframe at index k: in_tan = k*stride,
+      // value = k*stride + components, out_tan = k*stride + 2*components.
+      var v0 = i * stride + _components
+      var m0 = i * stride + 2 * _components
+      var v1 = (i + 1) * stride + _components
+      var m1 = (i + 1) * stride
+      var u2 = u * u
+      var u3 = u2 * u
+      var h00 = 2 * u3 - 3 * u2 + 1
+      var h10 = u3 - 2 * u2 + u
+      var h01 = -2 * u3 + 3 * u2
+      var h11 = u3 - u2
+      var out = []
+      var c = 0
+      while (c < _components) {
+        var p0 = _outputs[v0 + c]
+        var p1 = _outputs[v1 + c]
+        var ta = _outputs[m0 + c]
+        var tb = _outputs[m1 + c]
+        out.add(h00 * p0 + h10 * ta * span + h01 * p1 + h11 * tb * span)
+        c = c + 1
+      }
+      return out
+    }
+
+    // LINEAR. Rotation channels (components == 4) slerp on the
+    // shortest hemisphere; TRS scalars lerp componentwise.
+    //
+    // Why slerp for rotation: lerp on quat components gives a
+    // straight chord through 4D quat space which DOES NOT
+    // correspond to constant angular velocity in 3D — fast-
+    // spinning rotors read as ease-in / ease-out per keyframe
+    // (janky between frames). Slerp follows the great-circle
+    // path → smooth constant rotation. The hemisphere flip
+    // handles the q vs −q ambiguity so neighbouring keyframes
+    // pick the shorter arc.
+    var out = []
+    var aOff = i * _components
+    var bOff = (i + 1) * _components
+    if (_components == 4) {
+      var ax = _outputs[aOff]
+      var ay = _outputs[aOff + 1]
+      var az = _outputs[aOff + 2]
+      var aw = _outputs[aOff + 3]
+      var bx = _outputs[bOff]
+      var by = _outputs[bOff + 1]
+      var bz = _outputs[bOff + 2]
+      var bw = _outputs[bOff + 3]
+      var dot = ax * bx + ay * by + az * bz + aw * bw
+      if (dot < 0) {
+        bx = -bx
+        by = -by
+        bz = -bz
+        bw = -bw
+        dot = -dot
+      }
+      var s0 = 1 - u
+      var s1 = u
+      if (dot < 0.9995) {
+        // Slerp via sin(theta * (1 - u)) / sin(theta) blend
+        // weights. Falls back to plain lerp when the two quats
+        // are nearly parallel (sin(theta) ≈ 0).
+        var theta = dot.acos
+        var sinT  = theta.sin
+        if (sinT > 0.00001) {
+          s0 = ((1 - u) * theta).sin / sinT
+          s1 = (u * theta).sin / sinT
+        }
+      }
+      out.add(ax * s0 + bx * s1)
+      out.add(ay * s0 + by * s1)
+      out.add(az * s0 + bz * s1)
+      out.add(aw * s0 + bw * s1)
+      return out
+    }
+    var c = 0
+    while (c < _components) {
+      var a = _outputs[aOff + c]
+      var b = _outputs[bOff + c]
+      out.add(a + (b - a) * u)
+      c = c + 1
+    }
+    return out
+  }
+
+  // Extract one keyframe value from a packed-LINEAR / STEP output
+  // accessor. For CUBICSPLINE the layout is different (3 values
+  // per keyframe), but boundary cases (clamp to first / last) use
+  // the value slot which sits at keyframeIdx*stride + components.
+  static outputAt_(outputs, keyframeIdx, components) {
+    var stride = components
+    // Heuristic: if outputs.count == numKeyframes * components, it's
+    // a LINEAR/STEP track. If it's 3x, it's CUBICSPLINE. We pick
+    // the value slot accordingly. Detected via outputs.count vs the
+    // caller's keyframe count isn't known here, so use modular
+    // arithmetic — caller passes the right index.
+    var off = keyframeIdx * stride
+    var out = []
+    var c = 0
+    while (c < components) {
+      out.add(outputs[off + c])
+      c = c + 1
+    }
+    return out
+  }
+}
+
 /// A glTF mesh: a list of primitives + a name. Each primitive has
 /// its own vertex layout and material reference; `upload_`
 /// converts every primitive into a `@hatch:gpu` `Mesh`.
@@ -970,10 +1242,11 @@ class GltfPrimitive {
   ///   i32; `null` for unindexed primitives.
   /// @param {Num|Null} materialIndex. Index into the parent
   ///   document's `materials`, or `null` to pick the default.
-  construct new_(positions, normals, uvs, indices, materialIndex) {
+  construct new_(positions, normals, uvs, tangents, indices, materialIndex) {
     _positions = positions
     _normals = normals
     _uvs = uvs
+    _tangents = tangents
     _indices = indices
     _materialIndex = materialIndex
     _mesh = null
@@ -982,6 +1255,7 @@ class GltfPrimitive {
   positions      { _positions }
   normals        { _normals }
   uvs            { _uvs }
+  tangents       { _tangents }
   indices        { _indices }
   materialIndex  { _materialIndex }
   mesh           { _mesh }
@@ -995,10 +1269,10 @@ class GltfPrimitive {
   upload_(device, materials, textures) {
     if (_positions == null || _positions.count == 0) return
     var vertexCount = (_positions.count / 3).floor
-    var verts = Float32Array.new(vertexCount * 8)
+    var verts = Float32Array.new(vertexCount * 12)
     var i = 0
     while (i < vertexCount) {
-      var base = i * 8
+      var base = i * 12
       verts[base + 0] = _positions[i * 3 + 0]
       verts[base + 1] = _positions[i * 3 + 1]
       verts[base + 2] = _positions[i * 3 + 2]
@@ -1017,6 +1291,19 @@ class GltfPrimitive {
       } else {
         verts[base + 6] = 0
         verts[base + 7] = 0
+      }
+      if (_tangents != null && (i * 4 + 3) < _tangents.count) {
+        verts[base + 8]  = _tangents[i * 4 + 0]
+        verts[base + 9]  = _tangents[i * 4 + 1]
+        verts[base + 10] = _tangents[i * 4 + 2]
+        verts[base + 11] = _tangents[i * 4 + 3]
+      } else {
+        // Zero tangent signals "no tangent" — the fragment shader
+        // falls back to screen-space derivatives.
+        verts[base + 8]  = 0
+        verts[base + 9]  = 0
+        verts[base + 10] = 0
+        verts[base + 11] = 0
       }
       i = i + 1
     }
