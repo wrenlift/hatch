@@ -184,6 +184,124 @@ class Gltf {
     scene.upload(device)
     return scene
   }
+
+  /// Open a glTF directory for *incremental* loading. Reads only
+  /// the top-level .gltf JSON; returns a state Map the caller fills
+  /// in via `loadBuffer` / `loadImage`, then promotes to a
+  /// `GltfScene` via `assemble`, finishing with per-item
+  /// `uploadImageAt` / `uploadMeshAt` calls.
+  ///
+  /// The shape is designed to fit `@hatch:assets/AssetLoader`'s
+  /// one-entry-per-frame queue: each external buffer, external
+  /// image, image upload, and mesh upload becomes one queue entry,
+  /// so a loading scene's progress bar advances smoothly.
+  ///
+  /// ```wren
+  /// var st = Gltf.openDir(db, "the_strangler/scene.gltf")
+  /// for (i in 0...st["bufferCount"]) loader.queue("buf%(i)", Fn.new { Gltf.loadBuffer(st, db, i) })
+  /// for (i in 0...st["imageCount"])  loader.queue("img%(i)", Fn.new { Gltf.loadImage(st, db, i) })
+  /// loader.queue("assemble", Fn.new { Gltf.assemble(st) })
+  /// for (i in 0...st["imageCount"])  loader.queue("upimg%(i)", Fn.new { Gltf.uploadImageAt(st, device, i) })
+  /// loader.queue("finish", Fn.new { Gltf.finishUpload(st, device); _scene = st["scene"] })
+  /// ```
+  ///
+  /// @returns {Map} state with keys `dir`, `json`, `buffers`,
+  ///   `imageBytes`, `bufferCount`, `imageCount`, and (after
+  ///   `assemble`) `scene`.
+  static openDir(db, gltfPath) {
+    var dir = GltfScene.dirname_(gltfPath)
+    var jsonBytes = db.bytes(gltfPath)
+    var jsonText  = Bytes_.asciiString(jsonBytes, 0, jsonBytes.count)
+    var json      = JSON.parse(GltfScene.stripPad_(jsonText))
+    if (!(json is Map)) Fiber.abort("Gltf.openDir: %(gltfPath) did not decode to a JSON object")
+
+    var bufArr  = json["buffers"] is List ? json["buffers"] : []
+    var imgArr  = json["images"]  is List ? json["images"]  : []
+    var buffers    = List.filled(bufArr.count, null)
+    var imageBytes = List.filled(imgArr.count, null)
+    return {
+      "dir":         dir,
+      "json":        json,
+      "buffers":     buffers,
+      "imageBytes":  imageBytes,
+      "bufferCount": bufArr.count,
+      "imageCount":  imgArr.count,
+      "scene":       null
+    }
+  }
+
+  /// Read one external buffer URI into `state["buffers"][idx]`.
+  /// `data:` and embedded buffers are not supported on the
+  /// streaming path — externalise them or use the `.glb` /
+  /// `Gltf.load` path which keeps everything in one call.
+  static loadBuffer(state, db, idx) {
+    var bArr = state["json"]["buffers"]
+    if (!(bArr is List) || idx >= bArr.count) return
+    var bEntry = bArr[idx]
+    if (!(bEntry is Map)) Fiber.abort("Gltf.loadBuffer: bad buffer entry %(idx)")
+    var uri = bEntry["uri"]
+    if (!(uri is String)) Fiber.abort("Gltf.loadBuffer: buffer %(idx) missing uri")
+    if (uri.startsWith("data:")) {
+      Fiber.abort("Gltf.loadBuffer: data: URIs not yet supported — externalise the buffer or use .glb")
+    }
+    var bufPath = GltfScene.joinPath_(state["dir"], uri)
+    state["buffers"][idx] = db.bytes(bufPath)
+  }
+
+  /// Read one external image URI's raw bytes into
+  /// `state["imageBytes"][idx]`. Does NOT decode the PNG/JPG; the
+  /// decode happens later in `uploadImageAt`. Embedded (`bufferView`)
+  /// images leave the slot as `null` and pick up their bytes from
+  /// the matching buffer during `uploadImageAt`.
+  static loadImage(state, db, idx) {
+    var imgs = state["json"]["images"]
+    if (!(imgs is List) || idx >= imgs.count) return
+    var im = imgs[idx]
+    if (im is Map && im["uri"] is String && !im["uri"].startsWith("data:")) {
+      var imgPath = GltfScene.joinPath_(state["dir"], im["uri"])
+      state["imageBytes"][idx] = db.bytes(imgPath)
+    }
+  }
+
+  /// Build the `GltfScene` from the JSON + buffers + image bytes
+  /// already populated in `state`. Cheap: parses materials, meshes,
+  /// nodes, animations, skins. No GPU work. Stores the new scene
+  /// at `state["scene"]` and returns it.
+  static assemble(state) {
+    var scene = GltfScene.fromJson_(state["json"], state["buffers"], state["imageBytes"])
+    state["scene"] = scene
+    return scene
+  }
+
+  /// Decode + upload one image into the assembled scene. Pair with
+  /// `assemble` (which must run first); call once per slot in
+  /// `0 ... state["imageCount"]`. PNG decode is the dominant
+  /// cost — one queue entry per image lets the loading bar reflect
+  /// the actual work being done.
+  static uploadImageAt(state, device, idx) {
+    var scene = state["scene"]
+    if (scene == null) Fiber.abort("Gltf.uploadImageAt: call Gltf.assemble first")
+    scene.uploadImageAt_(device, idx)
+  }
+
+  /// Upload one mesh's GPU buffers (VBO / IBO + per-primitive
+  /// joints/weights for skinned meshes). Call once per mesh after
+  /// every `uploadImageAt` has run, so materials see real textures.
+  static uploadMeshAt(state, device, idx) {
+    var scene = state["scene"]
+    if (scene == null) Fiber.abort("Gltf.uploadMeshAt: call Gltf.assemble first")
+    scene.uploadMeshAt_(device, idx)
+  }
+
+  /// Drop the source bytes the upload steps consumed (raw image
+  /// payloads, .bin buffers) so they're available for GC. Optional
+  /// — call once after every `uploadImageAt` + `uploadMeshAt` to
+  /// reclaim the multi-MB asset memory.
+  static finishUpload(state) {
+    var scene = state["scene"]
+    if (scene == null) return
+    scene.dropUploadSources_()
+  }
 }
 
 // Byte-reader helpers. The .glb format is little-endian; the JSON
@@ -1082,31 +1200,7 @@ class GltfScene {
     _imageTextures = []
     var i = 0
     while (i < _imageSources.count) {
-      var src = _imageSources[i]
-      if (src == null) {
-        _imageTextures.add(null)
-      } else {
-        var bytes = null
-        if (src["kind"] == "bytes") {
-          bytes = src["bytes"]
-        } else {
-          // "buffer" — slice from the matching loaded buffer.
-          var bufIdx = src["buffer"]
-          var srcBuf = _buffers[bufIdx]
-          var off = src["byteOffset"]
-          var len = src["byteLength"]
-          bytes = ByteArray.new(len)
-          var k = 0
-          while (k < len) {
-            bytes[k] = srcBuf[off + k]
-            k = k + 1
-          }
-        }
-        var img = Image.decode(bytes)
-        var fmt = (src["sRGB"] == true) ? "rgba8unorm-srgb" : "rgba8unorm"
-        var tex = device.uploadImage(img, { "format": fmt })
-        _imageTextures.add(tex)
-      }
+      uploadImageAt_(device, i)
       // Yield after every image — PNG decode + GPU upload is the
       // single most expensive step in a typical asset load (often
       // 80%+ of wall-clock for character + texture-heavy scenes).
@@ -1115,6 +1209,58 @@ class GltfScene {
       Fiber.yield()
       i = i + 1
     }
+  }
+
+  // Decode + upload one image into _imageTextures[idx]. Used by
+  // both the bulk `uploadImages_` path AND the streaming
+  // `Gltf.uploadImageAt` path so the per-image work has exactly
+  // one definition. _imageTextures is grown as needed so callers
+  // can hit arbitrary indices in any order.
+  uploadImageAt_(device, idx) {
+    while (_imageTextures.count <= idx) _imageTextures.add(null)
+    var src = _imageSources[idx]
+    if (src == null) {
+      _imageTextures[idx] = null
+      return
+    }
+    var bytes = null
+    if (src["kind"] == "bytes") {
+      bytes = src["bytes"]
+    } else {
+      // "buffer" — slice from the matching loaded buffer.
+      var bufIdx = src["buffer"]
+      var srcBuf = _buffers[bufIdx]
+      var off = src["byteOffset"]
+      var len = src["byteLength"]
+      bytes = ByteArray.new(len)
+      var k = 0
+      while (k < len) {
+        bytes[k] = srcBuf[off + k]
+        k = k + 1
+      }
+    }
+    var img = Image.decode(bytes)
+    var fmt = (src["sRGB"] == true) ? "rgba8unorm-srgb" : "rgba8unorm"
+    _imageTextures[idx] = device.uploadImage(img, { "format": fmt })
+  }
+
+  // Upload one mesh's GPU buffers. Streaming `Gltf.uploadMeshAt`
+  // entry point — pair with `uploadImageAt_` for each image first
+  // so materials see real textures by the time the mesh's primitive
+  // pipelines bind them.
+  uploadMeshAt_(device, idx) {
+    if (idx >= _meshes.count) return
+    _meshes[idx].upload_(device, _materials, _imageTextures)
+  }
+
+  // Streaming-loader cleanup. Drops the parsed image bytes + .bin
+  // buffers (multi-MB) once every `uploadImageAt_` + `uploadMeshAt_`
+  // has run. Materials hold Texture handles, meshes hold their own
+  // VBO/IBO handles; nothing downstream still needs the source
+  // bytes. Equivalent of the bytes-drop at the tail of `upload`.
+  dropUploadSources_() {
+    _imageSources = []
+    _buffers      = []
   }
 
   /// Spawn the default scene into `world`. Each glTF node becomes
