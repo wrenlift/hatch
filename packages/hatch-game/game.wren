@@ -760,21 +760,19 @@ class Game {
     g.depthView   = depthView
     g.setViewport_(sw, sh)
 
-    // Pre-paint: render a single clear-color frame and pump events
-    // BEFORE calling setup, so the window appears immediately
-    // instead of waiting for setup() to return. Long-running asset
-    // loads (glTF parse, texture decode) inside setup would
-    // otherwise leave a black / non-responsive window for the
-    // duration. The frame just clears to the configured clear
-    // colour — game code hasn't run yet.
-    {
+    // Loading-screen paint: clear the swap-chain to the configured
+    // background colour. Used both for the immediate "window now
+    // visible" first frame AND between yields of the setup pump
+    // below — long asset loads inside setup() can take seconds,
+    // and each yield gets one cleared frame + one OS event drain
+    // so the window stays responsive and macOS doesn't beachball.
+    var paintLoadingFrame = Fn.new {
       window.pollEvents
       var frame = surface.acquire()
       if (frame != null) {
-        var view = frame.view
         var enc  = device.createCommandEncoder()
         var attach = {
-          "view":       view,
+          "view":       frame.view,
           "loadOp":     "clear",
           "clearValue": c["clearColor"],
           "storeOp":    "store"
@@ -796,7 +794,28 @@ class Game {
       }
     }
 
-    instance.setup(g)
+    // First paint: window is now visible to the user even though
+    // setup() hasn't begun.
+    paintLoadingFrame.call()
+
+    // Setup pump. Run instance.setup(g) inside a Fiber and pump
+    // events + paint between its yields. Setups that never yield
+    // run to completion on the first iteration (one extra paint
+    // and one extra pollEvents vs. the legacy sync path — both
+    // already happening in pre-paint anyway). Setups that DO
+    // yield — typically because they call a yielding loader like
+    // `Gltf.fromAssetsDir` — get a responsive window throughout.
+    var setupFiber = Fiber.new { instance.setup(g) }
+    var setupErrRaw = null
+    while (!setupFiber.isDone) {
+      if (window.closeRequested) break
+      setupErrRaw = setupFiber.call()
+      paintLoadingFrame.call()
+    }
+    // Stale-slot guard — fiber.call can leak a stale slot value
+    // on a clean return (see feedback_fiber_try_stale_slot.md).
+    var setupErr = setupErrRaw is String ? setupErrRaw : null
+    if (setupErr != null) Fiber.abort(setupErr)
 
     g.lastTime_  = Clock.mono
     g.startTime_ = g.lastTime_
