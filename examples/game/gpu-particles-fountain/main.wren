@@ -20,6 +20,39 @@ class Fountain is Game {
     "depth":      true
   } }
 
+  // 64×64 RGBA texture with a smooth radial falloff. Used as the
+  // particle sprite so each particle reads as a soft glow instead
+  // of a hard pixel square.
+  makeDiscTexture_(device, size) {
+    var bytes = []
+    var half = size / 2.0
+    var y = 0
+    while (y < size) {
+      var x = 0
+      while (x < size) {
+        var dx = (x + 0.5) - half
+        var dy = (y + 0.5) - half
+        var d  = (dx * dx + dy * dy).sqrt / half
+        if (d > 1) d = 1
+        var fall = 1 - d
+        var a    = (fall * fall * 255).floor
+        bytes.add(255)
+        bytes.add(255)
+        bytes.add(255)
+        bytes.add(a)
+        x = x + 1
+      }
+      y = y + 1
+    }
+    var tex = device.createTexture({
+      "width": size, "height": size, "format": "rgba8unorm",
+      "usage": ["texture-binding", "copy-dst"]
+    })
+    device.writeTexture(tex, ByteArray.fromList(bytes),
+                        {"width": size, "height": size, "bytesPerRow": size * 4})
+    return tex
+  }
+
   setup(g) {
     _renderer = Renderer3D.new(g.device, g.surfaceFormat, g.depthFormat)
     _camera   = Camera3D.perspective(60, g.width / g.height, 0.1, 200)
@@ -33,13 +66,12 @@ class Fountain is Game {
     _dragging = false
     refreshCamera_()
 
-    // 1×1 white texture so the demo is asset-free.
-    _tex = g.device.createTexture({
-      "width": 1, "height": 1, "format": "rgba8unorm",
-      "usage": ["texture-binding", "copy-dst"]
-    })
-    g.device.writeTexture(_tex, ByteArray.fromList([255, 255, 255, 255]),
-                          {"width": 1, "height": 1, "bytesPerRow": 4})
+    // Procedural soft-disc texture. Hard 1×1 pixels render every
+    // particle as a tiny square — fine for streaks, ugly for
+    // round glows. A 64×64 gaussian falloff makes each particle
+    // a soft glow that overlaps neighbours into a continuous
+    // sheet of light.
+    _tex = makeDiscTexture_(g.device, 64)
 
     // Fountain: 50k particles, emitting 30k/s with a wide arc,
     // gravity pulls them back down. Drag dampens velocity so the
@@ -50,11 +82,15 @@ class Fountain is Game {
       "emissionRate": 30000,
       "lifetime":     [1.6, 2.4],
       "position":     [0, 0, 0],
-      "spread":       [0.4, 0, 0.4],
-      "velocity":     [[-2.5, 8, -2.5], [2.5, 12, 2.5]],
+      "spread":       [0.25, 0, 0.25],
+      // `radialXZ` flips the XZ velocity sampling to polar so the
+      // jet sprays a circular cone instead of a square frustum.
+      // The horizontal min/max are interpreted as |speed| bounds.
+      "radialXZ":     true,
+      "velocity":     [[0.0, 8, 0.0], [3.0, 12, 3.0]],
       "gravity":      [0, -9.8, 0],
       "drag":         0.15,
-      "size":         [0.06, 0.06],
+      "size":         [0.08, 0.08],
       "color":        [[1.0, 0.95, 0.85, 1.0], [0.20, 0.55, 1.0, 0.0]]
     })
     Particles.register(_fx)

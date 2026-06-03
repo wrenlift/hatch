@@ -211,6 +211,10 @@ class GpuParticleSystem3D {
     _emissionAccum = 0
     _spawnNext  = 0
     _lastDt     = 0
+    // Per-axis box sampling is the default; `radialXZ: true` swaps
+    // the XZ velocity sampling for polar coordinates so a fountain
+    // sprays in a cone instead of a square frustum.
+    _radialXZ = opts.containsKey("radialXZ") ? opts["radialXZ"] : false
 
     _device = device
 
@@ -355,16 +359,36 @@ class GpuParticleSystem3D {
       _spawnNext = 0
       return
     }
+    var twoPi = 6.28318530718
     var i = 0
     while (i < n) {
       var off = i * 8
-      _spawnScratch[off]     = _position[0] + (random_() - 0.5) * 2 * _spread[0]
+      // Radial spread: pick a uniform-disc spawn point so the
+      // emitter face reads as a circle, not a square.
+      var sx = _spread[0]
+      var sz = _spread[2]
+      var sp_theta = random_() * twoPi
+      var sp_r     = random_().sqrt
+      _spawnScratch[off]     = _position[0] + sp_theta.cos * sp_r * sx
       _spawnScratch[off + 1] = _position[1] + (random_() - 0.5) * 2 * _spread[1]
-      _spawnScratch[off + 2] = _position[2] + (random_() - 0.5) * 2 * _spread[2]
+      _spawnScratch[off + 2] = _position[2] + sp_theta.sin * sp_r * sz
       _spawnScratch[off + 3] = 0   // age
-      _spawnScratch[off + 4] = _velMin[0] + random_() * (_velMax[0] - _velMin[0])
-      _spawnScratch[off + 5] = _velMin[1] + random_() * (_velMax[1] - _velMin[1])
-      _spawnScratch[off + 6] = _velMin[2] + random_() * (_velMax[2] - _velMin[2])
+      if (_radialXZ) {
+        // Polar XZ velocity: |speed| sampled uniformly inside the
+        // box-magnitude-equivalent disc, angle uniformly in [0, 2π).
+        // Y stays from the per-axis range.
+        var vMagMin = (_velMin[0] * _velMin[0] + _velMin[2] * _velMin[2]).sqrt
+        var vMagMax = (_velMax[0] * _velMax[0] + _velMax[2] * _velMax[2]).sqrt
+        var theta = random_() * twoPi
+        var mag   = vMagMin + random_() * (vMagMax - vMagMin)
+        _spawnScratch[off + 4] = theta.cos * mag
+        _spawnScratch[off + 5] = _velMin[1] + random_() * (_velMax[1] - _velMin[1])
+        _spawnScratch[off + 6] = theta.sin * mag
+      } else {
+        _spawnScratch[off + 4] = _velMin[0] + random_() * (_velMax[0] - _velMin[0])
+        _spawnScratch[off + 5] = _velMin[1] + random_() * (_velMax[1] - _velMin[1])
+        _spawnScratch[off + 6] = _velMin[2] + random_() * (_velMax[2] - _velMin[2])
+      }
       _spawnScratch[off + 7] = _lifetime[0] + random_() * (_lifetime[1] - _lifetime[0])
       i = i + 1
     }
