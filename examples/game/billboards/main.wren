@@ -45,17 +45,20 @@ class Billboards is Game {
     // -Y) and 12 indices wound in BOTH directions so each quad
     // shows whichever side faces the camera.
     var h = 0.5
+    // Mesh vertex layout: pos.xyz + normal.xyz + uv.xy + tangent.xyzw.
+    // Tangent along +X for the +Y front face; -X for the -Y back
+    // face (mirroring the winding). Bitangent handedness +1.
     var verts = [
       // Front face (normal +Y), CCW seen from +Y.
-      -h, 0, -h,  0, 1, 0,  0, 0,
-       h, 0, -h,  0, 1, 0,  1, 0,
-       h, 0,  h,  0, 1, 0,  1, 1,
-      -h, 0,  h,  0, 1, 0,  0, 1,
+      -h, 0, -h,  0, 1, 0,  0, 0,   1, 0, 0, 1,
+       h, 0, -h,  0, 1, 0,  1, 0,   1, 0, 0, 1,
+       h, 0,  h,  0, 1, 0,  1, 1,   1, 0, 0, 1,
+      -h, 0,  h,  0, 1, 0,  0, 1,   1, 0, 0, 1,
       // Back face (normal -Y), CCW seen from -Y.
-      -h, 0, -h,  0, -1, 0,  0, 0,
-       h, 0, -h,  0, -1, 0,  1, 0,
-       h, 0,  h,  0, -1, 0,  1, 1,
-      -h, 0,  h,  0, -1, 0,  0, 1
+      -h, 0, -h,  0, -1, 0,  0, 0, -1, 0, 0, 1,
+       h, 0, -h,  0, -1, 0,  1, 0, -1, 0, 0, 1,
+       h, 0,  h,  0, -1, 0,  1, 1, -1, 0, 0, 1,
+      -h, 0,  h,  0, -1, 0,  0, 1, -1, 0, 0, 1
     ]
     var idx = [
       0, 1, 2, 0, 2, 3,        // front, CCW from +Y
