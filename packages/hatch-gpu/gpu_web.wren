@@ -493,6 +493,10 @@ class GpuCore {
           cmd["indexCount"],
           cmd.containsKey("instanceCount") ? cmd["instanceCount"] : 1,
           0, 0, 0)
+      } else if (op == "drawIndexedIndirect") {
+        GpuWeb_.renderPassDrawIndexedIndirect(pass,
+          cmd["buffer"],
+          cmd.containsKey("offset") ? cmd["offset"] : 0)
       } else {
         Fiber.abort("GpuCore.encoderRecordPass: unknown op %(op)")
       }
@@ -1142,6 +1146,18 @@ class RenderPass {
   drawIndexed(indexCount) { drawIndexed(indexCount, 1) }
   drawIndexed(indexCount, instanceCount) {
     _cmds.add({ "op": "drawIndexed", "indexCount": indexCount, "instanceCount": instanceCount })
+    return this
+  }
+  /// GPU-driven indexed draw — see `gpu_native.wren.RenderPass.
+  /// drawIndexedIndirect` for the args layout. Stub on web until
+  /// `GpuWeb_.renderPassDrawIndexedIndirect` lands in the JS host
+  /// (WebGPU spec accepts it via `pass.drawIndexedIndirect`).
+  drawIndexedIndirect(indirectBuffer, offset) {
+    _cmds.add({
+      "op":     "drawIndexedIndirect",
+      "buffer": indirectBuffer.id,
+      "offset": offset
+    })
     return this
   }
 
