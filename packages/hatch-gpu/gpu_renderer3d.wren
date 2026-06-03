@@ -650,14 +650,35 @@ class Renderer3D {
         let albedo_sample = textureSample(albedo_tex, samp, in.uv);
         let base_color    = mat.albedo_color * albedo_sample;
         let N = normalize(in.normal);
-        // Simple Lambert + ambient. v1 omits multi-light /
-        // shadow / IBL paths — see PBR_WGSL_ for the full surface.
-        let L = normalize(vec3<f32>(0.4, 1.0, 0.3));   // placeholder sun
-        let NoL = max(dot(N, L), 0.0);
-        let diffuse = base_color.rgb * NoL;
-        let ambient = scene.ambient.rgb * base_color.rgb;
+
+        // Sum every active directional + point light, Lambert
+        // term per source. shadow / IBL / spot still deferred to
+        // the full PBR pipeline (v1).
+        var Lo = vec3<f32>(0.0);
+        let dir_count = u32(scene.counts.x);
+        for (var i: u32 = 0u; i < dir_count; i = i + 1u) {
+          let dl = scene.dir_lights[i];
+          let L  = normalize(-dl.dir_intensity.xyz);
+          let radiance = dl.color.rgb * dl.dir_intensity.w;
+          Lo = Lo + base_color.rgb * max(dot(N, L), 0.0) * radiance;
+        }
+        let point_count = u32(scene.counts.y);
+        for (var i: u32 = 0u; i < point_count; i = i + 1u) {
+          let pl = scene.point_lights[i];
+          let to_light = pl.pos_range.xyz - in.world;
+          let dist = length(to_light);
+          if (dist < 0.0001) { continue; }
+          let L = to_light / dist;
+          let att = 1.0 / max(dist * dist, 0.0001);
+          let radiance = pl.color_intensity.rgb * pl.color_intensity.w * att;
+          Lo = Lo + base_color.rgb * max(dot(N, L), 0.0) * radiance;
+        }
+
+        // scene.ambient.rgb is already pre-multiplied by intensity
+        // by commitScene_; .w is padding.
+        let ambient  = scene.ambient.rgb * base_color.rgb;
         let emissive = mat.emissive_color.rgb;
-        return vec4<f32>(diffuse + ambient + emissive, base_color.a);
+        return vec4<f32>(Lo + ambient + emissive, base_color.a);
       }
     "
   }
