@@ -28,6 +28,8 @@ import "@hatch:gltf"   for Gltf
 import "@hatch:assets" for Assets, AssetLoader
 import "@hatch:fsm"    for StateChart
 import "@hatch:hud"    for HUD
+import "@hatch:image"  for Image
+import "@hatch:time"   for Clock
 
 class SkeletalDemo is Game {
   static DESIGN_W { 960 }
@@ -44,9 +46,18 @@ class SkeletalDemo is Game {
   } }
 
   setup(g) {
+    // setup() should be FAST. The window is already visible at the
+    // configured clearColor, but stays static until setup returns
+    // and the main loop's draw() begins. Anything heavy (PNG
+    // decodes, JSON.parse of multi-MB glTFs, mesh accessor walks)
+    // belongs in the AssetLoader queue — which runs from the
+    // loading-state update tick, with the splash + progress bar
+    // rendering at full frame rate throughout.
+
     _renderer  = Renderer3D.new(g.device, g.surfaceFormat, g.depthFormat)
     _renderer.setAmbient(Vec3.new(0.55, 0.60, 0.70), 0.8)
     _camera    = Camera3D.perspective(45, g.width / g.height, 0.1, 20000)
+    Fiber.yield()    // pump after Renderer3D pipeline build
     // 3-arg ctor: builds depth-compatible pipelines so the 2D HUD
     // can co-exist with Renderer3D's depth-attached pass without
     // `Incompatible depth-stencil attachment` validation errors.
@@ -54,6 +65,7 @@ class SkeletalDemo is Game {
     _camera2   = Camera2D.contain(SkeletalDemo.DESIGN_W, SkeletalDemo.DESIGN_H, g.width, g.height)
     _hud       = HUD.new(g)
     _world     = World.new()
+    Fiber.yield()    // pump after Renderer2D pipeline build
 
     // Splash hangs for `_splashLength` seconds so the title's
     // legible, then transitions into loading. AssetLoader's
@@ -76,59 +88,18 @@ class SkeletalDemo is Game {
     _splashTimer  = 0
     _splashLength = 1.2
 
-    // Streaming gltf load — one queue entry per buffer read, image
-    // read, image upload, mesh upload, plus structural assemble and
-    // finalize bookends. The progress bar reflects actual work, not
-    // a fake spinner; the window stays responsive between entries.
+    // Streaming gltf load. The FIRST queue entry is the JSON.parse
+    // (Gltf.openDir, multi-second on the_strangler) — it runs from
+    // the loading state's update tick, AFTER the loading screen is
+    // visible. Once it completes, the entry walks the parsed scene
+    // and queues every per-asset entry behind it.
     _db          = Assets.open("assets")
-    _gltfState   = Gltf.openDir(_db, "the_strangler/scene.gltf")
     _loader      = AssetLoader.new()
-    var device   = g.device
-    var state    = _gltfState
-    var db       = _db
-
-    var i = 0
-    while (i < state["bufferCount"]) {
-      var idx = i
-      _loader.queue("buf_%(idx)", Fn.new { Gltf.loadBuffer(state, db, idx) })
-      i = i + 1
-    }
-    i = 0
-    while (i < state["imageCount"]) {
-      var idx = i
-      _loader.queue("img_bytes_%(idx)", Fn.new { Gltf.loadImage(state, db, idx) })
-      i = i + 1
-    }
-    _loader.queue("assemble", Fn.new { Gltf.assemble(state) })
-    i = 0
-    while (i < state["imageCount"]) {
-      var idx = i
-      // Worker-thread PNG decode. queueDecode kicks off Image
-      // .decodeBegin on the entry's first tick, polls the handle
-      // each subsequent frame WITHOUT blocking, and only fires
-      // onProgress + advances the queue once the worker reports
-      // ready. The HUD progress bar advances by one tick per
-      // completed image, but the game-loop renders at full rate
-      // throughout — the window animates while textures decode.
-      _loader.queueDecode("img_upload_%(idx)",
-        Fn.new { Gltf.beginImageDecodeAt(state, idx) },
-        Fn.new {|img| Gltf.uploadDecodedImageAt(state, device, idx, img) })
-      i = i + 1
-    }
-    // Mesh count is only known after `assemble`. We can't size the
-    // queue against it until then, so a single bulk "meshes" entry
-    // covers them — meshes are cheap (VBO/IBO upload, no decode).
-    _loader.queue("meshes", Fn.new {
-      var scene = state["scene"]
-      var mi = 0
-      while (mi < scene.meshes.count) {
-        Gltf.uploadMeshAt(state, device, mi)
-        mi = mi + 1
-      }
+    var self     = this
+    _loader.queue("open_gltf", Fn.new {
+      self.openGltfAndQueueRest_(g)
     })
-    _loader.queue("finalize", Fn.new { Gltf.finishUpload(state) })
 
-    var self = this
     _loader.onProgress(Fn.new {|f, d, t|
       self.onLoadProgress_(f, d, t)
     })
@@ -157,6 +128,60 @@ class SkeletalDemo is Game {
       Vec3.one))
     var amb = _world.spawn()
     _world.attach(amb, AmbientLight.new(Vec3.new(0.25, 0.3, 0.4), 0.4))
+  }
+
+  // Parses the .gltf JSON (multi-second for character-scale assets,
+  // dominated by JSON.parse + List.filled), then walks the now-known
+  // bufferCount / imageCount and queues every per-asset entry behind
+  // the current one. Runs as the first loader queue entry so the
+  // loading screen is visible by the time the JSON parse begins.
+  openGltfAndQueueRest_(g) {
+    _gltfState = Gltf.openDir(_db, "the_strangler/scene.gltf")
+    var device = g.device
+    var state  = _gltfState
+    var db     = _db
+    var added  = 0
+
+    var i = 0
+    while (i < state["bufferCount"]) {
+      var idx = i
+      _loader.queue("buf_%(idx)", Fn.new { Gltf.loadBuffer(state, db, idx) })
+      added = added + 1
+      i = i + 1
+    }
+    i = 0
+    while (i < state["imageCount"]) {
+      var idx = i
+      _loader.queue("img_bytes_%(idx)", Fn.new { Gltf.loadImage(state, db, idx) })
+      added = added + 1
+      i = i + 1
+    }
+    _loader.queue("assemble", Fn.new { Gltf.assemble(state) })
+    added = added + 1
+    i = 0
+    while (i < state["imageCount"]) {
+      var idx = i
+      _loader.queueDecode("img_upload_%(idx)",
+        Fn.new { Gltf.beginImageDecodeAt(state, idx) },
+        Fn.new {|img| Gltf.uploadDecodedImageAt(state, device, idx, img) })
+      added = added + 1
+      i = i + 1
+    }
+    _loader.queue("meshes", Fn.new {
+      var scene = state["scene"]
+      var mi = 0
+      while (mi < scene.meshes.count) {
+        Gltf.uploadMeshAt(state, device, mi)
+        mi = mi + 1
+      }
+    })
+    _loader.queue("finalize", Fn.new { Gltf.finishUpload(state) })
+    added = added + 2
+
+    // Bump the loader's progress denominator so the bar doesn't
+    // race past 100% just because the original queue only had this
+    // one entry at start() time.
+    _loader.extendTotal(added)
   }
 
   resize(g, w, h) {

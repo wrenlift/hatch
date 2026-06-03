@@ -78,10 +78,34 @@ class JSON {
   /// Aborts the fiber on malformed input, with the byte offset
   /// of the failing token.
   ///
+  /// Internally walks the UTF-8 byte buffer to avoid the per-char
+  /// allocation a String-indexed parser pays — `s[i]` returns a
+  /// fresh 1-char String + `== "{"` allocates the rhs literal +
+  /// `.bytes` allocates a ByteArray; on a 1 MB input the
+  /// accumulated overhead measured at tens of seconds. ByteArray
+  /// indexing returns a Num (no allocation), so comparisons and
+  /// whitespace skipping run at memory speed.
+  ///
+  /// Callers that already hold a `ByteArray` (e.g. straight from
+  /// `FS.readBytes` or `Assets.bytes`) should prefer
+  /// [JSON.parseBytes] — it skips the String→ByteArray copy entirely.
+  ///
   /// @param {String} text
   /// @returns {Object}
   static parse(text) {
-    var p = Parser_.new(text)
+    if (!(text is String)) Fiber.abort("JSON.parse: expected a string")
+    return JSON.parseBytes(ByteArray.fromString(text))
+  }
+
+  /// Parse a JSON document straight from a UTF-8 `ByteArray`. The
+  /// fast path — readers that get bytes from disk or the network
+  /// avoid an intermediate `String` allocation. Otherwise identical
+  /// to [parse]: same Wren-side value tree, same error positions.
+  ///
+  /// @param {ByteArray} bytes
+  /// @returns {Object}
+  static parseBytes(bytes) {
+    var p = Parser_.newBytes_(bytes)
     p.skipWs_
     var value = p.parseValue_
     p.skipWs_
@@ -118,22 +142,41 @@ class JSON {
 
 // --- Parser -----------------------------------------------------------------
 
+// Byte values that drive every comparison in the parser. Inlined
+// at every call site by the JIT; kept as named constants for
+// readability and to avoid magic numbers in the dispatch table.
+//
+//   SPC=32  HT=9   LF=10  CR=13
+//   "=34  \=92   /=47   :=58   ,=44
+//   {=123 }=125  [=91   ]=93
+//   -=45  +=43   .=46   0=48 .. 9=57
+//   a=97  b=98   e=101  f=102  l=108  n=110  r=114  s=115  t=116  u=117
+//   A-F=65..70
+
 class Parser_ {
   construct new(text) {
     if (!(text is String)) Fiber.abort("JSON.parse: expected a string")
-    _s = text
+    _b = ByteArray.fromString(text)
     _i = 0
-    _n = text.count
+    _n = _b.count
+  }
+
+  // Fast-path ctor — caller already has the UTF-8 bytes.
+  construct newBytes_(bytes) {
+    _b = bytes
+    _i = 0
+    _n = bytes.count
   }
 
   offset_ { _i }
   atEnd_  { _i >= _n }
 
-  // Skip spaces / tabs / CR / LF between tokens.
+  // Skip spaces / tabs / CR / LF between tokens. Byte comparisons,
+  // no allocation per char.
   skipWs_ {
     while (_i < _n) {
-      var c = _s[_i]
-      if (c == " " || c == "\t" || c == "\n" || c == "\r") {
+      var c = _b[_i]
+      if (c == 32 || c == 9 || c == 10 || c == 13) {
         _i = _i + 1
       } else {
         break
@@ -144,23 +187,19 @@ class Parser_ {
   parseValue_ {
     skipWs_
     if (atEnd_) Fiber.abort("JSON: unexpected end of input")
-    var c = _s[_i]
-    if (c == "{") return parseObject_
-    if (c == "[") return parseArray_
-    if (c == "\"") return parseString_
-    if (c == "t" || c == "f") return parseBool_
-    if (c == "n") return parseNull_
-    // Numbers start with `-` or a digit.
-    if (c == "-" || isDigit_(c)) return parseNumber_
-    Fiber.abort("JSON: unexpected character %(c) at offset %(_i)")
+    var c = _b[_i]
+    if (c == 123) return parseObject_            // "{"
+    if (c == 91)  return parseArray_             // "["
+    if (c == 34)  return parseString_            // "\""
+    if (c == 116 || c == 102) return parseBool_  // "t" / "f"
+    if (c == 110) return parseNull_              // "n"
+    if (c == 45 || (c >= 48 && c <= 57)) return parseNumber_   // "-" or digit
+    Fiber.abort("JSON: unexpected byte %(c) at offset %(_i)")
   }
 
-  // Wren's String class only defines `==` (no ordering operators),
-  // so character range checks go through the raw byte.
-  isDigit_(c) {
-    var b = c.bytes
-    return b.count == 1 && b[0] >= 48 && b[0] <= 57       // "0".."9"
-  }
+  // Raw-byte digit check. Reads ByteArray directly so no
+  // intermediate one-char String allocation.
+  isDigitByte_(b) { b >= 48 && b <= 57 }
 
   isHex_(c) {
     var b = c.bytes
@@ -176,13 +215,13 @@ class Parser_ {
     _i = _i + 1                              // consume "{"
     var map = {}
     skipWs_
-    if (!atEnd_ && _s[_i] == "}") {
+    if (!atEnd_ && _b[_i] == 125) {          // "}"
       _i = _i + 1
       return map
     }
     while (true) {
       skipWs_
-      if (atEnd_ || _s[_i] != "\"") {
+      if (atEnd_ || _b[_i] != 34) {          // "\""
         Fiber.abort("JSON: expected string key at offset %(_i)")
       }
       // String.intern dedupes N copies of "name" / repeated keys
@@ -190,7 +229,7 @@ class Parser_ {
       // the AOT site where JSON keys repeat heavily per request.
       var key = parseString_.intern
       skipWs_
-      if (atEnd_ || _s[_i] != ":") {
+      if (atEnd_ || _b[_i] != 58) {          // ":"
         Fiber.abort("JSON: expected ':' at offset %(_i)")
       }
       _i = _i + 1                            // consume ":"
@@ -198,12 +237,12 @@ class Parser_ {
       map[key] = value
       skipWs_
       if (atEnd_) Fiber.abort("JSON: unterminated object")
-      var next = _s[_i]
-      if (next == ",") {
+      var next = _b[_i]
+      if (next == 44) {                      // ","
         _i = _i + 1
         continue
       }
-      if (next == "}") {
+      if (next == 125) {                     // "}"
         _i = _i + 1
         return map
       }
@@ -215,7 +254,7 @@ class Parser_ {
     _i = _i + 1                              // consume "["
     var list = []
     skipWs_
-    if (!atEnd_ && _s[_i] == "]") {
+    if (!atEnd_ && _b[_i] == 93) {           // "]"
       _i = _i + 1
       return list
     }
@@ -224,12 +263,12 @@ class Parser_ {
       list.add(value)
       skipWs_
       if (atEnd_) Fiber.abort("JSON: unterminated array")
-      var next = _s[_i]
-      if (next == ",") {
+      var next = _b[_i]
+      if (next == 44) {                      // ","
         _i = _i + 1
         continue
       }
-      if (next == "]") {
+      if (next == 93) {                      // "]"
         _i = _i + 1
         return list
       }
@@ -240,45 +279,70 @@ class Parser_ {
   // Parse a quoted string, resolving \-escapes. JSON mandates "..."
   // quoting; we reject single quotes to keep parse errors strict.
   parseString_ {
-    if (_s[_i] != "\"") Fiber.abort("JSON: expected string at offset %(_i)")
+    if (_b[_i] != 34) Fiber.abort("JSON: expected string at offset %(_i)")
     _i = _i + 1
-    var parts = []
+    // Fast path: no escapes. Scan for the closing quote or the first
+    // backslash; if we hit the quote first, slice the whole span in
+    // one `utf8Slice` FFI call. This is the common case in gltf,
+    // where every value is "Bone_001"-style ASCII with no escapes.
     var start = _i
     while (_i < _n) {
-      var c = _s[_i]
-      if (c == "\"") {
-        if (_i > start) parts.add(_s[start..._i])
+      var c = _b[_i]
+      if (c == 34) {                       // "\""
+        var s = _b.utf8Slice(start, _i - start)
+        _i = _i + 1
+        return s
+      }
+      if (c == 92) break                    // "\\" — drop to slow path
+      _i = _i + 1
+    }
+    if (_i >= _n) Fiber.abort("JSON: unterminated string")
+
+    // Slow path: at least one escape. Accumulate the existing run
+    // first, then process escapes one at a time.
+    var parts = []
+    if (_i > start) parts.add(_b.utf8Slice(start, _i - start))
+    while (_i < _n) {
+      var c = _b[_i]
+      if (c == 34) {                       // "\""
         _i = _i + 1
         return parts.join("")
       }
-      if (c == "\\") {
-        if (_i > start) parts.add(_s[start..._i])
+      if (c == 92) {                       // "\\"
         _i = _i + 1
         if (_i >= _n) Fiber.abort("JSON: unterminated escape")
-        var esc = _s[_i]
-        if (esc == "\"") {
+        var esc = _b[_i]
+        if (esc == 34) {                   // \"
           parts.add("\"")
-        } else if (esc == "\\") {
+        } else if (esc == 92) {            // \\
           parts.add("\\")
-        } else if (esc == "/") {
+        } else if (esc == 47) {            // \/
           parts.add("/")
-        } else if (esc == "n") {
+        } else if (esc == 110) {           // \n
           parts.add("\n")
-        } else if (esc == "t") {
+        } else if (esc == 116) {           // \t
           parts.add("\t")
-        } else if (esc == "r") {
+        } else if (esc == 114) {           // \r
           parts.add("\r")
-        } else if (esc == "b") {
+        } else if (esc == 98) {            // \b
           parts.add("\b")
-        } else if (esc == "f") {
+        } else if (esc == 102) {           // \f
           parts.add("\f")
-        } else if (esc == "u") {
+        } else if (esc == 117) {           // \u
           parts.add(parseUnicodeEscape_)
         } else {
           Fiber.abort("JSON: invalid escape \\%(esc) at offset %(_i)")
         }
         _i = _i + 1
-        start = _i
+        // Run-coalesce: scan unbroken to the next escape or quote
+        // and accumulate that span in one slice.
+        var rstart = _i
+        while (_i < _n) {
+          var d = _b[_i]
+          if (d == 34 || d == 92) break
+          _i = _i + 1
+        }
+        if (_i > rstart) parts.add(_b.utf8Slice(rstart, _i - rstart))
         continue
       }
       _i = _i + 1
@@ -292,17 +356,12 @@ class Parser_ {
   // parse/encode but won't collapse to a single codepoint).
   parseUnicodeEscape_ {
     if (_i + 4 >= _n) Fiber.abort("JSON: truncated \\u escape")
-    var hex = _s[(_i + 1)...(_i + 5)]
-    _i = _i + 4
-    var code = hexToNum_(hex)
-    return codepointToUtf8_(code)
-  }
-
-  hexToNum_(hex) {
-    var total = 0
-    var i = 0
-    while (i < hex.count) {
-      var b = hex[i].bytes[0]
+    // Decode the 4 hex bytes inline. Avoid asking for a Wren String
+    // slice + re-walk; one byte at a time is fewer allocations.
+    var code = 0
+    var j = 1
+    while (j <= 4) {
+      var b = _b[_i + j]
       var d
       if (b >= 48 && b <= 57) {            // 0-9
         d = b - 48
@@ -311,58 +370,62 @@ class Parser_ {
       } else if (b >= 65 && b <= 70) {     // A-F
         d = b - 55
       } else {
-        Fiber.abort("JSON: bad hex digit %(hex[i])")
+        Fiber.abort("JSON: bad hex digit at offset %(_i + j)")
       }
-      total = total * 16 + d
-      i = i + 1
+      code = code * 16 + d
+      j = j + 1
     }
-    return total
-  }
-
-  codepointToUtf8_(cp) {
-    if (cp < 0x80) {
-      return String.fromCodePoint(cp)
-    }
-    // Fall back to the core helper for the full BMP (up to 0xFFFF);
-    // Wren handles multi-byte encoding internally.
-    return String.fromCodePoint(cp)
+    _i = _i + 4
+    return String.fromCodePoint(code)
   }
 
   parseNumber_ {
     var start = _i
-    if (_s[_i] == "-") _i = _i + 1
-    while (_i < _n && isDigit_(_s[_i])) _i = _i + 1
-    if (_i < _n && _s[_i] == ".") {
+    if (_b[_i] == 45) _i = _i + 1               // "-"
+    while (_i < _n && isDigitByte_(_b[_i])) _i = _i + 1
+    if (_i < _n && _b[_i] == 46) {              // "."
       _i = _i + 1
-      while (_i < _n && isDigit_(_s[_i])) _i = _i + 1
+      while (_i < _n && isDigitByte_(_b[_i])) _i = _i + 1
     }
-    if (_i < _n && (_s[_i] == "e" || _s[_i] == "E")) {
+    if (_i < _n && (_b[_i] == 101 || _b[_i] == 69)) {   // "e" / "E"
       _i = _i + 1
-      if (_i < _n && (_s[_i] == "+" || _s[_i] == "-")) _i = _i + 1
-      while (_i < _n && isDigit_(_s[_i])) _i = _i + 1
+      if (_i < _n && (_b[_i] == 43 || _b[_i] == 45)) _i = _i + 1  // "+" / "-"
+      while (_i < _n && isDigitByte_(_b[_i])) _i = _i + 1
     }
-    var slice = _s[start..._i]
+    var slice = _b.utf8Slice(start, _i - start)
     var n = Num.fromString(slice)
     if (n == null) Fiber.abort("JSON: invalid number %(slice)")
     return n
   }
 
   parseBool_ {
-    if (matches_("true")) return true
-    if (matches_("false")) return false
+    // "true"  → t r u e   bytes 116, 114, 117, 101
+    if (_i + 4 <= _n &&
+        _b[_i] == 116 && _b[_i + 1] == 114 &&
+        _b[_i + 2] == 117 && _b[_i + 3] == 101) {
+      _i = _i + 4
+      return true
+    }
+    // "false" → f a l s e   bytes 102, 97, 108, 115, 101
+    if (_i + 5 <= _n &&
+        _b[_i] == 102 && _b[_i + 1] == 97  &&
+        _b[_i + 2] == 108 && _b[_i + 3] == 115 &&
+        _b[_i + 4] == 101) {
+      _i = _i + 5
+      return false
+    }
     Fiber.abort("JSON: invalid literal at offset %(_i)")
   }
 
   parseNull_ {
-    if (matches_("null")) return null
+    // "null" → n u l l   bytes 110, 117, 108, 108
+    if (_i + 4 <= _n &&
+        _b[_i] == 110 && _b[_i + 1] == 117 &&
+        _b[_i + 2] == 108 && _b[_i + 3] == 108) {
+      _i = _i + 4
+      return null
+    }
     Fiber.abort("JSON: invalid literal at offset %(_i)")
-  }
-
-  matches_(keyword) {
-    if (_i + keyword.count > _n) return false
-    if (_s[_i..._i + keyword.count] != keyword) return false
-    _i = _i + keyword.count
-    return true
   }
 }
 

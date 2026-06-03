@@ -126,6 +126,19 @@ class AssetLoader {
   /// @returns {Num}
   decodeBatchCap { _decodeBatchCap }
 
+  /// Bump the progress denominator by `n`. Use when a queue entry
+  /// dynamically appends more entries (e.g. an "open file" entry
+  /// that, once it knows how many sub-assets are inside, queues
+  /// one per sub-asset). Without this, the denominator captured
+  /// at `start()` would stay smaller than the real work-to-do and
+  /// the progress bar would race past 100% before the new entries
+  /// finished.
+  /// @param {Num} n. Number of additional entries that were just queued.
+  extendTotal(n) {
+    if (!(n is Num) || n < 0) Fiber.abort("AssetLoader.extendTotal: n must be a non-negative Num.")
+    _originalTotal = _originalTotal + n.floor
+  }
+
   /// @param {Num} n. Bounded to `[1, 4096]`.
   decodeBatchCap=(n) {
     if (!(n is Num) || n < 1) Fiber.abort("AssetLoader.decodeBatchCap: must be a positive Num.")
@@ -351,14 +364,18 @@ class AssetLoader {
         var qe = _queue[qi]
         if (qe["kind"] == "decode" && !qe["started"]) {
           qe["started"] = true
-          var bfib = Fiber.new(qe["begin"])
-          var h = bfib.try()
-          if (bfib.error != null) {
-            qe["handle"] = null
-            qe["beginError"] = bfib.error
-          } else {
-            qe["handle"] = h
-          }
+          // Direct .call(), NOT Fiber.new(fn).try(): the latter
+          // leaks the stale slot contents on a clean return instead
+          // of the closure's actual return value, so `qe["handle"]`
+          // would be null and every decode entry would silently fall
+          // through the "no source" branch — workers spawn, nothing
+          // ever drains, and `Image.inflightDecodes` stays at the
+          // full image count for the rest of the load. A begin
+          // closure that aborts is a catastrophic asset error
+          // (corrupt PNG bytes path, etc.) — let it propagate; the
+          // poll loop's downstream `isFailed` already covers the
+          // worker-side decode failure case.
+          qe["handle"] = qe["begin"].call()
           kicked = kicked + 1
         }
         qi = qi + 1
