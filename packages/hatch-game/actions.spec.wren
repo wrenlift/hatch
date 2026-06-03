@@ -97,6 +97,38 @@ Test.describe("Actions.define + polled queries") {
     Actions.update_(input)
     Expect.that(Actions.value("aim_right")).toBe(0)
   }
+
+  Test.it("gamepad full-axis binding returns the raw axisMap value") {
+    Actions.reset()
+    Actions.define("aim_x", ["GamepadAxisLX"])
+    var input = MockInput.new()
+    Actions.update_(input, { "GamepadAxisLX": 0.4 })
+    Expect.that(Actions.value("aim_x")).toBe(0.4)
+    Actions.update_(input, { "GamepadAxisLX": -0.6 })
+    Expect.that(Actions.value("aim_x")).toBe(-0.6)
+  }
+
+  Test.it("gamepad half-axis '+' returns only positive half rectified to 0..1") {
+    Actions.reset()
+    Actions.define("forward", ["GamepadAxisLY+"])
+    var input = MockInput.new()
+    // Negative half: no contribution.
+    Actions.update_(input, { "GamepadAxisLY": -0.7 })
+    Expect.that(Actions.value("forward")).toBe(0)
+    // Positive half: passes through.
+    Actions.update_(input, { "GamepadAxisLY": 0.6 })
+    Expect.that(Actions.value("forward")).toBe(0.6)
+  }
+
+  Test.it("gamepad half-axis '-' returns only negative half rectified to 0..1") {
+    Actions.reset()
+    Actions.define("back", ["GamepadAxisLY-"])
+    var input = MockInput.new()
+    Actions.update_(input, { "GamepadAxisLY": 0.8 })
+    Expect.that(Actions.value("back")).toBe(0)
+    Actions.update_(input, { "GamepadAxisLY": -0.5 })
+    Expect.that(Actions.value("back")).toBe(0.5)
+  }
 }
 
 Test.describe("Actions rebinding") {

@@ -125,9 +125,11 @@ class Action_ {
   }
 
   // Resolve one binding code to a value in -1..1. Buttons map to
-  // 0 or 1 (held), positive axes to 0..1, negative axes to -1..0.
-  // Unsupported codes (today: gamepad anything) return 0 so the
-  // API surface accepts them without throwing.
+  // 0 or 1 (held), full axes to -1..1. Half-axis bindings carry a
+  // trailing `+` or `-` (e.g. `"GamepadAxisLY+"`) and return only
+  // the matching half rectified to 0..1 — useful when you want
+  // forward / backward / left / right as four separate actions
+  // each contributing positive values.
   bindingValue_(code, input, axisMap) {
     if (code is String) {
       if (code.startsWith("Mouse")) {
@@ -135,8 +137,23 @@ class Action_ {
         return b != null && input.mouseDown(b) ? 1 : 0
       }
       if (code.startsWith("Gamepad")) {
-        if (axisMap != null && axisMap.containsKey(code)) return axisMap[code]
-        return 0
+        if (axisMap == null) return 0
+        // Strip +/- suffix for the axisMap lookup, then rectify.
+        var base = code
+        var sign = 0
+        var last = code[-1]
+        if (last == "+") {
+          base = code[0...code.count - 1]
+          sign = 1
+        } else if (last == "-") {
+          base = code[0...code.count - 1]
+          sign = -1
+        }
+        if (!axisMap.containsKey(base)) return 0
+        var v = axisMap[base]
+        if (sign == 0) return v
+        if (sign > 0) return v > 0 ? v : 0
+        return v < 0 ? -v : 0
       }
       return input.isDown(code) ? 1 : 0
     }
