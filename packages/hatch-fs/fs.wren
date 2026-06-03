@@ -7,8 +7,8 @@
 // Fs.writeText(path, contents)
 // Fs.readLines(path)                 // List<String>
 // Fs.writeLines(path, list)
-// Fs.readBytes(path)                 // List<Num>, 0..255
-// Fs.writeBytes(path, bytes)
+// Fs.readBytes(path)                 // ByteArray (u8)
+// Fs.writeBytes(path, bytes)         // accepts List<Num> or ByteArray
 //
 // Fs.exists(path) / Fs.isFile(path) / Fs.isDir(path)
 // Fs.size(path)                      // byte count

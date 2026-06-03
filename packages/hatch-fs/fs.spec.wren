@@ -78,7 +78,9 @@ Test.describe("bytes") {
     var p = scratch_ + "/b.bin"
     var bytes = [0, 1, 255, 128, 64, 42]
     Fs.writeBytes(p, bytes)
-    Expect.that(Fs.readBytes(p)).toEqual(bytes)
+    // readBytes returns a ByteArray (native u8 storage); compare
+    // via toList for list-equality.
+    Expect.that(Fs.readBytes(p).toList).toEqual(bytes)
   }
   Test.it("non-integer byte aborts") {
     reset.call()
