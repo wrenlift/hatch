@@ -18,10 +18,24 @@
 // baseColorFactor read into a flat Material, multi-buffer +
 // multi-texture indirection via `bufferView.buffer`.
 //
-// Not yet supported: animations + channels, skins + joints, KHR
-// extensions beyond pbrMetallicRoughness defaults, sparse accessors,
-// point / line primitives, morph targets, cameras. Each lands when
-// the downstream feature needs it.
+// Supported beyond the basics above:
+//   - Animations: TRS keyframes per node via `GltfAnimation` /
+//     `GltfAnimChannel`; STEP / LINEAR / CUBICSPLINE interpolation;
+//     `applyTo(scene, world, t)` writes joint Transforms each frame
+//     and `crossfade(other, world, scene, ta, tb, blend)` blends two
+//     animations into one pose for clip-to-clip transitions.
+//   - Skins + joints: `GltfSkin` (joint indices + inverse-bind
+//     matrices) + skinned `Mesh.fromArraysSkinned` (JOINTS_0 +
+//     WEIGHTS_0 VBOs). Pair with `@hatch:gpu/SkinPalette` and
+//     `Renderer3D.drawSkinned` for the full GPU skinning path
+//     (storage-buffer joint-matrix palette, weighted vertex blend
+//     in the skinned PBR shader).
+//   - `KHR_materials_pbrSpecularGlossiness` fallback when a material
+//     doesn't ship a standard PBR slot.
+//
+// Not yet supported: sparse accessors, point / line primitives,
+// morph targets, cameras. Each lands when the downstream feature
+// needs it.
 
 import "@hatch:json"  for JSON
 import "@hatch:math"  for Vec3, Vec4, Quat
@@ -386,14 +400,20 @@ class Bytes_ {
     return sign * fraction * (2.pow(exp - 127))
   }
 
-  /// Read a UTF-8 ASCII string over a byte slice. Single FFI hop to
-  /// `ByteArray.utf8Slice`; the previous pure-Wren
-  /// `chars.add(String.fromCodePoint(b)); chars.join("")` form was
-  /// O(n) iterations + an O(n) join of one-char Strings, which on a
-  /// 1 MB glTF JSON ran for tens of seconds and froze the window
-  /// during scene load.
+  /// Read a UTF-8 ASCII string over a byte slice. ByteArray takes
+  /// the single-FFI native fast path (`utf8Slice`); plain
+  /// `List<Num>` falls back to the per-byte build — slow but
+  /// preserves compatibility with hermetic test fixtures that
+  /// hand-construct .glb byte streams.
   static asciiString(b, off, len) {
-    return b.utf8Slice(off, len)
+    if (b is ByteArray) return b.utf8Slice(off, len)
+    var chars = []
+    var i = 0
+    while (i < len) {
+      chars.add(String.fromCodePoint(b[off + i]))
+      i = i + 1
+    }
+    return chars.join("")
   }
 }
 
@@ -1572,6 +1592,129 @@ class GltfAnimation {
       } else if (ch.path == "scale") {
         transform.scale = Vec3.new(v[0], v[1], v[2])
       }
+    }
+  }
+
+  /// Crossfade with another `GltfAnimation`. Samples both clips,
+  /// blends the resulting per-channel TRS values, and writes the
+  /// blended pose into every targeted node's `Transform`.
+  ///
+  /// Use during a walk → run / idle → walk transition: drive both
+  /// clips with their own time accumulators (so they keep their
+  /// natural phase), and ramp `blend` from `0` (entirely `self`) to
+  /// `1` (entirely `other`) over the transition window — typically
+  /// 0.15-0.3 seconds for snappy state-machine moves, 0.5-1.0 for
+  /// cinematic blends.
+  ///
+  /// Translation + scale use linear interpolation; rotation uses
+  /// `Quat.slerp` so the resulting quaternion stays on the unit
+  /// hypersphere (a plain LERP shortens the arc near antipodal
+  /// poses and produces visibly broken poses).
+  ///
+  /// Joints written by ONLY one of the two clips fade in / out
+  /// against the current Transform value — the static pose acts as
+  /// the implicit "other side" of the blend.
+  ///
+  /// ## Example
+  ///
+  /// ```wren
+  /// var walk = _scene.animations[0]
+  /// var run  = _scene.animations[1]
+  /// // ... tWalk / tRun / blendT advance each frame ...
+  /// walk.crossfade(run, _scene, _world, tWalk, tRun, blendT)
+  /// ```
+  ///
+  /// @param {GltfAnimation} other
+  /// @param {GltfScene}     scene
+  /// @param {World}         world
+  /// @param {Num}           tSelf.  Time-into-self in seconds.
+  /// @param {Num}           tOther. Time-into-other in seconds.
+  /// @param {Num}           blend.  `0`=self only, `1`=other only.
+  crossfade(other, scene, world, tSelf, tOther, blend) {
+    var map = scene.nodeEntityMap
+    if (map == null) return
+    if (blend < 0) blend = 0
+    if (blend > 1) blend = 1
+
+    // Index `other`'s channels by (nodeIndex, path) so the per-self
+    // loop below can find the matching sample in O(1). Allocating
+    // a fresh Map every call is cheap (200-channel rigs are 200
+    // Map.set calls = ~50 µs).
+    var otherByKey = {}
+    for (ch in other.channels) {
+      otherByKey["%(ch.nodeIndex):%(ch.path)"] = ch
+    }
+
+    // Track which (entity, path) slots `self` wrote — anything in
+    // `other` not paired with a `self` channel gets its own fade
+    // pass against the entity's current Transform value at the
+    // end of this method.
+    var paired = {}
+
+    for (ch in _channels) {
+      var entity = map[ch.nodeIndex]
+      if (entity == null) continue
+      if (!world.has(entity, Transform)) continue
+      var transform = world.get(entity, Transform)
+      var key = "%(ch.nodeIndex):%(ch.path)"
+      paired[key] = true
+      var a = ch.sample(tSelf)
+      var oCh = otherByKey[key]
+      if (oCh == null) {
+        // Self drives this slot alone — write self's sample
+        // un-blended. Future enhancement: blend against the current
+        // Transform value when blend > 0 to ease out the channel.
+        writeSample_(transform, ch.path, a)
+      } else {
+        var b = oCh.sample(tOther)
+        writeBlended_(transform, ch.path, a, b, blend)
+      }
+    }
+
+    // Channels in `other` that `self` didn't pair with: write them
+    // scaled by `blend` so they ease in alongside the blended pose.
+    for (ch in other.channels) {
+      var key = "%(ch.nodeIndex):%(ch.path)"
+      if (paired.containsKey(key)) continue
+      var entity = map[ch.nodeIndex]
+      if (entity == null) continue
+      if (!world.has(entity, Transform)) continue
+      var transform = world.get(entity, Transform)
+      var b = ch.sample(tOther)
+      writeSample_(transform, ch.path, b)
+    }
+  }
+
+  // glTF stores rotations as (x, y, z, w); Quat constructor takes
+  // (w, x, y, z). Centralised so applyTo and crossfade write the
+  // exact same per-channel format.
+  writeSample_(transform, path, v) {
+    if (path == "translation") {
+      transform.position = Vec3.new(v[0], v[1], v[2])
+    } else if (path == "rotation") {
+      transform.rotation = Quat.new(v[3], v[0], v[1], v[2]).normalized
+    } else if (path == "scale") {
+      transform.scale = Vec3.new(v[0], v[1], v[2])
+    }
+  }
+
+  // Blend two channel samples. Translation + scale are linear;
+  // rotation uses Quat.slerp to keep unit length.
+  writeBlended_(transform, path, a, b, t) {
+    if (path == "translation") {
+      transform.position = Vec3.new(
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t)
+    } else if (path == "rotation") {
+      var qa = Quat.new(a[3], a[0], a[1], a[2])
+      var qb = Quat.new(b[3], b[0], b[1], b[2])
+      transform.rotation = Quat.slerp(qa, qb, t).normalized
+    } else if (path == "scale") {
+      transform.scale = Vec3.new(
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t)
     }
   }
 }

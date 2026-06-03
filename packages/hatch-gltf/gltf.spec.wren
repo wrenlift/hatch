@@ -374,6 +374,88 @@ Test.describe("GltfAnimation.applyTo") {
   }
 }
 
+// Stub scene + world for the crossfade tests. Single node, single
+// entity, a Transform component held by reference so the spec can
+// inspect the written T/R/S after each crossfade call.
+class StubScene_ {
+  construct new() {
+    _map = { 0: 99 }    // gltf node 0 → ecs entity 99
+  }
+  nodeEntityMap { _map }
+}
+
+class StubWorld_ {
+  construct new() {
+    _transform = Transform.new(null, null, null)
+  }
+  has(e, k) { e == 99 && k == Transform }
+  get(e, k) { e == 99 ? _transform : null }
+  transform { _transform }
+}
+
+Test.describe("GltfAnimation.crossfade") {
+  Test.it("blend=0 yields self's pose verbatim") {
+    var chA = GltfAnimChannel.new_(0, "translation",
+        [0, 1], [1, 2, 3, 4, 5, 6], 3, "LINEAR")
+    var chB = GltfAnimChannel.new_(0, "translation",
+        [0, 1], [10, 20, 30, 40, 50, 60], 3, "LINEAR")
+    var animA = GltfAnimation.new_("a", 1, [chA])
+    var animB = GltfAnimation.new_("b", 1, [chB])
+    var w = StubWorld_.new()
+    animA.crossfade(animB, StubScene_.new(), w, 0, 0, 0)
+    Expect.that(w.transform.position.x).toBe(1)
+    Expect.that(w.transform.position.y).toBe(2)
+    Expect.that(w.transform.position.z).toBe(3)
+  }
+
+  Test.it("blend=1 yields other's pose verbatim") {
+    var chA = GltfAnimChannel.new_(0, "translation",
+        [0, 1], [1, 2, 3, 4, 5, 6], 3, "LINEAR")
+    var chB = GltfAnimChannel.new_(0, "translation",
+        [0, 1], [10, 20, 30, 40, 50, 60], 3, "LINEAR")
+    var animA = GltfAnimation.new_("a", 1, [chA])
+    var animB = GltfAnimation.new_("b", 1, [chB])
+    var w = StubWorld_.new()
+    animA.crossfade(animB, StubScene_.new(), w, 0, 0, 1)
+    Expect.that(w.transform.position.x).toBe(10)
+    Expect.that(w.transform.position.y).toBe(20)
+    Expect.that(w.transform.position.z).toBe(30)
+  }
+
+  Test.it("blend=0.5 lerps translation halfway") {
+    var chA = GltfAnimChannel.new_(0, "translation",
+        [0, 1], [0, 0, 0, 0, 0, 0], 3, "LINEAR")
+    var chB = GltfAnimChannel.new_(0, "translation",
+        [0, 1], [10, 10, 10, 10, 10, 10], 3, "LINEAR")
+    var animA = GltfAnimation.new_("a", 1, [chA])
+    var animB = GltfAnimation.new_("b", 1, [chB])
+    var w = StubWorld_.new()
+    animA.crossfade(animB, StubScene_.new(), w, 0, 0, 0.5)
+    Expect.that(w.transform.position.x).toBe(5)
+    Expect.that(w.transform.position.y).toBe(5)
+    Expect.that(w.transform.position.z).toBe(5)
+  }
+
+  Test.it("rotation blend uses slerp (unit length preserved)") {
+    // identity quaternion → 90° rotation about Y; halfway through
+    // slerp should produce 45° about Y, still unit length.
+    // glTF stores (x, y, z, w) per keyframe.
+    var idQuat   = [0, 0, 0, 1]
+    var ninetyY  = [0, 0.7071067811865476, 0, 0.7071067811865476]
+    var chA = GltfAnimChannel.new_(0, "rotation",
+        [0, 1], idQuat + idQuat, 4, "LINEAR")
+    var chB = GltfAnimChannel.new_(0, "rotation",
+        [0, 1], ninetyY + ninetyY, 4, "LINEAR")
+    var animA = GltfAnimation.new_("a", 1, [chA])
+    var animB = GltfAnimation.new_("b", 1, [chB])
+    var w = StubWorld_.new()
+    animA.crossfade(animB, StubScene_.new(), w, 0, 0, 0.5)
+    var r = w.transform.rotation
+    var len = (r.w * r.w + r.x * r.x + r.y * r.y + r.z * r.z).sqrt
+    Expect.that((len - 1).abs < 0.0001).toBe(true)
+  }
+}
+
 Test.describe("GltfPrimitive joints / weights") {
   Test.it("default to null on a static primitive") {
     var p = GltfPrimitive.new_(Float32Array.new(3), null, null, null, null, null)
