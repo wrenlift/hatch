@@ -1,4 +1,4 @@
-import "./math"       for Vec2, Vec3, Vec4, Vec4Batch, Mat4, Quat, Math, Ease
+import "./math"       for Vec2, Vec3, Vec4, Vec4Batch, Mat4, Quat, Math, Ease, NumRange
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -433,6 +433,58 @@ Test.describe("Quat") {
     var viaMat = m.transformPoint(Vec3.unitX)
     var viaQuat = q.rotateVec3(Vec3.unitX)
     Expect.that(viaMat.approxEq(viaQuat)).toBe(true)
+  }
+}
+
+Test.describe("NumRange") {
+  Test.it("new / of / point / unit") {
+    var r = NumRange.new(2, 5)
+    Expect.that(r.lo).toBe(2)
+    Expect.that(r.hi).toBe(5)
+    Expect.that(NumRange.of(2, 5) == r).toBe(true)
+    Expect.that(NumRange.point(3).span).toBe(0)
+    Expect.that(NumRange.unit.lo).toBe(0)
+    Expect.that(NumRange.unit.hi).toBe(1)
+  }
+  Test.it("span / mid") {
+    Expect.that(NumRange.new(1, 5).span).toBe(4)
+    Expect.that(NumRange.new(1, 5).mid).toBe(3)
+    Expect.that(NumRange.new(5, 1).span).toBe(-4)
+  }
+  Test.it("sample") {
+    var r = NumRange.new(10, 20)
+    Expect.that(r.sample(0)).toBe(10)
+    Expect.that(r.sample(1)).toBe(20)
+    Expect.that(r.sample(0.5)).toBe(15)
+    Expect.that(r.sample(2)).toBe(30)  // extrapolation
+  }
+  Test.it("contains uses spanning interval") {
+    var r = NumRange.new(1, 5)
+    Expect.that(r.contains(0)).toBe(false)
+    Expect.that(r.contains(1)).toBe(true)
+    Expect.that(r.contains(3)).toBe(true)
+    Expect.that(r.contains(5)).toBe(true)
+    Expect.that(r.contains(6)).toBe(false)
+    var inv = NumRange.new(5, 1)
+    Expect.that(inv.contains(3)).toBe(true)
+  }
+  Test.it("clamp") {
+    var r = NumRange.new(1, 5)
+    Expect.that(r.clamp(0)).toBe(1)
+    Expect.that(r.clamp(3)).toBe(3)
+    Expect.that(r.clamp(7)).toBe(5)
+  }
+  Test.it("remap") {
+    var src = NumRange.new(0, 10)
+    var dst = NumRange.new(100, 200)
+    Expect.that(src.remap(0,  dst)).toBe(100)
+    Expect.that(src.remap(5,  dst)).toBe(150)
+    Expect.that(src.remap(10, dst)).toBe(200)
+  }
+  Test.it("equality and approxEq") {
+    Expect.that(NumRange.new(1, 2) == NumRange.new(1, 2)).toBe(true)
+    Expect.that(NumRange.new(1, 2) != NumRange.new(1, 3)).toBe(true)
+    Expect.that(NumRange.new(1, 2).approxEq(NumRange.new(1.0000001, 2.0000001))).toBe(true)
   }
 }
 
