@@ -166,12 +166,20 @@ class Gltf {
         if (im is Map && im["uri"] is String && !im["uri"].startsWith("data:")) {
           var imgPath = GltfScene.joinPath_(dir, im["uri"])
           externalImageBytes.add(db.bytes(imgPath))
+          // Yield after every external image read — for character
+          // assets with 20+ textures the cumulative file-read cost
+          // is noticeable. Caller running from a fiber gets a
+          // window paint per file; bare callers no-op.
+          Fiber.yield()
         } else {
           externalImageBytes.add(null)
         }
       }
     }
 
+    // Yield once between the file-IO phase and the
+    // parse-and-upload phase.
+    Fiber.yield()
     var scene = GltfScene.fromJson_(json, buffers, externalImageBytes)
     scene.upload(device)
     return scene
@@ -1044,7 +1052,15 @@ class GltfScene {
   /// tolerate the defaults.
   upload(device) {
     uploadImages_(device)
-    for (m in _meshes) m.upload_(device, _materials, _imageTextures)
+    // Yield once between the image-decode phase and the mesh
+    // upload phase. Callers running this from a Fiber (Game.run's
+    // setup pump) get a window paint + event drain here. Bare
+    // calls (no fiber above) treat yield as a no-op.
+    Fiber.yield()
+    for (m in _meshes) {
+      m.upload_(device, _materials, _imageTextures)
+      Fiber.yield()
+    }
     // Drop the parsed image bytes and .bin buffers now that
     // everything we need is on the GPU. For Quaternius-scale assets
     // these can total 30+ MB in raw PNG bytes alone — kept around
@@ -1091,6 +1107,12 @@ class GltfScene {
         var tex = device.uploadImage(img, { "format": fmt })
         _imageTextures.add(tex)
       }
+      // Yield after every image — PNG decode + GPU upload is the
+      // single most expensive step in a typical asset load (often
+      // 80%+ of wall-clock for character + texture-heavy scenes).
+      // Game.run's setup pump pumps OS events here, so the window
+      // stays responsive during multi-second decode runs.
+      Fiber.yield()
       i = i + 1
     }
   }
