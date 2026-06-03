@@ -8,6 +8,8 @@ description = "Load the_strangler glTF, play its embedded skeletal animation: 10
 "@hatch:gltf"   = { path = "../../../packages/hatch-gltf" }
 "@hatch:gpu"    = { path = "../../../packages/hatch-gpu" }
 "@hatch:assets" = { path = "../../../packages/hatch-assets" }
+"@hatch:fsm"    = { path = "../../../packages/hatch-fsm" }
+"@hatch:hud"    = { path = "../../../packages/hatch-hud" }
 
 [spec-dependencies]
 "@hatch:test"   = "0.2.1"
