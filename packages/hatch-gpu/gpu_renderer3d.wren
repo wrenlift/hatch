@@ -537,7 +537,131 @@ class Renderer3D {
   // `@builtin(instance_index)` instead of the per-draw uniform.
   // One drawIndexed call covers an arbitrary number of instances,
   // and the storage buffer can be the direct output of a compute
-  // pass (transform writers, culling, LOD selection).
+  // Minimal skinned PBR shader. v1 — diffuse + one directional
+  // light + ambient. Reads vertex skinning attributes JOINTS_0
+  // (vec4<u32>) and WEIGHTS_0 (vec4<f32>) from VBO slots 1 + 2,
+  // samples joint_matrices from a storage buffer at @group(3)
+  // @binding(0), and folds the weighted joint transforms into
+  // pos / normal before the standard model matrix applies.
+  // Feature parity with the full PBR_WGSL_ (IBL, shadows, alpha
+  // modes, anti-whitebleed) lands in a follow-up.
+  static SKINNED_PBR_WGSL_ {
+    return "
+      struct DirLight {
+        dir_intensity: vec4<f32>,
+        color:         vec4<f32>,
+      };
+      struct PointLight {
+        pos_range:       vec4<f32>,
+        color_intensity: vec4<f32>,
+      };
+      struct SpotLight {
+        pos_range:       vec4<f32>,
+        color_intensity: vec4<f32>,
+        dir_inner:       vec4<f32>,
+        outer_cos:       vec4<f32>,
+      };
+      // Layout-compatible with PBR_WGSL_'s SceneUniforms — the
+      // skinned vertex stage only reads vp + ambient, but binding
+      // the same `_sceneBindGroup` requires identical struct shape.
+      struct SceneUniforms {
+        vp:            mat4x4<f32>,
+        camera_pos:    vec4<f32>,
+        ambient:       vec4<f32>,
+        counts:        vec4<f32>,
+        light_vp:      mat4x4<f32>,
+        shadow_params: vec4<f32>,
+        wind:          vec4<f32>,
+        env_top:       vec4<f32>,
+        env_horizon:   vec4<f32>,
+        env_bottom:    vec4<f32>,
+        dir_lights:    array<DirLight,   4>,
+        point_lights:  array<PointLight, 8>,
+        spot_lights:   array<SpotLight,  4>,
+      };
+      struct DrawUniforms {
+        model:      mat4x4<f32>,
+        normal_mat: mat4x4<f32>,
+      };
+      struct MaterialUniforms {
+        albedo_color:   vec4<f32>,
+        emissive_color: vec4<f32>,
+        factors:        vec4<f32>,
+        alpha:          vec4<f32>,
+      };
+
+      @group(0) @binding(0) var<uniform>            scene: SceneUniforms;
+      // Scene BGL also exposes shadow_tex + shadow_samp at
+      // bindings 1 + 2 (see PBR_WGSL_); the skinned v1 doesn't
+      // sample them but the BGL still requires shader declarations.
+      @group(0) @binding(1) var                     shadow_tex:  texture_depth_2d;
+      @group(0) @binding(2) var                     shadow_samp: sampler_comparison;
+      @group(1) @binding(0) var<uniform>            draw_u: DrawUniforms;
+      // Material layout matches `_materialBgl`: UBO at 0, five
+      // textures at 1..5 (albedo, MR, normal, occlusion, emissive),
+      // shared sampler at 6. v1 reads only albedo + sampler.
+      @group(2) @binding(0) var<uniform>            mat:        MaterialUniforms;
+      @group(2) @binding(1) var                     albedo_tex: texture_2d<f32>;
+      @group(2) @binding(2) var                     mr_tex:     texture_2d<f32>;
+      @group(2) @binding(3) var                     normal_tex: texture_2d<f32>;
+      @group(2) @binding(4) var                     occlusion_tex: texture_2d<f32>;
+      @group(2) @binding(5) var                     emissive_tex:  texture_2d<f32>;
+      @group(2) @binding(6) var                     samp:       sampler;
+      @group(3) @binding(0) var<storage, read>      joint_matrices: array<mat4x4<f32>>;
+
+      struct VsIn {
+        @location(0) pos:     vec3<f32>,
+        @location(1) normal:  vec3<f32>,
+        @location(2) uv:      vec2<f32>,
+        @location(3) tangent: vec4<f32>,
+        @location(4) joints:  vec4<u32>,
+        @location(5) weights: vec4<f32>,
+      };
+      struct VsOut {
+        @builtin(position) clip:  vec4<f32>,
+        @location(0)       world: vec3<f32>,
+        @location(1)       normal:vec3<f32>,
+        @location(2)       uv:    vec2<f32>,
+      };
+
+      @vertex
+      fn vs_main(in: VsIn) -> VsOut {
+        var o: VsOut;
+        // Weighted blend of the 4 joint matrices. glTF guarantees
+        // joints.* < jointCount and the four weights sum to ~1.
+        let M_skin = in.weights.x * joint_matrices[in.joints.x]
+                   + in.weights.y * joint_matrices[in.joints.y]
+                   + in.weights.z * joint_matrices[in.joints.z]
+                   + in.weights.w * joint_matrices[in.joints.w];
+        // Skin first, then apply the mesh's root model matrix.
+        let skinned_pos    = (M_skin * vec4<f32>(in.pos, 1.0)).xyz;
+        let skinned_normal = normalize((M_skin * vec4<f32>(in.normal, 0.0)).xyz);
+        let world_pos      = draw_u.model * vec4<f32>(skinned_pos, 1.0);
+        let world_norm     = (draw_u.normal_mat * vec4<f32>(skinned_normal, 0.0)).xyz;
+        o.clip   = scene.vp * world_pos;
+        o.world  = world_pos.xyz;
+        o.normal = world_norm;
+        o.uv     = in.uv;
+        return o;
+      }
+
+      @fragment
+      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+        let base_color    = mat.albedo_color * albedo_sample;
+        let N = normalize(in.normal);
+        // Simple Lambert + ambient. v1 omits multi-light /
+        // shadow / IBL paths — see PBR_WGSL_ for the full surface.
+        let L = normalize(vec3<f32>(0.4, 1.0, 0.3));   // placeholder sun
+        let NoL = max(dot(N, L), 0.0);
+        let diffuse = base_color.rgb * NoL;
+        let ambient = scene.ambient.rgb * base_color.rgb;
+        let emissive = mat.emissive_color.rgb;
+        return vec4<f32>(diffuse + ambient + emissive, base_color.a);
+      }
+    "
+  }
+
   static INSTANCED_PBR_WGSL_ {
     return "
       struct SceneUniforms {
@@ -1059,6 +1183,71 @@ class Renderer3D {
     // Bind-group cache keyed by instance-storage-buffer id. Avoids
     // re-binding on hot redraws of the same instance set.
     _instanceBgCache = {}
+
+    // ---- Skinned pipeline. Same scene + draw + material binding
+    // shape as the static PBR pipeline, plus a fourth bind group
+    // at @group(3) carrying the per-skin joint-matrix palette
+    // SSBO. Two extra vertex buffer slots (joints u32x4 + weights
+    // f32x4) feed the vertex shader's M_skin fold.
+    _skinBgl = device.createBindGroupLayout({
+      "entries": [
+        { "binding": 0, "visibility": ["vertex"], "kind": "read-only-storage" }
+      ],
+      "label": "renderer3d-skin-bgl"
+    })
+    _skinnedPipelineLayout = device.createPipelineLayout({
+      "bindGroupLayouts": [_sceneBgl, _drawBgl, _materialBgl, _skinBgl]
+    })
+    var skinnedShader = device.createShaderModule({
+      "code":  Renderer3D.SKINNED_PBR_WGSL_,
+      "label": "renderer3d-skinned-shader"
+    })
+    _skinnedPipeline = device.createRenderPipeline({
+      "layout": _skinnedPipelineLayout,
+      "vertex": {
+        "module": skinnedShader, "entryPoint": "vs_main",
+        "buffers": [
+          {
+            "arrayStride": Renderer3D.FLOATS_PER_VERTEX_ * 4,
+            "stepMode": "vertex",
+            "attributes": [
+              { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
+              { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
+              { "shaderLocation": 2, "offset": 24, "format": "float32x2" },
+              { "shaderLocation": 3, "offset": 32, "format": "float32x4" }
+            ]
+          },
+          {
+            // Joints VBO — one vec4<u32> per vertex, 16 B stride.
+            "arrayStride": 16,
+            "stepMode": "vertex",
+            "attributes": [
+              { "shaderLocation": 4, "offset": 0, "format": "uint32x4" }
+            ]
+          },
+          {
+            // Weights VBO — one vec4<f32> per vertex, 16 B stride.
+            "arrayStride": 16,
+            "stepMode": "vertex",
+            "attributes": [
+              { "shaderLocation": 5, "offset": 0, "format": "float32x4" }
+            ]
+          }
+        ]
+      },
+      "fragment": {
+        "module": skinnedShader, "entryPoint": "fs_main",
+        "targets": [{ "format": surfaceFormat }]
+      },
+      "primitive":    { "topology": "triangle-list", "cullMode": "back" },
+      "depthStencil": {
+        "format": depthFormat, "depthWriteEnabled": true,
+        "depthCompare":         "less-equal",
+        "depthBias":            2,
+        "depthBiasSlopeScale":  1.0
+      },
+      "label": "renderer3d-skinned-pipeline"
+    })
 
     // ---- Billboard pipeline. Spherical camera-facing quads for
     // 3D particles / decals / icons. Reads a slim Scene struct
@@ -2018,6 +2207,52 @@ class Renderer3D {
     pass.setVertexBuffer(0, mesh.vertexBuffer)
     pass.setIndexBuffer(mesh.indexBuffer, "uint32")
     pass.drawIndexedIndirect(indirectBuffer, offset)
+  }
+
+  /// Skinned mesh draw. Uses the dedicated skinned PBR pipeline:
+  /// reads JOINTS_0 / WEIGHTS_0 from `mesh.jointsBuffer` /
+  /// `mesh.weightsBuffer` (slots 1 + 2), samples the joint matrix
+  /// palette from `skin.bindGroup` (bind group 3), and otherwise
+  /// behaves like the static `draw` path — same scene + draw +
+  /// material bindings.
+  ///
+  /// The caller is responsible for keeping the skin palette
+  /// up-to-date each frame via `skin.update(matrices)` before
+  /// this draw.
+  ///
+  /// @param {Mesh}        mesh
+  /// @param {Material}    material
+  /// @param {SkinPalette} skin
+  /// @param {Mat4}        model. Mesh-root world transform.
+  drawSkinned(mesh, material, skin, model) {
+    if (_pass == null) Fiber.abort("Renderer3D.drawSkinned: call beginFrame first.")
+    if (mesh.jointsBuffer == null || mesh.weightsBuffer == null) {
+      Fiber.abort("Renderer3D.drawSkinned: mesh has no jointsBuffer / weightsBuffer — build via Mesh.fromArraysSkinned.")
+    }
+    if (!_sceneCommitted) commitScene_()
+
+    // Per-draw UBO (model + normal_mat), matching `draw`. Treats
+    // the model matrix as its own normal_mat — valid for the
+    // orthonormal transforms typical of skinned character roots.
+    _drawUboFloats.clear()
+    appendMat4_(_drawUboFloats, model)
+    appendMat4_(_drawUboFloats, model)
+    var i = reserveDrawSlot_()
+    _drawUboPool[i].writeFloats(0, _drawUboFloats)
+
+    var skinBg = skin.bindWith(_skinBgl)
+    var entry  = bindGroupFor_(material)
+    var pass = _pass
+    pass.setPipeline(_skinnedPipeline)
+    pass.setBindGroup(0, _sceneBindGroup)
+    pass.setBindGroup(1, _drawBindGroupPool[i])
+    pass.setBindGroup(2, entry["bg"])
+    pass.setBindGroup(3, skinBg)
+    pass.setVertexBuffer(0, mesh.vertexBuffer)
+    pass.setVertexBuffer(1, mesh.jointsBuffer)
+    pass.setVertexBuffer(2, mesh.weightsBuffer)
+    pass.setIndexBuffer(mesh.indexBuffer, "uint32")
+    pass.drawIndexed(mesh.indexCount)
   }
 
   /// Multi-LOD instanced draw. Issues one `drawIndexed` per LOD
