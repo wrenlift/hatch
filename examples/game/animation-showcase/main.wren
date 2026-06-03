@@ -259,32 +259,13 @@ class AnimShowcase is Game {
     _camera.lookAt(Vec3.new(ex, ey, ez), _target, Vec3.unitY)
   }
 
-  // Apply every channel of `_anim` to its target entity's
-  // Transform. Time loops over the clip duration so the lift-off
-  // replays continuously.
+  // Per-frame channel apply via @hatch:gltf's promoted helper.
+  // Loops the playhead over the clip duration so liftoff replays
+  // continuously.
   applyAnimation_() {
-    var map = _scene.nodeEntityMap
-    if (map == null) return
     var dur = _anim.duration
     var tLooped = dur > 0 ? (_animTime - dur * (_animTime / dur).floor) : 0
-    for (ch in _anim.channels) {
-      var entity = map[ch.nodeIndex]
-      if (entity == null) continue
-      if (!_world.has(entity, Transform)) continue
-      var v = ch.sample(tLooped)
-      var transform = _world.get(entity, Transform)
-      if (ch.path == "translation") {
-        transform.position = Vec3.new(v[0], v[1], v[2])
-      } else if (ch.path == "rotation") {
-        // glTF stores quaternions as (x, y, z, w); Quat is (w, x, y, z).
-        // LINEAR-lerped quat components don't preserve unit length;
-        // the resulting Mat4 picks up a non-uniform scale that
-        // shows as z-fighting on stacked geometry. Normalise.
-        transform.rotation = Quat.new(v[3], v[0], v[1], v[2]).normalized
-      } else if (ch.path == "scale") {
-        transform.scale = Vec3.new(v[0], v[1], v[2])
-      }
-    }
+    _anim.applyTo(_scene, _world, tLooped)
   }
 
   update(g) {

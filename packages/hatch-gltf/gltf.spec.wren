@@ -1,7 +1,7 @@
 // @hatch:gltf acceptance tests. Builds minimal .glb byte fixtures
 // in-process so the spec is hermetic — no on-disk assets to track.
 
-import "./gltf"         for Gltf, GltfScene, GltfNode, GltfMesh, GltfPrimitive, GltfMaterial, GltfSkin
+import "./gltf"         for Gltf, GltfScene, GltfNode, GltfMesh, GltfPrimitive, GltfMaterial, GltfSkin, GltfAnimation, GltfAnimChannel
 import "@hatch:game"    for Transform
 import "@hatch:ecs"     for World, Parent, Children
 import "@hatch:test"    for Test
@@ -347,6 +347,30 @@ Test.describe("GltfNode skinIndex") {
     Expect.that(n.skinIndex).toBe(null)
     n.skinIndex = 5
     Expect.that(n.skinIndex).toBe(5)
+  }
+}
+
+class NullMapScene_ {
+  construct new() {}
+  nodeEntityMap { null }
+}
+
+class NullWorld_ {
+  construct new() {}
+  has(e, k) { false }
+  get(e, k) { null }
+}
+
+Test.describe("GltfAnimation.applyTo") {
+  Test.it("is a no-op when scene has no nodeEntityMap") {
+    // A bare GltfAnimation with one channel; map==null means
+    // spawnInto hasn't been called yet — the method should
+    // exit silently without raising.
+    var ch = GltfAnimChannel.new_(0, "translation", [0, 1], [0, 0, 0, 1, 0, 0], 3, "LINEAR")
+    var anim = GltfAnimation.new_("clip", 1, [ch])
+    anim.applyTo(NullMapScene_.new(), NullWorld_.new(), 0.5)
+    // (no throw → pass)
+    Expect.that(true).toBe(true)
   }
 }
 

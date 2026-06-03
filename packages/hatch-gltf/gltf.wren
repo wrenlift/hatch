@@ -1179,6 +1179,53 @@ class GltfAnimation {
   duration  { _duration }
   /// One `GltfAnimChannel` per TRS target. @returns {List<GltfAnimChannel>}
   channels  { _channels }
+
+  /// Sample every channel at time `t` and write the results into
+  /// the targeted nodes' ECS `Transform` components. `scene` is
+  /// the `GltfScene` whose `nodeEntityMap` resolves each channel's
+  /// node index to an entity id; `world` is the `@hatch:ecs.World`
+  /// holding those entities. Pre-`spawnInto` scenes (no map) and
+  /// channels whose target entity has no `Transform` are skipped
+  /// silently.
+  ///
+  /// `t` is raw seconds — call `t % duration` first if you want
+  /// the clip to loop.
+  ///
+  /// ## Example
+  ///
+  /// ```wren
+  /// var anim = _scene.animations[0]
+  /// _animTime = _animTime + g.dt
+  /// var t = anim.duration > 0
+  ///       ? _animTime - anim.duration * (_animTime / anim.duration).floor
+  ///       : 0
+  /// anim.applyTo(_scene, _world, t)
+  /// ```
+  ///
+  /// @param {GltfScene} scene
+  /// @param {World}     world
+  /// @param {Num}       t
+  applyTo(scene, world, t) {
+    var map = scene.nodeEntityMap
+    if (map == null) return
+    for (ch in _channels) {
+      var entity = map[ch.nodeIndex]
+      if (entity == null) continue
+      if (!world.has(entity, Transform)) continue
+      var v = ch.sample(t)
+      var transform = world.get(entity, Transform)
+      if (ch.path == "translation") {
+        transform.position = Vec3.new(v[0], v[1], v[2])
+      } else if (ch.path == "rotation") {
+        // glTF stores quaternions as (x, y, z, w); Quat is (w, x, y, z).
+        // LINEAR-lerped quat components don't preserve unit length;
+        // normalise so the resulting Mat4 stays rigid.
+        transform.rotation = Quat.new(v[3], v[0], v[1], v[2]).normalized
+      } else if (ch.path == "scale") {
+        transform.scale = Vec3.new(v[0], v[1], v[2])
+      }
+    }
+  }
 }
 
 /// One animation channel — a single (node, path) pair driven by
