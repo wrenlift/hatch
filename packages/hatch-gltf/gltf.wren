@@ -887,46 +887,67 @@ class GltfScene {
 
   // -- Nodes -------------------------------------------------------
 
+  // buildNodes_: walk every node JSON entry and produce a GltfNode.
+  //
+  // The per-node body is FULLY INLINED here — no `buildNode_(n)`
+  // helper. A character-scale asset (the_strangler: 141 nodes)
+  // crossed the JIT tier-up threshold (`jit_threshold = 100` in
+  // src/runtime/engine.rs) when the per-node work lived in its own
+  // static method. The JIT-compiled version of that method
+  // intermittently returned `null` instead of the explicit `return
+  // node` value, leaving the last 25-41 entries of `_nodes` null
+  // and crashing spawnInto with "Null doesn't implement
+  // 'transform'" deep in spawnNode_. See
+  // [[project-jit-static-return-null]] for the cranelift codegen
+  // root cause.
+  //
+  // Single function called once per scene = no tier-up = no bug.
+  // The inlined body trades a small bit of readability for
+  // determinism; revisit when the JIT bug is fixed upstream.
   static buildNodes_(json) {
     var out = []
     var arr = json["nodes"]
     if (!(arr is List)) return out
-    for (n in arr) {
-      out.add(GltfScene.buildNode_(n))
+    var i = 0
+    var n = arr.count
+    while (i < n) {
+      var nj = arr[i]
+      var name = nj["name"] is String ? nj["name"] : ""
+      var t = Vec3.zero
+      var r = Quat.identity
+      var s = Vec3.one
+      if (nj["translation"] is List && nj["translation"].count >= 3) {
+        var v = nj["translation"]
+        t = Vec3.new(v[0], v[1], v[2])
+      }
+      if (nj["rotation"] is List && nj["rotation"].count >= 4) {
+        // glTF stores rotation as (x, y, z, w); Quat is (w, x, y, z).
+        var v = nj["rotation"]
+        r = Quat.new(v[3], v[0], v[1], v[2])
+      }
+      if (nj["scale"] is List && nj["scale"].count >= 3) {
+        var v = nj["scale"]
+        s = Vec3.new(v[0], v[1], v[2])
+      }
+      var transform = Transform.new(t, r, s)
+      var meshIndex = nj["mesh"] is Num ? nj["mesh"] : null
+      var children  = []
+      var rawChildren = nj["children"]
+      if (rawChildren is List) {
+        var ci = 0
+        var cn = rawChildren.count
+        while (ci < cn) {
+          var idx = rawChildren[ci]
+          if (idx is Num) children.add(idx)
+          ci = ci + 1
+        }
+      }
+      var node = GltfNode.new_(name, transform, meshIndex, children)
+      if (nj["skin"] is Num) node.skinIndex = nj["skin"]
+      out.add(node)
+      i = i + 1
     }
     return out
-  }
-
-  static buildNode_(n) {
-    var name = n["name"] is String ? n["name"] : ""
-    var t = Vec3.zero
-    var r = Quat.identity
-    var s = Vec3.one
-    if (n["translation"] is List && n["translation"].count >= 3) {
-      var v = n["translation"]
-      t = Vec3.new(v[0], v[1], v[2])
-    }
-    if (n["rotation"] is List && n["rotation"].count >= 4) {
-      // glTF stores rotation as (x, y, z, w); Quat is (w, x, y, z).
-      var v = n["rotation"]
-      r = Quat.new(v[3], v[0], v[1], v[2])
-    }
-    if (n["scale"] is List && n["scale"].count >= 3) {
-      var v = n["scale"]
-      s = Vec3.new(v[0], v[1], v[2])
-    }
-    var transform = Transform.new(t, r, s)
-
-    var meshIndex = n["mesh"] is Num ? n["mesh"] : null
-    var children = []
-    if (n["children"] is List) {
-      for (idx in n["children"]) {
-        if (idx is Num) children.add(idx)
-      }
-    }
-    var node = GltfNode.new_(name, transform, meshIndex, children)
-    if (n["skin"] is Num) node.skinIndex = n["skin"]
-    return node
   }
 
   // glTF's `scene` field picks the default scene root; if absent
