@@ -261,6 +261,13 @@ class GltfScene {
     // animations. Each entry is a GltfAnimation; channels are
     // parsed eagerly so per-frame sampling skips JSON walks.
     _animations     = GltfScene.buildAnimations_(json, _buffers)
+    // Skeletal-animation rigs. Each entry is a GltfSkin with its
+    // joint node indices + inverse-bind matrices. Empty when the
+    // file carries no skins. Joint world matrices come from the
+    // joint nodes' Transforms after AnimationSystem ticks; the
+    // skinning pipeline multiplies them with the IBMs to build
+    // the per-frame joint-matrix palette.
+    _skins          = GltfScene.buildSkins_(json, _buffers)
     // Populated by `spawnInto` — Map<gltfNodeIndex, ecsEntityId>.
     // Lets animation tooling map a channel's `target.node` back to
     // the entity whose Transform it should write.
@@ -306,6 +313,9 @@ class GltfScene {
   /// `GltfAnimation` — one per `json["animations"][i]`. Empty when
   /// the file carries none.
   animations   { _animations }
+  /// Parsed skins from the glTF document. List of `GltfSkin` —
+  /// one per `json["skins"][i]`. Empty when no skins are present.
+  skins        { _skins }
   /// `Map<gltfNodeIndex, ecsEntityId>` populated by `spawnInto`.
   /// `null` until `spawnInto` has been called; lets an animator
   /// resolve a channel's `target.node` back to the entity whose
@@ -613,11 +623,26 @@ class GltfScene {
     var tanIdx = attrs["TANGENT"]
     if (tanIdx is Num) tangents = GltfScene.readFloatAccessor_(json, buffers, tanIdx, 4, "VEC4")
 
+    // glTF spec: JOINTS_0 is VEC4 of u8/u16/u32; WEIGHTS_0 is VEC4
+    // of f32 (normalised values summing to ~1 per vertex). Both
+    // optional — primitives without these stay rigid and fall
+    // through the static PBR pipeline.
+    var joints = null
+    var jntIdx = attrs["JOINTS_0"]
+    if (jntIdx is Num) joints = GltfScene.readU16x4Accessor_(json, buffers, jntIdx)
+
+    var weights = null
+    var wgtIdx = attrs["WEIGHTS_0"]
+    if (wgtIdx is Num) weights = GltfScene.readFloatAccessor_(json, buffers, wgtIdx, 4, "VEC4")
+
     var indices = null
     if (p["indices"] is Num) indices = GltfScene.readIndexAccessor_(json, buffers, p["indices"])
 
     var materialIndex = p["material"] is Num ? p["material"] : null
-    return GltfPrimitive.new_(positions, normals, uvs, tangents, indices, materialIndex)
+    var prim = GltfPrimitive.new_(positions, normals, uvs, tangents, indices, materialIndex)
+    prim.joints_ = joints
+    prim.weights_ = weights
+    return prim
   }
 
   // -- Nodes -------------------------------------------------------
@@ -659,7 +684,9 @@ class GltfScene {
         if (idx is Num) children.add(idx)
       }
     }
-    return GltfNode.new_(name, transform, meshIndex, children)
+    var node = GltfNode.new_(name, transform, meshIndex, children)
+    if (n["skin"] is Num) node.skinIndex = n["skin"]
+    return node
   }
 
   // glTF's `scene` field picks the default scene root; if absent
@@ -855,6 +882,94 @@ class GltfScene {
     return out
   }
 
+  // Reads a u8/u16 VEC4 accessor (typical for `JOINTS_0`) into a
+  // packed `Int32Array` of length `count * 4`. Widens every joint
+  // index to i32 so downstream skinning code can index a storage
+  // array without an extra unpack step. u32 also valid but rare.
+  static readU16x4Accessor_(json, buffers, idx) {
+    var a = GltfScene.accessorAt_(json, idx)
+    if (a["type"] != "VEC4") {
+      Fiber.abort("Gltf: joint accessor %(idx) type %(a["type"]), expected VEC4")
+    }
+    var componentType = a["componentType"]
+    var elemSize = 0
+    if      (componentType == 5121) { elemSize = 1 }   // u8
+    else if (componentType == 5123) { elemSize = 2 }   // u16
+    else if (componentType == 5125) { elemSize = 4 }   // u32
+    else Fiber.abort("Gltf: joint accessor componentType %(componentType) not supported (u8/u16/u32)")
+    var bvIdx = a["bufferView"]
+    if (!(bvIdx is Num)) Fiber.abort("Gltf: joint accessor %(idx) has no bufferView")
+    var bv = GltfScene.bufferViewAt_(json, bvIdx)
+    var bin = GltfScene.binFromBufferView_(buffers, bv)
+    var byteOffset = (a["byteOffset"] is Num ? a["byteOffset"] : 0) +
+                     (bv["byteOffset"] is Num ? bv["byteOffset"] : 0)
+    var count = a["count"]
+    var stride = bv["byteStride"] is Num ? bv["byteStride"] : (elemSize * 4)
+    var out = Int32Array.new(count * 4)
+    var i = 0
+    while (i < count) {
+      var rowOff = byteOffset + i * stride
+      var c = 0
+      while (c < 4) {
+        var v = 0
+        var off = rowOff + c * elemSize
+        if      (elemSize == 1) { v = bin[off] }
+        else if (elemSize == 2) { v = Bytes_.u16LE(bin, off) }
+        else                    { v = Bytes_.u32LE(bin, off) }
+        out[i * 4 + c] = v
+        c = c + 1
+      }
+      i = i + 1
+    }
+    return out
+  }
+
+  // Reads a `MAT4` f32 accessor (used for inverse-bind matrices)
+  // into a packed `Float32Array` of length `count * 16`. Stored
+  // column-major per glTF spec — pass straight to the GPU shader.
+  static readMat4Accessor_(json, buffers, idx) {
+    return GltfScene.readFloatAccessor_(json, buffers, idx, 16, "MAT4")
+  }
+
+  // Build every `GltfSkin` from `json["skins"]`. Each skin is a
+  // List<Num> of joint node indices + a Float32Array of inverse-
+  // bind matrices (one mat4 per joint, optional in glTF spec — if
+  // absent, defaults to identity matrices). Skeleton root is
+  // optional too.
+  static buildSkins_(json, buffers) {
+    var out = []
+    var arr = json["skins"]
+    if (!(arr is List)) return out
+    for (s in arr) {
+      var joints = s["joints"]
+      if (!(joints is List)) {
+        Fiber.abort("Gltf: skin missing `joints` array")
+      }
+      var jointList = []
+      for (j in joints) jointList.add(j)
+      var ibm = null
+      if (s["inverseBindMatrices"] is Num) {
+        ibm = GltfScene.readMat4Accessor_(json, buffers, s["inverseBindMatrices"])
+      } else {
+        // Spec: when absent, each IBM defaults to identity.
+        ibm = Float32Array.new(jointList.count * 16)
+        var j = 0
+        while (j < jointList.count) {
+          var base = j * 16
+          ibm[base + 0]  = 1
+          ibm[base + 5]  = 1
+          ibm[base + 10] = 1
+          ibm[base + 15] = 1
+          j = j + 1
+        }
+      }
+      var skeleton = s["skeleton"] is Num ? s["skeleton"] : null
+      var name = s["name"] is String ? s["name"] : ""
+      out.add(GltfSkin.new_(name, jointList, ibm, skeleton))
+    }
+    return out
+  }
+
   // ---- Upload ----------------------------------------------------
 
   /// Build a real `@hatch:gpu` `Mesh` for every primitive that
@@ -991,17 +1106,57 @@ class GltfNode {
   ///   `null` for nodes without geometry.
   /// @param {List<Num>} children. Child node indices into
   ///   `scene.nodes`.
+  /// @param {Num|Null} skinIndex. Index into `scene.skins` when
+  ///   this node carries a skinned mesh; `null` otherwise.
   construct new_(name, transform, meshIndex, children) {
     _name = name
     _transform = transform
     _meshIndex = meshIndex
     _children = children
+    _skinIndex = null
   }
   name        { _name }
   transform   { _transform }
   meshIndex   { _meshIndex }
   children    { _children }
-  toString { "GltfNode(name=%(_name), mesh=%(_meshIndex), children=%(_children.count))" }
+  /// Skin index this node uses (`null` when the node carries no
+  /// skinned mesh). Populated by `buildNodes_` from `n["skin"]`.
+  /// @returns {Num|Null}
+  skinIndex     { _skinIndex }
+  skinIndex=(v) { _skinIndex = v }
+  toString { "GltfNode(name=%(_name), mesh=%(_meshIndex), skin=%(_skinIndex), children=%(_children.count))" }
+}
+
+/// Skeletal rig for a skinned mesh — joint node indices + the
+/// inverse-bind matrices that move geometry from local space into
+/// each joint's reference frame. The renderer composes
+/// `joint_world * inverseBindMatrix` per frame to build the
+/// joint-matrix palette the skinning vertex shader samples.
+class GltfSkin {
+  /// Internal — built by `GltfScene.buildSkins_`. User code reads
+  /// via `scene.skins`.
+  ///
+  /// @param {String} name. glTF `name` (empty if absent).
+  /// @param {List<Num>} joints. Joint node indices into
+  ///   `scene.nodes`. Index `k` in this list is the skinning bone
+  ///   `k` referenced by `JOINTS_0` vertex attributes.
+  /// @param {Float32Array} inverseBindMatrices. `count = joints.count
+  ///   * 16` floats — one column-major `mat4` per joint.
+  /// @param {Num|Null} skeletonRoot. Optional root node; the
+  ///   renderer walks down from here when composing joint world
+  ///   transforms.
+  construct new_(name, joints, inverseBindMatrices, skeletonRoot) {
+    _name = name
+    _joints = joints
+    _ibm = inverseBindMatrices
+    _skeletonRoot = skeletonRoot
+  }
+  name                { _name }
+  joints              { _joints }
+  inverseBindMatrices { _ibm }
+  skeletonRoot        { _skeletonRoot }
+  jointCount          { _joints.count }
+  toString            { "GltfSkin(name=%(_name), joints=%(_joints.count))" }
 }
 
 /// A parsed glTF animation. Owns one or more `GltfAnimChannel`s
@@ -1249,6 +1404,8 @@ class GltfPrimitive {
     _tangents = tangents
     _indices = indices
     _materialIndex = materialIndex
+    _joints = null
+    _weights = null
     _mesh = null
     _material = null
   }
@@ -1257,6 +1414,15 @@ class GltfPrimitive {
   uvs            { _uvs }
   tangents       { _tangents }
   indices        { _indices }
+  /// `Int32Array` of joint indices, 4 per vertex (`JOINTS_0`).
+  /// `null` for non-skinned primitives.
+  joints         { _joints }
+  joints_=(v)    { _joints = v }
+  /// `Float32Array` of joint weights, 4 per vertex (`WEIGHTS_0`).
+  /// Sum to ~1.0 per vertex per the glTF spec.
+  /// `null` for non-skinned primitives.
+  weights        { _weights }
+  weights_=(v)   { _weights = v }
   materialIndex  { _materialIndex }
   mesh           { _mesh }
   material       { _material }
