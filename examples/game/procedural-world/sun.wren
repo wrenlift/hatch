@@ -41,6 +41,15 @@ class Sun {
   /// @param {Map}        sun
   static applyTo(renderer, sun) {
     renderer.setAmbient(sun["ambient"], sun["ambientInt"])
+    // 3-band IBL environment — subtle additive tint on top of
+    // the legacy `setAmbient` fill, so back-facing surfaces pick
+    // up directional bounce instead of flat grey. Values kept
+    // small (~0.2 max) so we don't double-count the ambient
+    // contribution and wash the scene out.
+    renderer.setEnvironment(
+      Vec3.new(0.16, 0.20, 0.26),    // top — cool sky hint
+      Vec3.new(0.22, 0.20, 0.16),    // horizon — warm hint
+      Vec3.new(0.08, 0.09, 0.06))    // ground — soft green bounce
     // Last arg = castsShadows. Renderer3D pins shadow-casting dir
     // lights to slot 0 so the PBR shader's `i == 0` shadow factor
     // path stays branch-free; only fires when the caller also
