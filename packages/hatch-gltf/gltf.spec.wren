@@ -1,7 +1,7 @@
 // @hatch:gltf acceptance tests. Builds minimal .glb byte fixtures
 // in-process so the spec is hermetic — no on-disk assets to track.
 
-import "./gltf"         for Gltf, GltfScene, GltfNode, GltfMesh, GltfPrimitive, GltfMaterial
+import "./gltf"         for Gltf, GltfScene, GltfNode, GltfMesh, GltfPrimitive, GltfMaterial, GltfSkin
 import "@hatch:game"    for Transform
 import "@hatch:ecs"     for World, Parent, Children
 import "@hatch:test"    for Test
@@ -315,6 +315,57 @@ Test.describe("Gltf.spawnInto") {
     Expect.that(world.parentOf(child)).toBe(root)
     var childT = world.get(child, Transform)
     Expect.that(childT.position.y).toBe(3)
+  }
+}
+
+Test.describe("GltfSkin shape") {
+  Test.it("is constructible with joints + IBMs + optional skeleton") {
+    var joints = [0, 1, 2, 3]
+    var ibm    = Float32Array.new(4 * 16)
+    // identity per joint
+    var j = 0
+    while (j < 4) {
+      var b = j * 16
+      ibm[b + 0]  = 1
+      ibm[b + 5]  = 1
+      ibm[b + 10] = 1
+      ibm[b + 15] = 1
+      j = j + 1
+    }
+    var s = GltfSkin.new_("Rig", joints, ibm, null)
+    Expect.that(s.name).toBe("Rig")
+    Expect.that(s.jointCount).toBe(4)
+    Expect.that(s.joints[2]).toBe(2)
+    Expect.that(s.inverseBindMatrices[0]).toBe(1)
+    Expect.that(s.skeletonRoot).toBe(null)
+  }
+}
+
+Test.describe("GltfNode skinIndex") {
+  Test.it("defaults to null and accepts a setter assignment") {
+    var n = GltfNode.new_("J", Transform.new(), null, [])
+    Expect.that(n.skinIndex).toBe(null)
+    n.skinIndex = 5
+    Expect.that(n.skinIndex).toBe(5)
+  }
+}
+
+Test.describe("GltfPrimitive joints / weights") {
+  Test.it("default to null on a static primitive") {
+    var p = GltfPrimitive.new_(Float32Array.new(3), null, null, null, null, null)
+    Expect.that(p.joints).toBe(null)
+    Expect.that(p.weights).toBe(null)
+  }
+  Test.it("setters route through joints_= / weights_=") {
+    var p = GltfPrimitive.new_(Float32Array.new(3), null, null, null, null, null)
+    var j = Int32Array.new(4)
+    j[0] = 1
+    var w = Float32Array.new(4)
+    w[0] = 1
+    p.joints_ = j
+    p.weights_ = w
+    Expect.that(p.joints[0]).toBe(1)
+    Expect.that(p.weights[0]).toBe(1)
   }
 }
 
