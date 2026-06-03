@@ -2200,11 +2200,17 @@ class Mesh {
     _vbo    = vertexBuffer
     _ibo    = indexBuffer
     _indexCount = indexCount
+    _jointsVbo  = null
+    _weightsVbo = null
   }
 
   vertexBuffer { _vbo }
   indexBuffer  { _ibo }
   indexCount   { _indexCount }
+  jointsBuffer      { _jointsVbo }
+  jointsBuffer=(v)  { _jointsVbo = v }
+  weightsBuffer     { _weightsVbo }
+  weightsBuffer=(v) { _weightsVbo = v }
 
   static fromArrays(device, vertices, indices) {
     var vbo = device.createBuffer({
@@ -2218,6 +2224,23 @@ class Mesh {
     })
     ibo.writeUints(0, indices)
     return Mesh.new_(device, vbo, ibo, indices.count)
+  }
+
+  static fromArraysSkinned(device, vertices, joints, weights, indices) {
+    var mesh = Mesh.fromArrays(device, vertices, indices)
+    var jVbo = device.createBuffer({
+      "size":  joints.count * 4,
+      "usage": ["vertex", "copy-dst"]
+    })
+    jVbo.writeUints(0, joints)
+    var wVbo = device.createBuffer({
+      "size":  weights.count * 4,
+      "usage": ["vertex", "copy-dst"]
+    })
+    wVbo.writeFloats(0, weights)
+    mesh.jointsBuffer  = jVbo
+    mesh.weightsBuffer = wVbo
+    return mesh
   }
 
   static cube(device) { cube(device, 1) }

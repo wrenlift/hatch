@@ -2565,11 +2565,22 @@ class Mesh {
     _vbo    = vertexBuffer
     _ibo    = indexBuffer
     _indexCount = indexCount
+    _jointsVbo  = null
+    _weightsVbo = null
   }
 
   vertexBuffer { _vbo }
   indexBuffer  { _ibo }
   indexCount   { _indexCount }
+  /// Parallel `vec4<u32>` joint-indices VBO for skinned meshes.
+  /// `null` on static meshes; bound at vertex slot 1 (location 4)
+  /// by the skinning pipeline.
+  jointsBuffer       { _jointsVbo }
+  jointsBuffer=(v)   { _jointsVbo = v }
+  /// Parallel `vec4<f32>` joint-weights VBO. `null` on static
+  /// meshes; bound at slot 2 (location 5).
+  weightsBuffer      { _weightsVbo }
+  weightsBuffer=(v)  { _weightsVbo = v }
 
   /// Build a Mesh from interleaved-vertex data + indices. `vertices`
   /// is a flat List of Nums in pos.xyz / normal.xyz / uv.xy order
@@ -2587,6 +2598,45 @@ class Mesh {
     })
     ibo.writeUints(0, indices)
     return Mesh.new_(device, vbo, ibo, indices.count)
+  }
+
+  /// Build a skinned Mesh from the same static-vertex layout +
+  /// indices, plus parallel per-vertex joint + weight buffers.
+  ///
+  /// `joints` is a flat list (or `Int32Array`) of `vertexCount *
+  /// 4` u32 joint indices. `weights` is the same length holding
+  /// the corresponding f32 weights (sum to ~1 per vertex per the
+  /// glTF spec).
+  ///
+  /// Output mesh carries the static VBO at slot 0 (positions /
+  /// normals / uvs / tangents), the joints VBO at slot 1 (one
+  /// `vec4<u32>` per vertex, stride 16 B), and the weights VBO at
+  /// slot 2 (one `vec4<f32>` per vertex, stride 16 B). Single
+  /// upload per buffer, no per-vertex FFI churn.
+  ///
+  /// @param {Device} device
+  /// @param {List} vertices. 12-float interleaved vertex data.
+  /// @param {List} joints.   `vertexCount * 4` u32 joint indices.
+  /// @param {List} weights.  `vertexCount * 4` f32 joint weights.
+  /// @param {List} indices.  u32 indices.
+  /// @returns {Mesh}
+  static fromArraysSkinned(device, vertices, joints, weights, indices) {
+    var mesh = Mesh.fromArrays(device, vertices, indices)
+    var jVbo = device.createBuffer({
+      "size":  joints.count * 4,
+      "usage": ["vertex", "copy-dst"],
+      "label": "mesh-joints-vbo"
+    })
+    jVbo.writeUints(0, joints)
+    var wVbo = device.createBuffer({
+      "size":  weights.count * 4,
+      "usage": ["vertex", "copy-dst"],
+      "label": "mesh-weights-vbo"
+    })
+    wVbo.writeFloats(0, weights)
+    mesh.jointsBuffer  = jVbo
+    mesh.weightsBuffer = wVbo
+    return mesh
   }
 
   /// Axis-aligned cube centred on origin. Side length = 2 * half
