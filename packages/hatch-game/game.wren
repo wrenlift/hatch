@@ -111,7 +111,13 @@ import "./animation" for Tween, Tweens, Clip, AnimationPlayer, Behaviors
 import "./particles"     for ParticleSystem, ParticleSystem3D, Particles
 import "./gpu_particles" for GpuParticleSystem3D
 import "./decals"        for Decal, DecalLayer, Decals
-import "./debug"     for FrameTimer, DebugOverlay
+import "./debug"     for
+  FrameTimer,
+  DebugOverlay,
+  EntityInspector,
+  PhysicsDebugDraw,
+  InputRecorder,
+  InputReplayer
 
 // Fullscreen post-processing chain. Setting `g.postFX = PostFX.new(g)`
 // in `setup` re-routes the scene render through an offscreen
