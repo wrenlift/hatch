@@ -830,17 +830,23 @@ class GltfScene {
     var byteOffset = (a["byteOffset"] is Num ? a["byteOffset"] : 0) +
                      (bv["byteOffset"] is Num ? bv["byteOffset"] : 0)
     var count = a["count"]
-    var stride = bv["byteStride"] is Num ? bv["byteStride"] : (components * 4)
+    var bvStride = bv["byteStride"] is Num ? bv["byteStride"] : 0
     var out = Float32Array.new(count * components)
-    var i = 0
-    while (i < count) {
-      var rowOff = byteOffset + i * stride
-      var c = 0
-      while (c < components) {
-        out[i * components + c] = Bytes_.f32LE(bin, rowOff + c * 4)
-        c = c + 1
+    // Native bulk decode — one FFI per row (vec3/vec4/etc), or
+    // even one FFI for the whole accessor when the bufferView is
+    // tightly packed. Falls back to the per-byte Wren path only
+    // if the runtime hasn't been built with the bulk decoders
+    // (older wlift).
+    if (bvStride == 0 || bvStride == components * 4) {
+      // Tight packing across the whole accessor — single FFI.
+      bin.copyToFloat32Array(byteOffset, count * components, out, 0, 0)
+    } else {
+      // Strided: one FFI per row, `components` floats each.
+      var i = 0
+      while (i < count) {
+        bin.copyToFloat32Array(byteOffset + i * bvStride, components, out, i * components, 0)
+        i = i + 1
       }
-      i = i + 1
     }
     return out
   }
@@ -867,17 +873,21 @@ class GltfScene {
     var byteOffset = (a["byteOffset"] is Num ? a["byteOffset"] : 0) +
                      (bv["byteOffset"] is Num ? bv["byteOffset"] : 0)
     var count = a["count"]
-    var stride = bv["byteStride"] is Num ? bv["byteStride"] : elemSize
+    var bvStride = bv["byteStride"] is Num ? bv["byteStride"] : 0
     var out = Int32Array.new(count)
-    var i = 0
-    while (i < count) {
-      var off = byteOffset + i * stride
-      var v = 0
-      if      (elemSize == 1) { v = bin[off] }
-      else if (elemSize == 2) { v = Bytes_.u16LE(bin, off) }
-      else                    { v = Bytes_.u32LE(bin, off) }
-      out[i] = v
-      i = i + 1
+    if (elemSize == 1) {
+      bin.copyU8ToInt32Array(byteOffset, count, out, 0, bvStride)
+    } else if (elemSize == 2) {
+      bin.copyU16LEToInt32Array(byteOffset, count, out, 0, bvStride)
+    } else {
+      // u32 path — single-element FFI per index. Could add a
+      // bulk u32 variant if profiling shows this is hot.
+      var stride = bvStride == 0 ? 4 : bvStride
+      var i = 0
+      while (i < count) {
+        out[i] = bin.readU32LE(byteOffset + i * stride)
+        i = i + 1
+      }
     }
     return out
   }
@@ -904,22 +914,46 @@ class GltfScene {
     var byteOffset = (a["byteOffset"] is Num ? a["byteOffset"] : 0) +
                      (bv["byteOffset"] is Num ? bv["byteOffset"] : 0)
     var count = a["count"]
-    var stride = bv["byteStride"] is Num ? bv["byteStride"] : (elemSize * 4)
+    var bvStride = bv["byteStride"] is Num ? bv["byteStride"] : 0
     var out = Int32Array.new(count * 4)
-    var i = 0
-    while (i < count) {
-      var rowOff = byteOffset + i * stride
-      var c = 0
-      while (c < 4) {
-        var v = 0
-        var off = rowOff + c * elemSize
-        if      (elemSize == 1) { v = bin[off] }
-        else if (elemSize == 2) { v = Bytes_.u16LE(bin, off) }
-        else                    { v = Bytes_.u32LE(bin, off) }
-        out[i * 4 + c] = v
-        c = c + 1
+    var rowBytes = elemSize * 4
+    // Native bulk decode — one FFI for the whole tightly-packed
+    // accessor (typical case), else one FFI per row.
+    if (bvStride == 0 || bvStride == rowBytes) {
+      if (elemSize == 1) {
+        bin.copyU8ToInt32Array(byteOffset, count * 4, out, 0, 0)
+      } else if (elemSize == 2) {
+        bin.copyU16LEToInt32Array(byteOffset, count * 4, out, 0, 0)
+      } else {
+        // u32 — extremely rare for JOINTS_0; fall back to slow path.
+        var i = 0
+        while (i < count) {
+          var rowOff = byteOffset + i * rowBytes
+          var c = 0
+          while (c < 4) {
+            out[i * 4 + c] = bin.readU32LE(rowOff + c * 4)
+            c = c + 1
+          }
+          i = i + 1
+        }
       }
-      i = i + 1
+    } else {
+      // Strided rows — one FFI per row.
+      var i = 0
+      while (i < count) {
+        if (elemSize == 1) {
+          bin.copyU8ToInt32Array(byteOffset + i * bvStride, 4, out, i * 4, 0)
+        } else if (elemSize == 2) {
+          bin.copyU16LEToInt32Array(byteOffset + i * bvStride, 4, out, i * 4, 0)
+        } else {
+          var c = 0
+          while (c < 4) {
+            out[i * 4 + c] = bin.readU32LE(byteOffset + i * bvStride + c * 4)
+            c = c + 1
+          }
+        }
+        i = i + 1
+      }
     }
     return out
   }
@@ -1530,7 +1564,15 @@ class GltfPrimitive {
         j = j + 1
       }
     }
-    _mesh = Mesh.fromArrays(device, verts, indices)
+    // Switch to the skinned-mesh builder when both JOINTS_0 and
+    // WEIGHTS_0 are present. Primitives missing either fall back
+    // to the static path — the renderer picks the right pipeline
+    // by mesh.jointsBuffer != null.
+    if (_joints != null && _weights != null) {
+      _mesh = Mesh.fromArraysSkinned(device, verts, _joints, _weights, indices)
+    } else {
+      _mesh = Mesh.fromArrays(device, verts, indices)
+    }
     _material = pickMaterial_(materials, textures)
   }
 
