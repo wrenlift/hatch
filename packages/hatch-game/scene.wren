@@ -931,7 +931,7 @@ class SceneRenderer3D {
       var light = world.get(e, DirectionalLight)
       var t = world.get(e, Transform)
       var dir = (t == null) ? LIGHT_FORWARD_ : t.rotation.rotateVec3(LIGHT_FORWARD_)
-      renderer.addDirectional(dir, light.color, light.intensity)
+      renderer.addDirectional(dir, light.color, light.intensity, light.castsShadows)
     }
 
     for (e in world.query(PointLight)) {
@@ -960,5 +960,56 @@ class SceneRenderer3D {
       var model = (gt == null) ? Mat4.identity : gt.matrix
       renderer.draw(mr.mesh, mr.material, model)
     }
+  }
+
+  /// Render every visible `(GlobalTransform, MeshRenderer)` entity
+  /// into the renderer's directional shadow map. Picks the first
+  /// `DirectionalLight` with `castsShadows == true` as the caster.
+  /// Call before `SceneRenderer3D.run` so the main-pass PBR
+  /// fragment shader has a populated depth target to sample.
+  ///
+  /// Requires `Renderer3D.enableShadows({...})` at setup time.
+  /// No-op when no caster is configured.
+  ///
+  /// @param {World} world
+  /// @param {Renderer3D} renderer
+  /// @param {CommandEncoder} encoder    `g.encoder` from Game.run.
+  static runShadows(world, renderer, encoder) {
+    SceneRenderer3D.runShadows(world, renderer, encoder, Vec3.zero)
+  }
+
+  /// As `runShadows(world, renderer, encoder)` but lets the caller
+  /// pick where the shadow-camera ortho box is centred. Open-world
+  /// scenes can keep the default (origin); studio / showcase demos
+  /// where the focus point moves (e.g. a drone taking off) should
+  /// pass the camera target so the caster never leaves frustum.
+  ///
+  /// @param {World} world
+  /// @param {Renderer3D} renderer
+  /// @param {CommandEncoder} encoder
+  /// @param {Vec3} center
+  static runShadows(world, renderer, encoder, center) {
+    if (!renderer.shadowsEnabled) return
+    // Find the first directional caster.
+    var lightDir = null
+    for (e in world.query(DirectionalLight)) {
+      var light = world.get(e, DirectionalLight)
+      if (!light.castsShadows) continue
+      var t = world.get(e, Transform)
+      lightDir = (t == null) ? LIGHT_FORWARD_ : t.rotation.rotateVec3(LIGHT_FORWARD_)
+      break
+    }
+    if (lightDir == null) return
+
+    renderer.beginShadowPass(encoder, lightDir, center)
+    for (e in world.query(MeshRenderer)) {
+      var mr = world.get(e, MeshRenderer)
+      if (!mr.visible) continue
+      if (mr.mesh == null) continue
+      var gt = world.get(e, GlobalTransform)
+      var model = (gt == null) ? Mat4.identity : gt.matrix
+      renderer.drawShadow(mr.mesh, model)
+    }
+    renderer.endShadowPass
   }
 }

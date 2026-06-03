@@ -291,6 +291,9 @@ class MockRenderer3D_ {
   addDirectional(dir, color, intensity) {
     _calls.add(["addDirectional", dir, color, intensity])
   }
+  addDirectional(dir, color, intensity, castsShadows) {
+    _calls.add(["addDirectional", dir, color, intensity, castsShadows])
+  }
   addPoint(pos, color, intensity, range) {
     _calls.add(["addPoint", pos, color, intensity, range])
   }
