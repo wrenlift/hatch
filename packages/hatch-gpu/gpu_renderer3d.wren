@@ -1982,6 +1982,44 @@ class Renderer3D {
     pass.drawIndexed(mesh.indexCount, instanceCount)
   }
 
+  /// GPU-driven indexed-instanced draw. Identical render setup to
+  /// [Renderer3D.drawMeshInstanced] (scene BG, instance SSBO BG,
+  /// material BG, instanced pipeline, mesh VB/IB) but the instance
+  /// count + index count come from `indirectBuffer` at `offset`
+  /// instead of CPU args. Pair with `ComputeCull.cull` which fills
+  /// those args from a GPU frustum-cull pass.
+  ///
+  /// `instanceBuffer` must hold the COMPACTED-output buffer
+  /// `ComputeCull` wrote into — its slot count is the count slot
+  /// in `indirectBuffer` and its stride is the standard 128 B /
+  /// DrawUniforms slot.
+  ///
+  /// @param {Mesh}     mesh
+  /// @param {Material} material
+  /// @param {Buffer}   instanceBuffer
+  /// @param {Buffer}   indirectBuffer  5 × u32 = 20 B, usage includes "indirect"
+  drawMeshInstancedIndirect(mesh, material, instanceBuffer, indirectBuffer) {
+    drawMeshInstancedIndirect(mesh, material, instanceBuffer, indirectBuffer, 0)
+  }
+
+  /// As `drawMeshInstancedIndirect/4` but with an explicit byte
+  /// offset into the indirect-args buffer (lets one args buffer
+  /// hold args for multiple draws).
+  drawMeshInstancedIndirect(mesh, material, instanceBuffer, indirectBuffer, offset) {
+    if (_pass == null) Fiber.abort("Renderer3D.drawMeshInstancedIndirect: call beginFrame first.")
+    if (!_sceneCommitted) commitScene_()
+
+    var entry = bindGroupFor_(material)
+    var pass = _pass
+    pass.setPipeline(_instancedPipeline)
+    pass.setBindGroup(0, _sceneBindGroup)
+    pass.setBindGroup(1, instanceBindGroupFor_(instanceBuffer))
+    pass.setBindGroup(2, entry["bg"])
+    pass.setVertexBuffer(0, mesh.vertexBuffer)
+    pass.setIndexBuffer(mesh.indexBuffer, "uint32")
+    pass.drawIndexedIndirect(indirectBuffer, offset)
+  }
+
   /// Multi-LOD instanced draw. Issues one `drawIndexed` per LOD
   /// tier, picking the right `Mesh` out of `lodMesh` (a `MeshLOD`)
   /// for each one. `buckets` is a parallel list — one entry per
