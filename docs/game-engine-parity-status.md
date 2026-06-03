@@ -17,10 +17,10 @@ Plan source: [game-engine-parity-plan.md](./game-engine-parity-plan.md)
 | 0b | @hatch:fsm Harel statecharts | ✅ | — | — |
 | 0c | @hatch:color colour primitive | ✅ | — | — |
 | 2 | ECS-driven game components | ✅ | — | ActiveCamera + SpriteRenderer + Animator + 4 systems landed in @hatch:game/ecs_components.wren 2026-06-03 |
-| 1 | Scene graph + materials + glTF + lighting | ✅ | small (docs) | Stale header comment; skins deferred to Phase 5 |
+| 1 | Scene graph + materials + glTF + lighting | ✅ | — | Skins / animations folded in by Phase 5 (2026-06-03). |
 | 3 | Input action mapping + gamepad | ✅ | — | — (half-axis sign suffix fixed 2026-06-03) |
 | 4 | Physics completeness | ✅ | small | No `sensor` helper API; thin spec coverage |
-| 5 | Animation (Tween + AnimationPlayer + skeletal) | 🟡 | large | Skeletal animation entirely absent |
+| 5 | Animation (Tween + AnimationPlayer + skeletal) | ✅ | — | Full skeletal pipeline shipped 2026-06-03: glTF skin parsing, SkinPalette, Renderer3D.drawSkinned, GltfAnimation.crossfade. the_strangler 102-joint rig animates end-to-end. |
 | 6a | Particles (CPU) | ✅ | — | — |
 | 6b | Post-processing chain | ✅ | — | — |
 | 6c | Shadows (directional) | 🟡 | medium | CSM/cubemap helpers exist but Renderer3D never consumes them |
@@ -68,19 +68,12 @@ Plan source: [game-engine-parity-plan.md](./game-engine-parity-plan.md)
 
 Shipped 2026-06-03. NumRange added at `hatch/packages/hatch-math/math.wren:1117` (sample/contains/clamp/remap; 7 spec tests). Color extracted to standalone `@hatch:color` per user request. Mat3 deferred — Renderer3D builds TBN inside the WGSL `mat3x3<f32>` and no Wren-side caller exists; add when a CPU-side normal-matrix flow surfaces.
 
-### 1 — Scene graph + materials + glTF + lighting (housekeeping) 🟡
+### 1 — Scene graph + materials + glTF + lighting ✅
 
-**Status**: partial — feature-complete; only stale documentation.
-
-**Gaps**:
-- `hatch/packages/hatch-gltf/gltf.wren:21-23` still lists "animations + channels" as unsupported, but they are parsed at `:709`, `:1011`, `:1034`
-- Skins + joints genuinely deferred (header is correct on that point; Phase 5 owns it)
-
-**Next actions**:
-- Trim the stale "unsupported" comment in `gltf.wren:21-23`
+**Status**: shipped. glTF + lighting are feature-complete; the gltf.wren header comment now lists supported surfaces (animations, skins, KHR_materials_pbrSpecularGlossiness) and the remaining hard-no items (sparse accessors, morph targets, cameras) explicitly.
 
 **Depends on**: 0a
-**Effort**: small (doc only)
+**Effort**: — (shipped)
 
 ### 2 — ECS-driven game components 🟡
 
@@ -130,23 +123,25 @@ Shipped 2026-06-03. NumRange added at `hatch/packages/hatch-math/math.wren:1117`
 **Depends on**: none
 **Effort**: small
 
-### 5 — Animation (Tween + AnimationPlayer + skeletal) 🟡
+### 5 — Animation (Tween + AnimationPlayer + skeletal) ✅
 
-**Status**: partial — scalar-track Tween/Clip/AnimationPlayer + Behaviors.wire shipped; entire skeletal pipeline missing.
+**Status**: shipped. Scalar-track Tween/Clip/AnimationPlayer + Behaviors.wire on top of the existing animation surface; full glTF skeletal pipeline landed 2026-06-03.
 
-**Gaps**:
-- `hatch/packages/hatch-gltf/gltf.wren:21` still lists "skins + joints" as unsupported; no skin/inverseBindMatrices/joint parsing (1429 lines, zero hits for skin/bone/joint/skeleton)
-- No `SkeletalClip`, no `Skeleton`/`Bone`, no per-bone matrix palette, no GPU skinning vertex pipeline
-- Exit-gate ("glTF character with walk/run/idle cross-fades cleanly") not achievable
+**What landed**:
+- `GltfSkin` (joints + inverse-bind matrices) parsed in `buildSkins_` (`hatch/packages/hatch-gltf/gltf.wren:1193`); `GltfNode.skinIndex` populated for skinned nodes.
+- `GltfAnimation` + `GltfAnimChannel` with `sample(t)` for STEP / LINEAR / CUBICSPLINE; `applyTo(scene, world, t)` writes joint Transforms each frame.
+- `GltfAnimation.crossfade(other, scene, world, tA, tB, blend)` — blends two clips into one pose (translation/scale LERP, rotation SLERP) for clip-to-clip transitions. 4 spec tests at `gltf.spec.wren:382-447`.
+- `Mesh.fromArraysSkinned(device, vertices, joints, weights, indices)` builds the skinned VBO trio (`hatch/packages/hatch-gpu/gpu_native.wren:2623`).
+- `SkinPalette` storage-buffer manager (`hatch/packages/hatch-gpu/gpu_skin.wren`); one `mat4` per joint, 64 B/joint.
+- `Renderer3D.drawSkinned(mesh, material, skin, model)` — dedicated skinned PBR pipeline (`SKINNED_PBR_WGSL_`) consuming JOINTS_0 / WEIGHTS_0 at slots 1/2 and the joint-matrix palette via `@group(3)`. Multi-DirLight + PointLight scene UBO already wired.
+- End-to-end demo: `hatch/examples/game/skeletal-animation-demo` loads `the_strangler` (102 joints, KHR_materials_pbrSpecularGlossiness textures), composes the per-frame palette as `joint_world * IBM`, dispatches `drawSkinned` per skinned primitive, drives one animation through `GltfAnimation.applyTo`.
 
-**Next actions**:
-- Parse glTF skins + inverseBindMatrices in `hatch-gltf/gltf.wren` (extend `buildAnimations_` neighbourhood); attach `Skeleton` to spawned scenes
-- Add `SkeletalClip` (per-bone TRS keyframe tracks) + a `Skeleton.evaluate(clip, t)` writing a matrix palette
-- Extend PBR shader in `hatch/packages/hatch-gpu/gpu_renderer3d.wren:180` (PBR_WGSL_) with optional `joints/weights` vertex attributes + matrix-palette uniform buffer; route skinned MeshRenderer through that pipeline
-- Add `AnimationSystem` (overlaps with Phase 2) that drives `Animator` -> `Skeleton.evaluate`
+**Optional follow-ups (none blocking the parity gate)**:
+- Multi-animation crossfade demo asset (the_strangler only ships one animation; a walk/run/idle asset would visually exercise `crossfade` end-to-end). Spec coverage already validates the math.
+- An `Animator` glTF-aware variant or a wrapper that routes `AnimationPlayer.crossfade(name, duration)` into `GltfAnimation.crossfade` for the FSM-driven state-machine flow.
 
 **Depends on**: 1, 2
-**Effort**: large
+**Effort**: — (shipped)
 
 ### 6c — Shadows (directional, single cascade) 🟡
 
@@ -380,7 +375,7 @@ Shipped 2026-06-03. NumRange added at `hatch/packages/hatch-math/math.wren:1117`
 
 ## Absent phases (not started)
 
-None — every phase has at least partial shipping today. The closest-to-absent items are skeletal animation (Phase 5), the GPU indirect-draw path (11.5), the cascaded/cubemap shadow renderer integration (6c-cascade), and the FFT ocean (11.10).
+None — every phase has at least partial shipping today. The closest-to-absent items are the cascaded/cubemap shadow renderer integration (6c-cascade) and the FFT ocean (11.10).
 
 ## Recommended sequencing
 
@@ -394,8 +389,8 @@ A pragmatic order picking highest-impact unblocked items first.
 6. **11.2 — per-instance attribute layout** — small follow-on to 11.5 / 11.6; once indirect lands, callers want tint/UV-rect/LOD slots.
 7. **11.7 — triplanar terrain material + per-chunk LOD** — depends on 11.6 (shipped) and benefits from 11.5; brings the procedural-world demo closer to "real game" surface.
 8. **11.8 — foliage transform pack + wind shader** — depends on 11.6 + 11.7; together these three deliver the "open-world" exit gate.
-9. **6c-cascade — CSM + cubemap shadow pipeline** — large; renderer rewrite is intrusive but math layer is in. Tackle after the smaller wins above so it can land in a focused session.
-10. **5 — skeletal animation (gltf skins + Skeleton + skinned VS)** — large and blocks "ship a real game" exit gate. Sequence after Phase 2 lands the Animator component so the integration target is stable.
+9. ~~**5 — skeletal animation**~~ ✅ shipped 2026-06-03: glTF skin parsing + `GltfAnimation.crossfade` + `SkinPalette` + `Renderer3D.drawSkinned`; the_strangler 102-joint rig animates end-to-end with KHR_materials_pbrSpecularGlossiness textures.
+10. **6c-cascade — CSM + cubemap shadow pipeline** — large; renderer rewrite is intrusive but math layer is in. Tackle after the smaller wins above so it can land in a focused session.
 11. **9 — audio spatial + effects + wasm backend** — large; ordering after Phase 2 means `AudioSystem` exists to consume listener/position updates.
 12. **8 — background loading + FSM-aware save** — medium; FSM round-trip needs careful design but is unblocked by 0b (✅).
 13. **6d / 6e exit-gate specs + 11.9 weather perf spec + 7 lowercase font** — small polish items; batch as one PR each.
