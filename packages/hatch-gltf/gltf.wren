@@ -471,6 +471,35 @@ class GltfScene {
         albedoImgIdx = GltfScene.imageIndexOf_(json, t2i, pbr["baseColorTexture"])
         mrImgIdx     = GltfScene.imageIndexOf_(json, t2i, pbr["metallicRoughnessTexture"])
       }
+      // KHR_materials_pbrSpecularGlossiness fallback — many older
+      // character pipelines (Reallusion CC, Adobe Substance, older
+      // Sketchfab exports) author materials with this extension
+      // instead of the standard PBR metallic-roughness path. Map
+      // diffuse → albedo, specular reflectance → metallic, and
+      // gloss → (1 - roughness) so the downstream PBR shader's
+      // existing channels surface the textures unchanged. Only
+      // applied when the standard path didn't already populate
+      // them, so authors who mix both still get the standard
+      // values.
+      var sg = m["extensions"] is Map ? m["extensions"]["KHR_materials_pbrSpecularGlossiness"] : null
+      if (sg is Map) {
+        if (albedoImgIdx == null) {
+          albedoImgIdx = GltfScene.imageIndexOf_(json, t2i, sg["diffuseTexture"])
+        }
+        var df = sg["diffuseFactor"]
+        if (df is List && df.count >= 4) {
+          bc = Vec4.new(df[0], df[1], df[2], df[3])
+        }
+        if (sg["glossinessFactor"] is Num) {
+          roughness = 1 - sg["glossinessFactor"]
+        }
+        var sf = sg["specularFactor"]
+        if (sf is List && sf.count >= 3) {
+          // Specular intensity → metallic proxy. Coarse but the
+          // dominant signal: high specular = metal-like.
+          metallic = (sf[0] + sf[1] + sf[2]) / 3
+        }
+      }
       var normalImgIdx    = GltfScene.imageIndexOf_(json, t2i, m["normalTexture"])
       var occlusionImgIdx = GltfScene.imageIndexOf_(json, t2i, m["occlusionTexture"])
       var emissiveImgIdx  = GltfScene.imageIndexOf_(json, t2i, m["emissiveTexture"])
