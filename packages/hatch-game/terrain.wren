@@ -108,6 +108,23 @@ class Terrain {
         vertices.add(nz)
         vertices.add(i * invW)
         vertices.add(j * invD)
+        // Tangent. For a heightmap, the +U axis aligns with world
+        // +X; project onto the per-vertex tangent plane so it stays
+        // orthogonal to the normal even on sloped cells. Bitangent
+        // sign +1.
+        var tx = 1 - nx * nx
+        var ty = -nx * ny
+        var tz = -nx * nz
+        var tlen = (tx * tx + ty * ty + tz * tz).sqrt
+        if (tlen > 0.0001) {
+          tx = tx / tlen
+          ty = ty / tlen
+          tz = tz / tlen
+        }
+        vertices.add(tx)
+        vertices.add(ty)
+        vertices.add(tz)
+        vertices.add(1)
       }
     }
 
