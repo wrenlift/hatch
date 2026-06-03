@@ -35,7 +35,7 @@ Plan source: [game-engine-parity-plan.md](./game-engine-parity-plan.md)
 | 11.2 | Instanced draw (Renderer3D / Renderer2D) | 🟡 | small | Per-instance attribute layout not caller-declared |
 | 11.3 | @hatch:noise | ✅ | small | Missing 4D variants |
 | 11.4 | @hatch:spatial (BVH / quad/oct trees / cluster grid) | ✅ | — | — |
-| 11.5 | Frustum culling + indirect draw | 🟡 | medium | GPU indirect-draw path absent |
+| 11.5 | Frustum culling + indirect draw | 🟡 | small | CPU cull shipped (`Frustum.cull(bvh, camera, out)`); indirect-draw surface landed 2026-06-03 (`RenderPass.drawIndexedIndirect`); compute-cull pipeline still TODO |
 | 11.6 | LOD selection (MeshLOD + drawInstancedLOD) | ✅ | small | Compute LOD-bucketer waits on 11.5 |
 | 11.7 | Procedural terrain (chunks + streaming) | 🟡 | medium | No triplanar splat material; no per-chunk LOD |
 | 11.8 | Foliage scatter | 🟡 | medium | No transform packing; no wind sway shader |
@@ -389,7 +389,7 @@ A pragmatic order picking highest-impact unblocked items first.
 2. ~~**3 — half-axis gamepad fix**~~ ✅ shipped 2026-06-03 (rectifies `+`/`-` suffix in `actions.wren:bindingValue_`).
 3. ~~**2 — ECS components**~~ ✅ shipped 2026-06-03 in `@hatch:game/ecs_components.wren` (consolidated with the existing scene components).
 4. ~~**10 — debug overlays**~~ ✅ shipped 2026-06-03 (`EntityInspector`, `PhysicsDebugDraw`, `InputRecorder`, `InputReplayer`). 3D physics wireframe blocked on `@hatch:gpu` 3D line-drawer.
-5. **11.5 — indirect draw + GPU cull** — foundational for massive-world targets; gates the compute LOD-bucketer (11.6 finishing) and indirect terrain/foliage variants. **← NEXT**
+5. **11.5 — indirect draw + GPU cull** — CPU cull (`Frustum.cull(bvh, camera, out)`) already shipped via `@hatch:gpu` Frustum + `@hatch:spatial` BVH. Indirect-draw surface landed 2026-06-03 (`RenderPass.drawIndexedIndirect(buffer, offset)`). What's left: a compute shader that reads instance AABBs + frustum planes and writes the indirect-args buffer, plus a `Renderer3D.drawInstancedIndirect` wrapper that consumes it. **← NEXT (compute-cull pipeline)**
 6. **11.2 — per-instance attribute layout** — small follow-on to 11.5 / 11.6; once indirect lands, callers want tint/UV-rect/LOD slots.
 7. **11.7 — triplanar terrain material + per-chunk LOD** — depends on 11.6 (shipped) and benefits from 11.5; brings the procedural-world demo closer to "real game" surface.
 8. **11.8 — foliage transform pack + wind shader** — depends on 11.6 + 11.7; together these three deliver the "open-world" exit gate.

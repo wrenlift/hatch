@@ -1027,6 +1027,38 @@ class RenderPass {
     return this
   }
 
+  /// GPU-driven indexed draw. `indirectBuffer` holds a packed
+  /// `DrawIndexedIndirectArgs` record at byte `offset`:
+  ///
+  /// ```text
+  /// struct DrawIndexedIndirectArgs {
+  ///   u32 indexCount,
+  ///   u32 instanceCount,
+  ///   u32 firstIndex,
+  ///   i32 baseVertex,
+  ///   u32 firstInstance,
+  /// }
+  /// ```
+  ///
+  /// (5 × u32 = 20 bytes per draw, matching wgpu's
+  /// `wgpu::util::DrawIndexedIndirect` layout.) A compute shader
+  /// or upstream CPU pass writes the args buffer; the render pass
+  /// then issues the draw without any further GPU↔CPU round-trip.
+  /// Required for GPU-driven culling + instancing (Phase 11.5).
+  ///
+  /// @param {Buffer} indirectBuffer. Buffer must have `usage`
+  ///   including `"indirect"`.
+  /// @param {Num}    offset. Byte offset into `indirectBuffer`.
+  /// @returns {RenderPass}
+  drawIndexedIndirect(indirectBuffer, offset) {
+    _cmds.add({
+      "op":     "drawIndexedIndirect",
+      "buffer": indirectBuffer.id,
+      "offset": offset
+    })
+    return this
+  }
+
   /// Flush the recorded commands into the parent encoder.
   /// Closes this render pass; call once per pass.
   end {
