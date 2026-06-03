@@ -99,13 +99,37 @@
 class AssetLoader {
   /// Construct an empty loader.
   construct new() {
-    _queue          = []     // List<{ name, load }>
-    _loaded         = {}     // name → asset
-    _onProgress     = null
-    _onComplete     = null
-    _onError        = null
-    _running        = false
-    _originalTotal  = 0
+    _queue           = []     // List<{ name, load }>
+    _loaded          = {}     // name → asset
+    _onProgress      = null
+    _onComplete      = null
+    _onError         = null
+    _running         = false
+    _originalTotal   = 0
+    // Cap on the number of decode-kind entries kicked off in
+    // parallel when the head reaches the first decode entry. 32
+    // is a sane default for typical scene loads (10-30 textures);
+    // a level editor with 1000 icons would lower it via the
+    // `decodeBatchCap = N` setter, and a single big load might
+    // raise it.
+    _decodeBatchCap  = 32
+  }
+
+  /// Cap on the number of `queueDecode` entries that have their
+  /// `beginFn` invoked in parallel. The first decode entry to
+  /// reach the head triggers a prefetch sweep of the next
+  /// `decodeBatchCap` decode entries — without this, decodes run
+  /// serially and the worker-thread parallelism is wasted. Lower
+  /// the cap when individual decodes are large enough that
+  /// memory pressure (raw RGBA buffers held in the JobRegistry
+  /// until drained) becomes a concern.
+  /// @returns {Num}
+  decodeBatchCap { _decodeBatchCap }
+
+  /// @param {Num} n. Bounded to `[1, 4096]`.
+  decodeBatchCap=(n) {
+    if (!(n is Num) || n < 1) Fiber.abort("AssetLoader.decodeBatchCap: must be a positive Num.")
+    _decodeBatchCap = (n > 4096) ? 4096 : n.floor
   }
 
   /// Queue an asset for loading. `loadFn` is a zero-arg `Fn`
@@ -156,6 +180,58 @@ class AssetLoader {
       Fiber.abort("AssetLoader.queueAsync: loadFn must be a Fn, got %(loadFn.type)")
     }
     _queue.add({ "name": name, "load": loadFn, "async": true })
+  }
+
+  /// Queue a poll-handle-style asset — typically a non-blocking
+  /// PNG decode (`Image.decodeBegin`) but the pattern is generic
+  /// for any "kick off work, poll each frame, drain once ready"
+  /// shape. The loader drives it in two stages over multiple
+  /// frames:
+  ///
+  ///   1. On the entry's FIRST `update(dt)`, calls
+  ///      `beginFn` and stashes whatever it returns as the
+  ///      in-flight handle. `beginFn` is expected to return an
+  ///      object that responds to `isReady`, `isFailed`,
+  ///      `result`, `errorMessage`. (`ImageDecodeHandle` fits.)
+  ///   2. On every subsequent `update(dt)`, polls the handle.
+  ///      While still pending, the entry stays at the head of
+  ///      the queue — no progress is fired, no other entries
+  ///      advance. On ready: `finishFn.call(handle.result)`,
+  ///      whatever it returns is stored under `name`, progress
+  ///      + complete fire as normal. On failed:
+  ///      `onError.call(name, handle.errorMessage)` and the
+  ///      entry is dropped.
+  ///
+  /// ## Example
+  ///
+  /// ```wren
+  /// loader.queueDecode("hero_diffuse",
+  ///   Fn.new { Image.decodeBegin(db.bytes("hero_diffuse.png")) },
+  ///   Fn.new {|img|  device.uploadImage(img, {"format": "rgba8unorm-srgb"}) })
+  /// ```
+  ///
+  /// @param {String} name
+  /// @param {Fn}     beginFn.  Returns a handle (no args).
+  /// @param {Fn}     finishFn. Receives `handle.result`, returns
+  ///                           whatever should be stored under `name`.
+  queueDecode(name, beginFn, finishFn) {
+    if (!(name is String)) {
+      Fiber.abort("AssetLoader.queueDecode: name must be a String, got %(name.type)")
+    }
+    if (!(beginFn is Fn)) {
+      Fiber.abort("AssetLoader.queueDecode: beginFn must be a Fn, got %(beginFn.type)")
+    }
+    if (!(finishFn is Fn)) {
+      Fiber.abort("AssetLoader.queueDecode: finishFn must be a Fn, got %(finishFn.type)")
+    }
+    _queue.add({
+      "name":     name,
+      "begin":    beginFn,
+      "finish":   finishFn,
+      "kind":     "decode",
+      "handle":   null,
+      "started":  false
+    })
   }
 
   /// Set the per-item progress callback. Fires once per resolved
@@ -250,16 +326,104 @@ class AssetLoader {
       if (_onComplete != null) _onComplete.call(_loaded)
       return
     }
-    var entry = _queue.removeAt(0)
+    // Decode-kind entries live in the queue across multiple update
+    // ticks — peek at the head first, only `removeAt(0)` once the
+    // entry has actually resolved (or failed). For sync / async
+    // entries the resolve always happens this tick.
+    var entry = _queue[0]
     var name  = entry["name"]
     var asset
-    if (entry["async"] == true) {
+    var dropEntry = false
+    var firedProgress = false
+
+    if (entry["kind"] == "decode") {
+      // First time we see a decode entry at the head, walk the
+      // whole queue forward and kick off `beginFn` on every
+      // not-yet-started decode entry. This lets PNG decodes run in
+      // parallel on their worker threads — without this every entry
+      // would wait for the previous one's poll loop to drain before
+      // its own worker even starts, defeating the point of
+      // backgrounded decode. Bound the prefetch by `decodeBatchCap`
+      // so a 1000-image scene doesn't spawn 1000 std::threads at once.
+      var qi = 0
+      var kicked = 0
+      while (qi < _queue.count && kicked < _decodeBatchCap) {
+        var qe = _queue[qi]
+        if (qe["kind"] == "decode" && !qe["started"]) {
+          qe["started"] = true
+          var bfib = Fiber.new(qe["begin"])
+          var h = bfib.try()
+          if (bfib.error != null) {
+            qe["handle"] = null
+            qe["beginError"] = bfib.error
+          } else {
+            qe["handle"] = h
+          }
+          kicked = kicked + 1
+        }
+        qi = qi + 1
+      }
+      // Surface the head entry's begin error (if any) on the same
+      // tick — keeps error semantics identical to the non-decode path.
+      if (entry["beginError"] != null) {
+        var err = entry["beginError"]
+        dropEntry = true
+        if (_onError != null) {
+          _onError.call(name, err)
+        } else {
+          Fiber.abort("AssetLoader.update: '%(name)' begin failed: %(err)")
+        }
+      }
+
+      // Subsequent visits OR same-tick visit on a fast-path handle
+      // (wasm32 decode runs inline so `isReady` is true immediately
+      // after the begin call above): poll, drain on ready, error
+      // on failure.
+      if (!dropEntry) {
+        var handle = entry["handle"]
+        if (handle == null) {
+          // Source slot was empty — finish step gets null and routes
+          // to its no-op branch. Drain immediately.
+          asset = entry["finish"].call(null)
+          _loaded[name] = asset
+          dropEntry = true
+        } else if (handle.isReady) {
+          var finishFiber = Fiber.new {
+            return entry["finish"].call(handle.result)
+          }
+          asset = finishFiber.try()
+          if (finishFiber.error != null) {
+            dropEntry = true
+            if (_onError != null) {
+              _onError.call(name, finishFiber.error)
+            } else {
+              Fiber.abort("AssetLoader.update: '%(name)' finish failed: %(finishFiber.error)")
+            }
+          } else {
+            _loaded[name] = asset
+            dropEntry = true
+          }
+        } else if (handle.isFailed) {
+          dropEntry = true
+          var msg = handle.errorMessage
+          if (_onError != null) {
+            _onError.call(name, msg)
+          } else {
+            Fiber.abort("AssetLoader.update: '%(name)' decode failed: %(msg)")
+          }
+        }
+        // else still pending — leave entry at head, return so the
+        // game loop renders a frame, retry next update.
+      }
+    } else if (entry["async"] == true) {
+      dropEntry = true
       // Direct invocation: yields the calling fiber chain to the
       // browser bridge; no Fiber.new wrap so the bridge can drive
       // the same fiber the .await is parked on.
       asset = entry["load"].call()
       _loaded[name] = asset
     } else {
+      dropEntry = true
       // Synchronous: wrap in a child fiber so we can route abort
       // through onError without the loader itself dying.
       var fiber = Fiber.new(entry["load"])
@@ -274,11 +438,17 @@ class AssetLoader {
         _loaded[name] = asset
       }
     }
-    var fraction = _originalTotal == 0 ? 1 : _loaded.count / _originalTotal
-    if (_onProgress != null) {
-      _onProgress.call(fraction, _loaded.count, _originalTotal)
+
+    if (dropEntry) {
+      _queue.removeAt(0)
+      var fraction = _originalTotal == 0 ? 1 : _loaded.count / _originalTotal
+      if (_onProgress != null) {
+        _onProgress.call(fraction, _loaded.count, _originalTotal)
+      }
+      firedProgress = true
     }
-    if (_queue.count == 0) {
+
+    if (firedProgress && _queue.count == 0) {
       _running = false
       if (_onComplete != null) _onComplete.call(_loaded)
     }
