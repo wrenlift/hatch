@@ -2564,10 +2564,13 @@ class Mesh {
   static cube(device) { cube(device, 1) }
   static cube(device, half) {
     var h = half
-    // Vertices: 6 faces, 4 verts each = 24, each (pos.xyz, n.xyz, u, v).
+    // Vertices: 6 faces, 4 verts each = 24. Layout per vertex:
+    //   pos.xyz (3) + normal.xyz (3) + uv.xy (2) + tangent.xyzw (4)
+    // = 12 floats. Tangent points along the face's +U direction;
+    // handedness is +1 for all faces (standard glTF convention).
     var v = []
-    var pushFace = Fn.new {|nx, ny, nz, p0, p1, p2, p3|
-      // Each face: 4 verts, normal shared, uvs (0,0)(1,0)(1,1)(0,1).
+    var pushFace = Fn.new {|nx, ny, nz, tx, ty, tz, p0, p1, p2, p3|
+      // Each face: 4 verts, normal + tangent shared, uvs (0,0)(1,0)(1,1)(0,1).
       var quad = [p0, p1, p2, p3]
       var uvs  = [[0, 0], [1, 0], [1, 1], [0, 1]]
       var i = 0
@@ -2580,27 +2583,35 @@ class Mesh {
         v.add(nz)
         v.add(uvs[i][0])
         v.add(uvs[i][1])
+        v.add(tx)
+        v.add(ty)
+        v.add(tz)
+        v.add(1.0)
         i = i + 1
       }
     }
 
-    // +X face
-    pushFace.call( 1, 0, 0,
+    // For each face: normal + a tangent that's perpendicular to it
+    // and lies along the face's +U axis (the direction the UV "u"
+    // grows). Bitangent = cross(normal, tangent), handedness +1.
+
+    // +X face — normal +X, tangent along -Z (so U grows -Z → +Z is wrong; check uv layout)
+    pushFace.call( 1, 0, 0,   0, 0,  1,
       [ h, -h, -h], [ h, -h,  h], [ h,  h,  h], [ h,  h, -h])
-    // -X face
-    pushFace.call(-1, 0, 0,
+    // -X face — normal -X, tangent along +Z
+    pushFace.call(-1, 0, 0,   0, 0, -1,
       [-h, -h,  h], [-h, -h, -h], [-h,  h, -h], [-h,  h,  h])
-    // +Y face
-    pushFace.call( 0, 1, 0,
+    // +Y face — normal +Y, tangent along +X
+    pushFace.call( 0, 1, 0,   1, 0,  0,
       [-h,  h, -h], [ h,  h, -h], [ h,  h,  h], [-h,  h,  h])
-    // -Y face
-    pushFace.call( 0,-1, 0,
+    // -Y face — normal -Y, tangent along +X
+    pushFace.call( 0,-1, 0,   1, 0,  0,
       [-h, -h,  h], [ h, -h,  h], [ h, -h, -h], [-h, -h, -h])
-    // +Z face
-    pushFace.call( 0, 0, 1,
+    // +Z face — normal +Z, tangent along -X
+    pushFace.call( 0, 0, 1,  -1, 0,  0,
       [ h, -h,  h], [-h, -h,  h], [-h,  h,  h], [ h,  h,  h])
-    // -Z face
-    pushFace.call( 0, 0,-1,
+    // -Z face — normal -Z, tangent along +X
+    pushFace.call( 0, 0,-1,   1, 0,  0,
       [-h, -h, -h], [ h, -h, -h], [ h,  h, -h], [-h,  h, -h])
 
     // Indices: 6 faces × 2 triangles × 3 = 36, base offsets 0,4,8,...
@@ -2620,13 +2631,16 @@ class Mesh {
   }
 
   /// Flat plane on the X-Z axis (Y up), centred on origin.
+  /// Vertex layout: pos.xyz + normal.xyz + uv.xy + tangent.xyzw =
+  /// 12 floats. Tangent points along +X (the U direction), the
+  /// bitangent (cross(normal, tangent) = +Z) covers the V axis.
   static plane(device, size) {
     var h = size / 2
     var v = [
-      -h, 0, -h,  0, 1, 0,  0, 0,
-       h, 0, -h,  0, 1, 0,  1, 0,
-       h, 0,  h,  0, 1, 0,  1, 1,
-      -h, 0,  h,  0, 1, 0,  0, 1
+      -h, 0, -h,  0, 1, 0,  0, 0,  1, 0, 0, 1,
+       h, 0, -h,  0, 1, 0,  1, 0,  1, 0, 0, 1,
+       h, 0,  h,  0, 1, 0,  1, 1,  1, 0, 0, 1,
+      -h, 0,  h,  0, 1, 0,  0, 1,  1, 0, 0, 1
     ]
     var indices = [0, 1, 2, 0, 2, 3]
     return Mesh.fromArrays(device, v, indices)
