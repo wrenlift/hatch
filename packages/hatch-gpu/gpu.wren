@@ -26,5 +26,10 @@ import "gpu_native" for GpuCore, Gpu, Device, Buffer, ShaderModule, Shader, Text
 #!native
 import "gpu_shadows" for CascadeShadows, PointShadow
 
+// Pure-Wren — no native/web split needed; gpu_cull builds its
+// pipeline against the abstract Device interface that both
+// backends already implement.
+import "gpu_cull" for ComputeCull
+
 #!wasm
 import "gpu_web" for GpuCore, Gpu, Device, Buffer, ShaderModule, Shader, Texture, TextureView, Sampler, BindGroupLayout, PipelineLayout, BindGroup, RenderPipeline, ComputePipeline, CommandEncoder, RenderPass, ComputePass, Camera2D, Renderer2D, Sprite, Camera3D, Frustum, Lod, Light, Mesh, Material, Renderer3D, LivePipeline, Surface, SurfaceFrame

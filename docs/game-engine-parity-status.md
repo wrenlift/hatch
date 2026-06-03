@@ -35,7 +35,7 @@ Plan source: [game-engine-parity-plan.md](./game-engine-parity-plan.md)
 | 11.2 | Instanced draw (Renderer3D / Renderer2D) | 🟡 | small | Per-instance attribute layout not caller-declared |
 | 11.3 | @hatch:noise | ✅ | small | Missing 4D variants |
 | 11.4 | @hatch:spatial (BVH / quad/oct trees / cluster grid) | ✅ | — | — |
-| 11.5 | Frustum culling + indirect draw | 🟡 | small | CPU cull shipped (`Frustum.cull(bvh, camera, out)`); indirect-draw surface landed 2026-06-03 (`RenderPass.drawIndexedIndirect`); compute-cull pipeline still TODO |
+| 11.5 | Frustum culling + indirect draw | ✅ | — | CPU cull (`Frustum.cull`) + GPU compute cull (`ComputeCull.cull` writes a `DrawIndexedIndirectArgs` buffer) + `Renderer3D.drawMeshInstancedIndirect` consumer — all shipped 2026-06-03 |
 | 11.6 | LOD selection (MeshLOD + drawInstancedLOD) | ✅ | small | Compute LOD-bucketer waits on 11.5 |
 | 11.7 | Procedural terrain (chunks + streaming) | 🟡 | medium | No triplanar splat material; no per-chunk LOD |
 | 11.8 | Foliage scatter | 🟡 | medium | No transform packing; no wind sway shader |
@@ -48,6 +48,7 @@ Plan source: [game-engine-parity-plan.md](./game-engine-parity-plan.md)
 - **0a — @hatch:math primitives** — Math/Ease/Vec2/Vec3/Vec4/Mat4/Quat/Vec4Batch + NumRange shipped. Mat3 deferred (GPU shaders use `mat3x3<f32>` directly; no Wren-side caller needs it). Color split into its own package.
 - **0c — @hatch:color** — `Color.rgb`/`rgba`/`hsv`/`hex` + named constants + `lerp` / `scale` / `withAlpha` / `toVec4` (`hatch/packages/hatch-color/color.wren`). 17/17 spec tests.
 - **2 — ECS game components** — `ActiveCamera` marker + `SpriteRenderer` + `Animator` + `CameraSystem` / `SpriteRenderSystem` / `AnimationSystem` / `AudioSystem` in `@hatch:game/ecs_components.wren`. Re-exported via `@hatch:game`. 14/14 spec tests.
+- **11.5 — Frustum culling + GPU indirect draw** — `Frustum.cull(bvh, camera, out)` (CPU, via `@hatch:gpu` Frustum + `@hatch:spatial` BVH), `ComputeCull` (`hatch/packages/hatch-gpu/gpu_cull.wren` — WGSL compute pass that reads instance bounding spheres + frustum-planes UBO and atomically populates a `DrawIndexedIndirectArgs` buffer + a compacted-instance SSBO), `Renderer3D.drawMeshInstancedIndirect(mesh, material, instanceBuffer, indirectBuffer)` consumer. Smoke spec: 2/4 instances admitted at the expected camera angle.
 - **10 — Debug overlays** — `FrameTimer` + `DebugOverlay` (existing) + new `EntityInspector` (live entity / component listing with up/down scroll) + `PhysicsDebugDraw` (2D wireframe colliders — box / ball / capsule via projection closure) + `InputRecorder` / `InputReplayer` (deterministic replay capture). In `@hatch:game/debug.wren`; 15 new spec tests. 3D physics wireframe waits on a 3D line-drawer primitive in `@hatch:gpu`.
 - **3 — Input + gamepad** — Actions API + gilrs polling end-to-end (`hatch/packages/hatch-game/actions.wren:156`, `plugins/wlift_window/src/lib.rs:139`). Half-axis sign suffix bug fixed at `actions.wren:131-160`; 3 new spec tests for full / `+` / `-` axes.
 - **4 — Physics completeness** — Raycast, shape-cast, 4 joint kinds, sensors, contact events (`hatch/packages/hatch-physics/physics.wren:186`, `plugins/wlift_physics/src/lib.rs:1637`, `:255`).
@@ -389,7 +390,7 @@ A pragmatic order picking highest-impact unblocked items first.
 2. ~~**3 — half-axis gamepad fix**~~ ✅ shipped 2026-06-03 (rectifies `+`/`-` suffix in `actions.wren:bindingValue_`).
 3. ~~**2 — ECS components**~~ ✅ shipped 2026-06-03 in `@hatch:game/ecs_components.wren` (consolidated with the existing scene components).
 4. ~~**10 — debug overlays**~~ ✅ shipped 2026-06-03 (`EntityInspector`, `PhysicsDebugDraw`, `InputRecorder`, `InputReplayer`). 3D physics wireframe blocked on `@hatch:gpu` 3D line-drawer.
-5. **11.5 — indirect draw + GPU cull** — CPU cull (`Frustum.cull(bvh, camera, out)`) already shipped via `@hatch:gpu` Frustum + `@hatch:spatial` BVH. Indirect-draw surface landed 2026-06-03 (`RenderPass.drawIndexedIndirect(buffer, offset)`). What's left: a compute shader that reads instance AABBs + frustum planes and writes the indirect-args buffer, plus a `Renderer3D.drawInstancedIndirect` wrapper that consumes it. **← NEXT (compute-cull pipeline)**
+5. ~~**11.5 — indirect draw + GPU cull**~~ ✅ shipped 2026-06-03: `ComputeCull.cull` (WGSL compute shader, sphere-vs-frustum, atomic visible-count), `Renderer3D.drawMeshInstancedIndirect`. Smoke spec validates 2/4 visible at the expected camera angle.
 6. **11.2 — per-instance attribute layout** — small follow-on to 11.5 / 11.6; once indirect lands, callers want tint/UV-rect/LOD slots.
 7. **11.7 — triplanar terrain material + per-chunk LOD** — depends on 11.6 (shipped) and benefits from 11.5; brings the procedural-world demo closer to "real game" surface.
 8. **11.8 — foliage transform pack + wind shader** — depends on 11.6 + 11.7; together these three deliver the "open-world" exit gate.
