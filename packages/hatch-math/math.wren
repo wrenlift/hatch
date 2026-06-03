@@ -563,14 +563,19 @@ class Mat4 {
     return m
   }
 
+  /// Orthographic projection with **WebGPU clip-space depth**
+  /// (`z ∈ [0, 1]`). The `z = -near` plane maps to `z_clip = 0`,
+  /// `z = -far` maps to `z_clip = 1`. Using OpenGL's `[-1, 1]`
+  /// convention silently clips half the depth range on
+  /// WebGPU / wgpu, which broke shadow mapping for months.
   static ortho(left, right, bottom, top, near, far) {
     var m = Mat4.new()
     m.set(0, 0, 2 / (right - left))
     m.set(1, 1, 2 / (top - bottom))
-    m.set(2, 2, -2 / (far - near))
+    m.set(2, 2, -1 / (far - near))
     m.set(0, 3, -(right + left) / (right - left))
     m.set(1, 3, -(top + bottom) / (top - bottom))
-    m.set(2, 3, -(far + near) / (far - near))
+    m.set(2, 3, -near / (far - near))
     m.set(3, 3, 1)
     return m
   }
@@ -1107,4 +1112,111 @@ class Vec4Batch {
   }
 
   toString { "Vec4Batch(count=%(_count))" }
+}
+
+/// Closed numeric range `[lo, hi]`. Used pervasively for particle
+/// lifetimes, jittered sizes, animation timing, and any "pick a
+/// value between A and B" surface. Construct with `NumRange.new(lo,
+/// hi)` or the alias `NumRange.of(lo, hi)`. `NumRange.point(v)` is a
+/// degenerate single-value range.
+///
+/// ## Example
+///
+/// ```wren
+/// var lifetime = NumRange.new(0.5, 1.5)
+/// var sample   = lifetime.random          // uniform in [0.5, 1.5)
+/// var midpoint = lifetime.sample(0.5)     // 1.0
+/// ```
+class NumRange {
+  /// Build a range from its lower and upper bound. `lo` may
+  /// exceed `hi` — callers reading `span` get a negative value
+  /// and `random` still returns a uniform sample between them.
+  ///
+  /// @param {Num} lo
+  /// @param {Num} hi
+  construct new(lo, hi) {
+    _lo = lo
+    _hi = hi
+  }
+
+  /// Alias for `NumRange.new` — reads better in declarations
+  /// (`NumRange.of(0, 1)`).
+  static of(lo, hi) { NumRange.new(lo, hi) }
+
+  /// Degenerate range collapsed to a single value. `sample(t)`
+  /// returns `v` for any `t`, `random` returns `v`.
+  static point(v) { NumRange.new(v, v) }
+
+  /// Unit range `[0, 1]`. Convenience constant — useful for
+  /// normalised inputs (`NumRange.unit.sample(t)` is identity).
+  static unit { NumRange.new(0, 1) }
+
+  lo  { _lo }
+  hi  { _hi }
+  lo=(v) { _lo = v }
+  hi=(v) { _hi = v }
+
+  /// `hi - lo`. May be negative if the range is inverted.
+  span { _hi - _lo }
+
+  /// `(lo + hi) / 2`. The geometric midpoint.
+  mid  { (_lo + _hi) / 2 }
+
+  /// Linear interpolation across the range. `t = 0` returns
+  /// `lo`, `t = 1` returns `hi`. `t` outside `[0, 1]` extrapolates.
+  /// For uniform random draws, pass a `Random.float()` value
+  /// (Wren stdlib `random` or `@hatch:random`) — keeping math
+  /// stdlib-agnostic about RNG choice.
+  ///
+  /// @param {Num} t
+  sample(t) { _lo + (_hi - _lo) * t }
+
+  /// `true` when `v` is in `[lo, hi]` (inclusive both ends).
+  /// Inverted ranges (`lo > hi`) test against the spanning
+  /// interval, not the directed order.
+  contains(v) {
+    var a = _lo < _hi ? _lo : _hi
+    var b = _lo < _hi ? _hi : _lo
+    return v >= a && v <= b
+  }
+
+  /// Clamps `v` into the range. For inverted ranges (`lo > hi`)
+  /// the spanning interval is used.
+  clamp(v) {
+    var a = _lo < _hi ? _lo : _hi
+    var b = _lo < _hi ? _hi : _lo
+    if (v < a) return a
+    if (v > b) return b
+    return v
+  }
+
+  /// Maps `v` from this range onto `target` linearly. A value at
+  /// `lo` produces `target.lo`; a value at `hi` produces
+  /// `target.hi`. Inputs outside this range extrapolate.
+  ///
+  /// @param {Num}   v
+  /// @param {NumRange} target
+  remap(v, target) {
+    var s = span
+    if (s == 0) return target.lo
+    return target.lo + (v - _lo) * target.span / s
+  }
+
+  // Host-random for `random`. We pull from `Num.random` so the
+  // package stays stdlib-only — seedable streams go through
+  // `@hatch:random`.
+  static rand_() {
+    // `Num.random` is Wren's built-in `Random.float()` equivalent.
+    var r = Random.new()
+    return r.float()
+  }
+
+  approxEq(o) { approxEq(o, 1e-6) }
+  approxEq(o, eps) {
+    return (_lo - o.lo).abs <= eps && (_hi - o.hi).abs <= eps
+  }
+
+  ==(o) { o is NumRange && _lo == o.lo && _hi == o.hi }
+  !=(o) { !(this == o) }
+  toString { "NumRange(%(_lo), %(_hi))" }
 }

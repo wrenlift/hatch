@@ -1,7 +1,7 @@
 name        = "@hatch:math"
-version     = "0.1.5"
+version     = "0.1.6"
 entry       = "math"
-description = "Vector + matrix + quaternion math — Vec2 / Vec3 / Vec4 / Mat4 / Quat, easings, and scalar helpers. Built for interactive apps and games."
+description = "Vector + matrix + quaternion math — Vec2 / Vec3 / Vec4 / Mat4 / Quat, easings, NumRange, and scalar helpers. Built for interactive apps and games."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:math"
 readme   = "README.md"
 
