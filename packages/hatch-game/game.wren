@@ -74,6 +74,21 @@ import "./scene" for
   TransformPropagation,
   SceneRenderer3D
 
+// ECS-shaped Phase 2 components + systems. `Active{Camera}` marks
+// the renderer's primary camera, `SpriteRenderer` wraps a 2D
+// drawable, `Animator` wraps an `AnimationPlayer`. The systems
+// (`CameraSystem`, `SpriteRenderSystem`, `AnimationSystem`,
+// `AudioSystem`) are static `run(world, …)` entry points called
+// once per frame.
+import "./ecs_components" for
+  ActiveCamera,
+  SpriteRenderer,
+  Animator,
+  CameraSystem,
+  SpriteRenderSystem,
+  AnimationSystem,
+  AudioSystem
+
 // Semantic input mapping. `Actions.define("jump", [...])` and
 // `Actions.justPressed("jump")` decouple game code from raw key
 // codes; `Actions.emitter` exposes the press / release stream
