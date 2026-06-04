@@ -38,6 +38,17 @@ name: Ensure publish workflows dispatched
 on:
   push:
     branches: [main]
+  workflow_run:
+    # Re-sweep every time a publish workflow finishes. This is what
+    # makes the sweep topology-aware: tier-N's release-creation fires
+    # the sweep, which then dispatches tier-N+1 packages whose deps
+    # are now all available. Without this, a wave would advance
+    # one tier per hourly cron tick — chaining on completions
+    # collapses the whole wave into a few minutes.
+    workflows:
+      - "Publish pure-Wren package"
+      - "Publish plugin-backed package"
+    types: [completed]
   schedule:
     # Hourly safety net at :17 to avoid colliding with the
     # `publish-sweep.yml` 06:00 daily run.
@@ -79,6 +90,7 @@ jobs:
           skipped_release=0
           skipped_no_pkg=0
           skipped_off_head=0
+          skipped_deps=0
           dispatched_list=""
 
           # Only consider tags pointing at the current HEAD commit.
@@ -139,6 +151,65 @@ jobs:
               continue
             fi
 
+            # Topology gate: if any `@hatch:X = "Y.Z"` dep in the
+            # [dependencies] section of this package's hatchfile
+            # doesn't yet have a corresponding GitHub Release at
+            # `publish/hatch-X@Y.Z`, defer to the next sweep.
+            # Without this, publishing N packages in parallel
+            # races their dep fetches against still-uploading
+            # release assets and most builds 404 on missing
+            # registry artifacts. With the workflow_run trigger
+            # above, the deferred packages get re-checked
+            # immediately when their upstreams' publishes
+            # complete, so the wave drains one tier at a time.
+            #
+            # Spec-only deps (`[spec-dependencies]`) and
+            # `[plugin_source]` are skipped — neither shows up
+            # in the bundled artifact's runtime resolution.
+            deps_missing=""
+            in_deps_section=0
+            while IFS= read -r line; do
+              # Track which TOML table we're currently inside;
+              # only the [dependencies] table gates the publish.
+              if [[ "$line" =~ ^\[([a-zA-Z_-]+)\] ]]; then
+                if [ "${BASH_REMATCH[1]}" = "dependencies" ]; then
+                  in_deps_section=1
+                else
+                  in_deps_section=0
+                fi
+                continue
+              fi
+              [ $in_deps_section -eq 0 ] && continue
+
+              # Two dep shapes to recognise:
+              #   "@hatch:X" = "Y.Z"
+              #   "@hatch:X" = { ..., version = "Y.Z", ... }
+              # The semver capture allows a `-pre.1`-style
+              # suffix because hatch-publish-pkg's resolve step
+              # accepts the same.
+              dep_name=""
+              dep_ver=""
+              if [[ "$line" =~ ^[[:space:]]*\"@hatch:([a-zA-Z0-9_-]+)\"[[:space:]]*=[[:space:]]*\"([0-9]+\.[0-9]+\.[0-9]+[a-zA-Z0-9.+-]*)\" ]]; then
+                dep_name="${BASH_REMATCH[1]}"
+                dep_ver="${BASH_REMATCH[2]}"
+              elif [[ "$line" =~ ^[[:space:]]*\"@hatch:([a-zA-Z0-9_-]+)\"[[:space:]]*=[[:space:]]*\{.*version[[:space:]]*=[[:space:]]*\"([0-9]+\.[0-9]+\.[0-9]+[a-zA-Z0-9.+-]*)\" ]]; then
+                dep_name="${BASH_REMATCH[1]}"
+                dep_ver="${BASH_REMATCH[2]}"
+              fi
+              [ -z "$dep_name" ] && continue
+
+              dep_tag="publish/hatch-${dep_name}@${dep_ver}"
+              if ! gh release view "$dep_tag" --repo "$REPO" >/dev/null 2>&1; then
+                deps_missing="${deps_missing} ${dep_tag}"
+              fi
+            done < "$hf"
+
+            if [ -n "$deps_missing" ]; then
+              echo "::notice::deferring $pkg — missing deps:${deps_missing}"
+              skipped_deps=$((skipped_deps + 1))
+              continue
+            fi
+
             # Pure-Wren vs plugin-backed routing matches
             # `publish-pkg.yml` / `publish-plugin.yml`'s own
             # `[plugin_source]` gate.
@@ -158,6 +229,7 @@ jobs:
             echo "### Ensure publish dispatched"
             echo ""
             echo "- dispatched: **$dispatched**"
+            echo "- deferred (deps pending): $skipped_deps"
             echo "- skipped (release exists): $skipped_release"
             echo "- skipped (off HEAD — past waves): $skipped_off_head"
             echo "- skipped (no package dir): $skipped_no_pkg"
