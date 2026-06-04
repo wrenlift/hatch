@@ -346,13 +346,24 @@ jobs:
           HATCH_CACHE_DIR: ${{ github.workspace }}/.hatch-cache
           # Packages whose specs need real hardware (audio device,
           # GPU context, window server) and therefore can't run
-          # on a vanilla GitHub runner. The build-plugins step
-          # still compiles them; the spec run skips them with a
-          # warning. Move a package out of this list once its
-          # spec is hardware-free OR the runner can be configured
-          # to provide a stub (e.g. `pulseaudio --start
-          # --exit-idle-time=-1` for audio).
-          HATCH_CI_SKIP: "hatch-audio hatch-gpu hatch-window"
+          # on a vanilla GitHub runner, OR are blocked on a known
+          # wren_lift VM bug. The build-plugins step still compiles
+          # them; the spec run skips them with a warning. Move a
+          # package out of this list once its spec is hardware-free
+          # OR the runner can be configured to provide a stub
+          # (e.g. `pulseaudio --start --exit-idle-time=-1` for audio).
+          #
+          # @hatch:postfx — Bloom extends @hatch:game.PostPass, and
+          # loading a pre-built .hatch bundle doesn't populate the
+          # MIR builder's `field_layouts` side-table for the bundle's
+          # classes. The spec runner imports `./postfx` which imports
+          # `./bloom`, and bloom.wren compiles against an empty
+          # known-classes map and panics. The package itself builds
+          # and publishes cleanly via `hatch build` (which DOES
+          # topo-harvest layouts across deps); only the standalone
+          # `wlift spec.wren` path is affected. Unskip once the VM
+          # layout-from-bundle path lands.
+          HATCH_CI_SKIP: "hatch-audio hatch-gpu hatch-window hatch-postfx"
         run: |
           set -u
           wlift="$PWD/bin/wlift"
