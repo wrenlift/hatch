@@ -142,13 +142,23 @@ jobs:
               # Write body to a tempfile and curl with `--data @file`.
               # Inline `-d "$body"` blows past `ARG_MAX` for packages
               # with large doc payloads (e.g. hatch-gpu emits ~150KB
-              # of JSON, exceeding Linux's 128KB single-arg cap).
+              # of JSON, exceeding Linux's 128KB single-arg cap). The
+              # SAME limit applies to the jq invocation that builds
+              # the body — `--argjson d "$docs_json"` passes the full
+              # doc payload as a single argv slot, and hatch-game
+              # (30+ modules, ~150-200KB of JSON) trips the same
+              # `jq: Argument list too long` failure that the curl
+              # mitigation alone was supposed to address.
+              #
+              # Stream docs_json over stdin instead: jq reads its
+              # input via `.` (the standard input filter), so the
+              # payload never touches argv. `--arg n / --arg v` stay
+              # in argv because they're bounded (short strings).
               body_file=$(mktemp)
-              jq -n \
+              printf '%s' "$docs_json" | jq \
                 --arg n "$name" \
                 --arg v "$version" \
-                --argjson d "$docs_json" \
-                '{name:$n, version:$v, docs:$d}' > "$body_file"
+                '{name:$n, version:$v, docs:.}' > "$body_file"
 
               if [ "$DRY_RUN" = "true" ]; then
                 echo "  [dry] would POST /docs-upload ($(wc -c < "$body_file") bytes)"
