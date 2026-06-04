@@ -465,10 +465,21 @@ class Encoder_ {
       return
     }
     // Custom type: try `toJson()` and recurse on its return value.
+    //
+    // The probe uses the list-as-box pattern instead of capturing
+    // `fiber.try()`'s return — `Fiber.try()`'s clean-return slot
+    // reads back as stale memory under both the interpreter and the
+    // tiered JIT (see auto-memory note), so a hook that returns a
+    // freshly-constructed value (string interpolation, map literal)
+    // surfaces as `null` here and the encoder serialises the literal
+    // string "null". Writing through `box[0]` lifts the value out of
+    // the fiber-return slot path entirely.
     var cls = value.type
-    var probed = Fiber.new { value.toJson() }
-    var ret = probed.try()
+    var box = [null]
+    var probed = Fiber.new { box[0] = value.toJson() }
+    probed.try()
     if (probed.error == null) {
+      var ret = box[0]
       if (ret == value) {
         Fiber.abort(
           "JSON.encode: %(cls.name).toJson() returned itself"
