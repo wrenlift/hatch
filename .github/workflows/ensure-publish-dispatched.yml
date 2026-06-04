@@ -166,12 +166,20 @@ jobs:
             # Spec-only deps (`[spec-dependencies]`) and
             # `[plugin_source]` are skipped — neither shows up
             # in the bundled artifact's runtime resolution.
+            # Regex literals stored in variables — `=~` inside `[[`
+            # has subtle quoting rules and the `\"` escapes don't
+            # survive a quoted pattern. Using a variable means bash
+            # treats the value as a regex unchanged.
+            re_section='^\[([a-zA-Z_-]+)\]'
+            re_bare='^[[:space:]]*"@hatch:([a-zA-Z0-9_-]+)"[[:space:]]*=[[:space:]]*"([0-9]+\.[0-9]+\.[0-9]+[a-zA-Z0-9.+-]*)"'
+            re_inline='^[[:space:]]*"@hatch:([a-zA-Z0-9_-]+)"[[:space:]]*=[[:space:]]*\{.*version[[:space:]]*=[[:space:]]*"([0-9]+\.[0-9]+\.[0-9]+[a-zA-Z0-9.+-]*)"'
+
             deps_missing=""
             in_deps_section=0
             while IFS= read -r line; do
               # Track which TOML table we're currently inside;
               # only the [dependencies] table gates the publish.
-              if [[ "$line" =~ ^\[([a-zA-Z_-]+)\] ]]; then
+              if [[ "$line" =~ $re_section ]]; then
                 if [ "${BASH_REMATCH[1]}" = "dependencies" ]; then
                   in_deps_section=1
                 else
@@ -189,10 +197,10 @@ jobs:
               # accepts the same.
               dep_name=""
               dep_ver=""
-              if [[ "$line" =~ ^[[:space:]]*\"@hatch:([a-zA-Z0-9_-]+)\"[[:space:]]*=[[:space:]]*\"([0-9]+\.[0-9]+\.[0-9]+[a-zA-Z0-9.+-]*)\" ]]; then
+              if [[ "$line" =~ $re_bare ]]; then
                 dep_name="${BASH_REMATCH[1]}"
                 dep_ver="${BASH_REMATCH[2]}"
-              elif [[ "$line" =~ ^[[:space:]]*\"@hatch:([a-zA-Z0-9_-]+)\"[[:space:]]*=[[:space:]]*\{.*version[[:space:]]*=[[:space:]]*\"([0-9]+\.[0-9]+\.[0-9]+[a-zA-Z0-9.+-]*)\" ]]; then
+              elif [[ "$line" =~ $re_inline ]]; then
                 dep_name="${BASH_REMATCH[1]}"
                 dep_ver="${BASH_REMATCH[2]}"
               fi
