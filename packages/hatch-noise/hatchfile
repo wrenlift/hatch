@@ -1,5 +1,5 @@
 name        = "@hatch:noise"
-version     = "0.2.1"
+version     = "0.2.2"
 entry       = "noise"
 description = "Procedural noise primitives — 2D + 3D Simplex / Perlin / Value scalars, fractal Brownian motion octave-sum, and a batched Float32Array heightmap sampler. Backed by the `noise` crate so terrain generators, foliage scatter, weather simulations, and texture authoring all share the same deterministic, seeded implementations."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:noise"
@@ -14,7 +14,7 @@ crate = "wlift_noise"
 # Bumped when the cdylib grows new `wlift_noise_*` exports — the
 # Wren wrappers in noise.wren depend on those symbols being
 # present at dlopen time.
-rev   = "4afb174"
+rev   = "7566533e544a91c291796d6c9f92a6bca133f5b4"
 
 [native_libs.wlift_noise]
 # CI populates `libs/<label>/` per-platform; bare-OS keys are the

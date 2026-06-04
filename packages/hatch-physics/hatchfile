@@ -1,5 +1,5 @@
 name        = "@hatch:physics"
-version     = "0.1.8"
+version     = "0.1.9"
 entry       = "physics"
 description = "Rapier-backed physics. `World2D` and `World3D` from one import — bodies, colliders, gravity, force / impulse, position + velocity reads, raycasts, and contact-event streams. Bundles rapier2d + rapier3d in a single cdylib so games never have to choose between dimensions at the package level. Wires into `@hatch:game` for a step-per-frame physics loop."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:physics"
@@ -13,7 +13,7 @@ repo  = "https://github.com/wrenlift/WrenLift.git"
 # 0.1.7 brings raycasts + contact events. Track the wren_lift
 # rev that lit up the `ChannelEventCollector` path on the plugin
 # (still wlift_abi-only on the C surface, no host ABI churn).
-rev   = "05cbc54"
+rev   = "7566533e544a91c291796d6c9f92a6bca133f5b4"
 crate = "wlift_physics"
 
 [native_libs.wlift_physics]

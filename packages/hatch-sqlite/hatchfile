@@ -1,5 +1,5 @@
 name        = "@hatch:sqlite"
-version     = "0.1.10"
+version     = "0.1.11"
 entry       = "sqlite"
 description = "Embedded SQLite. `Database.open(path)` returns a connection; prepared statements with named parameter binding, rows iterated as Maps, transactions, error handling. Backed by rusqlite (bundled libsqlite — no system dependency)."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:sqlite"
@@ -29,7 +29,7 @@ repo  = "https://github.com/wrenlift/WrenLift.git"
 # this `rev` bump when the host's `wlift_plugin_*` C surface
 # grows (additive bumps stay compatible; signature changes need
 # an `ABI_VERSION` bump in `wlift_abi`).
-rev   = "e52ba41"
+rev   = "7566533e544a91c291796d6c9f92a6bca133f5b4"
 crate = "wlift_sqlite"
 
 # Per-platform dylib paths. CI populates `libs/` via the
