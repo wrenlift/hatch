@@ -4,4 +4,4 @@ entry       = "main"
 description = "Feed synthetic dt samples into FrameTimer to read FPS / avgMs / lowFps off the rolling window. The same surface DebugOverlay renders through a HUD; here we just print the numbers."
 
 [dependencies]
-"@hatch:game" = { path = "../../../packages/hatch-game" }
+"@hatch:game" = "0.3.29"

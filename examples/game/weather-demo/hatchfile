@@ -4,5 +4,5 @@ entry       = "main"
 description = "A rotating cube with a rain weather effect on top of an aerial fog overlay. Showcases Weather.rain (3D billboard particles via the new drawBillboardN path) and Weather.fog wired into a Game.run loop."
 
 [dependencies]
-"@hatch:game"  = { path = "../../../packages/hatch-game" }
-"@hatch:image" = { path = "../../../packages/hatch-image" }
+"@hatch:game"  = "0.3.29"
+"@hatch:image" = "0.1.8"

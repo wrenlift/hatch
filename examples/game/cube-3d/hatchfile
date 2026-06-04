@@ -6,5 +6,5 @@ description = "Spinning lit cube with a ground plane and a 2D HUD overlay. Showc
 # @hatch:gpu and @hatch:math come transitively through @hatch:game;
 # declaring them again here trips the resolver's cycle detector.
 [dependencies]
-"@hatch:game"  = { path = "../../../packages/hatch-game" }
-"@hatch:image" = { path = "../../../packages/hatch-image" }
+"@hatch:game"  = "0.3.29"
+"@hatch:image" = "0.1.8"

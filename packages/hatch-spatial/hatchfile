@@ -1,9 +1,10 @@
 name        = "@hatch:spatial"
-version     = "0.2.0"
+version     = "0.2.1"
 entry       = "spatial"
 description = "Spatial acceleration structures for 2D and 3D worlds. ClusterGrid for uniform-density buckets, Octree for adaptive 3D partitioning, Quadtree2D for sprite / UI hit-testing, and BVH over AABBs for ray casts and frustum culling. Pure Wren; composes with @hatch:gpu's Camera3D + Frustum for cull and LOD pipelines and with @hatch:noise for procedural density sampling."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:spatial"
 readme      = "README.md"
+changelog   = "CHANGELOG.md"
 
 [spec-dependencies]
 "@hatch:test"   = "0.2.1"

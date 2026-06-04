@@ -1,9 +1,10 @@
 name        = "@hatch:color"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "color"
 description = "Colour primitive — RGBA scalars with rgb / hsv / hex constructors, named constants, lerp, and Vec4 interop."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:color"
 readme   = "README.md"
+changelog = "CHANGELOG.md"
 
 [dependencies]
 "@hatch:math" = "0.1.5"

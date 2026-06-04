@@ -14,11 +14,11 @@ description = "Procedural terrain + animated water + instanced foliage with live
 # shared transitive here on its own path so every consumer
 # resolves through the single workspace copy.
 [dependencies]
-"@hatch:game"    = { path = "../../../packages/hatch-game" }
-"@hatch:hud"     = { path = "../../../packages/hatch-hud" }
-"@hatch:gpu"     = { path = "../../../packages/hatch-gpu" }
-"@hatch:spatial" = { path = "../../../packages/hatch-spatial" }
-"@hatch:assets"  = { path = "../../../packages/hatch-assets" }
-"@hatch:image"   = { path = "../../../packages/hatch-image" }
-"@hatch:gltf"    = { path = "../../../packages/hatch-gltf" }
-"@hatch:postfx"  = { path = "../../../packages/hatch-postfx" }
+"@hatch:game"    = "0.3.29"
+"@hatch:hud"     = "0.1.6"
+"@hatch:gpu"     = "0.3.14"
+"@hatch:spatial" = "0.2.1"
+"@hatch:assets"  = "0.2.6"
+"@hatch:image"   = "0.1.8"
+"@hatch:gltf"    = "0.1.1"
+"@hatch:postfx"  = "0.1.1"

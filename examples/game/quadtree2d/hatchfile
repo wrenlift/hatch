@@ -4,4 +4,4 @@ entry       = "main"
 description = "Bucket 1000 sprite candidates into a Quadtree2D and run radius + AABB queries. The 2D variant of Octree from @hatch:spatial — useful for hit-testing, UI click regions, and 2D particle / projectile partitioning."
 
 [dependencies]
-"@hatch:spatial" = { path = "../../../packages/hatch-spatial" }
+"@hatch:spatial" = "0.2.1"

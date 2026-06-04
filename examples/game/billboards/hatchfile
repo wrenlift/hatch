@@ -4,4 +4,4 @@ entry       = "main"
 description = "Build an instance buffer of camera-facing billboards in a circle and submit them through one drawBillboardN call. Showcases Renderer3D.writeBillboardInstance + drawBillboardN — the same instance-buffer shape a future GPU compute pass will write into."
 
 [dependencies]
-"@hatch:game" = { path = "../../../packages/hatch-game" }
+"@hatch:game" = "0.3.29"

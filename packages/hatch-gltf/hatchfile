@@ -1,21 +1,22 @@
 name        = "@hatch:gltf"
-version     = "0.1.0"
+version     = "0.1.1"
 entry       = "gltf"
 description = "Pure-Wren glTF 2.0 / .glb loader. Parses the binary container into nodes / meshes / materials, resolves accessors into typed vertex + index arrays (Float32Array / Int32Array / ByteArray), decodes embedded images via @hatch:image, and spawns a Transform-rooted hierarchy into a `@hatch:ecs` World with fully-textured PBR `Material`s wired to every glTF slot (baseColor / metallicRoughness / normal / occlusion / emissive)."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:gltf"
 readme   = "README.md"
+changelog = "CHANGELOG.md"
 
 # WORKSPACE OVERRIDE: @hatch:gpu + @hatch:game are on path deps so
 # the in-tree edits (water pipeline, plugins) propagate without
 # cache restaging. Revert to matching version pins before publishing
 # @hatch:gltf — path deps don't resolve for downstream consumers.
 [dependencies]
-"@hatch:json" = { path = "../hatch-json" }
+"@hatch:json" = "0.1.6"
 "@hatch:math" = "0.1.5"
 "@hatch:ecs" = "0.2.4"
-"@hatch:gpu" = { path = "../hatch-gpu" }
-"@hatch:image" = { path = "../hatch-image" }
-"@hatch:game" = { path = "../hatch-game" }
+"@hatch:gpu" = "0.3.14"
+"@hatch:image" = "0.1.8"
+"@hatch:game" = "0.3.29"
 
 [spec-dependencies]
 "@hatch:test" = "0.2.1"

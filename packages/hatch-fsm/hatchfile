@@ -1,9 +1,10 @@
 name        = "@hatch:fsm"
-version     = "0.1.1"
+version     = "0.1.2"
 entry       = "fsm"
 description = "Harel statecharts for Wren. Hierarchical and parallel states, history, guards, entry/exit/transition actions, context, signal-based observation. Pure Wren."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:fsm"
 readme      = "README.md"
+changelog   = "CHANGELOG.md"
 
 [dependencies]
 "@hatch:events" = "0.2.2"
