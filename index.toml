@@ -54,6 +54,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-19T01:03:42.125747+00:00"
 updated_at = "2026-04-19T01:03:42.125747+00:00"
 
+[packages."@hatch:assets-0.2.6"]
+name = "@hatch:assets"
+version = "0.2.6"
+git = "https://github.com/wrenlift/hatch"
+description = "Content-addressable assets database with hot-reload. Two backends behind one API \u2014 filesystem-backed on native (Fs.walk + content hashes + Hatch.watchFile), manifest-driven on web (fetch + lazy reads, page ships an `assets-manifest.json`). Edit a shader / texture / config file, see registered subscribers fire."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:assets"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/assets/0.2.6/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/assets/0.2.6/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:23:29.846289+00:00"
+updated_at = "2026-06-04T09:23:29.846289+00:00"
+
 [packages."@hatch:assets-0.2.5"]
 name = "@hatch:assets"
 version = "0.2.5"
@@ -115,6 +128,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-28T12:43:42.817671+00:00"
 updated_at = "2026-04-28T12:43:42.817671+00:00"
 
+[packages."@hatch:audio-0.2.1"]
+name = "@hatch:audio"
+version = "0.2.1"
+git = "https://github.com/wrenlift/hatch"
+description = "General-purpose audio playback for WrenLift apps. cpal-backed output stream + a tiny mixer; WAV decoding via hound. `Audio.context()` opens the device, `Sound.load(bytes)` decodes a clip, `audio.play(sound)` schedules immediate playback against the global mixer."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:audio"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/audio/0.2.1/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/audio/0.2.1/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:23:42.174011+00:00"
+updated_at = "2026-06-04T09:23:42.174011+00:00"
+
 [packages."@hatch:audio-0.1.5"]
 name = "@hatch:audio"
 version = "0.1.5"
@@ -175,6 +201,19 @@ description = "Audio playback for the WrenLift game framework. cpal-backed outpu
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-28T12:43:43.181081+00:00"
 updated_at = "2026-04-28T12:43:43.181081+00:00"
+
+[packages."@hatch:buffers-0.1.3"]
+name = "@hatch:buffers"
+version = "0.1.3"
+git = "https://github.com/wrenlift/hatch"
+description = "Spec coverage for the built-in ByteArray / Float32Array / Float64Array types."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:buffers"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/buffers/0.1.3/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/buffers/0.1.3/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:20:13.768538+00:00"
+updated_at = "2026-06-04T09:20:13.768538+00:00"
 
 [packages."@hatch:buffers-0.1.2"]
 name = "@hatch:buffers"
@@ -245,6 +284,19 @@ description = "Clap-style argument parser for Wren command-line tools."
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:03.289781+00:00"
 updated_at = "2026-04-20T16:29:03.289781+00:00"
+
+[packages."@hatch:color-0.1.1"]
+name = "@hatch:color"
+version = "0.1.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Colour primitive \u2014 RGBA scalars with rgb / hsv / hex constructors, named constants, lerp, and Vec4 interop."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:color"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/color/0.1.1/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/color/0.1.1/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:20:12.174529+00:00"
+updated_at = "2026-06-04T09:20:12.174529+00:00"
 
 [packages."@hatch:crypto-0.2.2"]
 name = "@hatch:crypto"
@@ -359,6 +411,19 @@ description = "Timezone-aware DateTime value type, Duration arithmetic, RFC 3339
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-23T22:18:18.276114+00:00"
 updated_at = "2026-04-23T22:18:18.276114+00:00"
+
+[packages."@hatch:ecs-0.2.5"]
+name = "@hatch:ecs"
+version = "0.2.5"
+git = "https://github.com/wrenlift/hatch"
+description = "Entity-component-system for Wren. `World` storage + fluent `Query.with(C).without(C)` filters, component-instance bundles for one-call spawns, typed `Resources` and `Events<T>`, deferred `Commands` for safe mid-loop mutation, hierarchy via `setParent` / `childrenOf`, `onAdd` / `onRemove` lifecycle hooks, and a `Schedule` with `before` / `after` ordering for system dispatch. `SaveSystem.snapshot(world, components)` + `SaveSystem.restore(...)` round-trip ECS state through plain Maps ready for JSON. Pure Wren \u2014 composes with `@hatch:game`'s frame loop, runs anywhere Wren runs."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:ecs"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/ecs/0.2.5/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/ecs/0.2.5/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:40:22.628478+00:00"
+updated_at = "2026-06-04T09:40:22.628478+00:00"
 
 [packages."@hatch:ecs-0.2.4"]
 name = "@hatch:ecs"
@@ -575,6 +640,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:03.569318+00:00"
 updated_at = "2026-04-20T16:29:03.569318+00:00"
 
+[packages."@hatch:fsm-0.1.2"]
+name = "@hatch:fsm"
+version = "0.1.2"
+git = "https://github.com/wrenlift/hatch"
+description = "Harel statecharts for Wren. Hierarchical and parallel states, history, guards, entry/exit/transition actions, context, signal-based observation. Pure Wren."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:fsm"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/fsm/0.1.2/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/fsm/0.1.2/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:20:14.520737+00:00"
+updated_at = "2026-06-04T09:20:14.520737+00:00"
+
 [packages."@hatch:fsm-0.1.1"]
 name = "@hatch:fsm"
 version = "0.1.1"
@@ -600,6 +678,18 @@ readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-05-28T05:57:05.004444+00:00"
 updated_at = "2026-05-28T05:57:05.004444+00:00"
+
+[packages."@hatch:game-0.3.29"]
+name = "@hatch:game"
+version = "0.3.29"
+git = "https://github.com/wrenlift/hatch"
+description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering \u2014 subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web. Scene-level constructs: Transform / GlobalTransform, MeshRenderer, ParticleSystem, lights, physics bridges, SceneRenderer3D, Terrain, Foliage, Wind, Water mesh + wave-height sampler, and WaterPipeline \u2014 a self-contained render pipeline that displaces the water mesh on the GPU with the same wave field the CPU sampler uses, fresnel-blends to a sky colour, and adds Blinn-Phong specular on the wave crests."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:game"
+readme = "README.md"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/game/0.3.29/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:54:45.970319+00:00"
+updated_at = "2026-06-04T09:54:45.970319+00:00"
 
 [packages."@hatch:game-0.3.15"]
 name = "@hatch:game"
@@ -867,6 +957,18 @@ readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-05-28T19:04:06.713635+00:00"
 updated_at = "2026-05-28T19:04:06.713635+00:00"
+
+[packages."@hatch:gpu-0.3.14"]
+name = "@hatch:gpu"
+version = "0.3.14"
+git = "https://github.com/wrenlift/hatch"
+description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, ComputePipeline, CommandEncoder, RenderPass, ComputePass on the bottom; Camera2D/3D, Frustum, Lod, Renderer2D (sprite batcher + drawInstancedSprites for storage-buffer-driven sprite batches), Renderer3D (Cook-Torrance / GGX PBR with multi-light + textured metallic-roughness workflow, plus drawMeshInstanced for storage-buffer-driven instanced meshes), Shader factory, Mesh, Material on top. Storage buffers + compute dispatch + fast typed-array readback for general-purpose GPU work. Camera3D.frustumPlanes + Frustum.sphereVisible for CPU-side frustum culling; Lod.select3 for distance-based level-of-detail bucketing \u2014 together they keep per-instance CPU cost flat in total scene size for the procedural-world performance target. Same shared source drives wgpu on native and WebGPU on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:gpu"
+readme = "README.md"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/gpu/0.3.14/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:25:30.599372+00:00"
+updated_at = "2026-06-04T09:25:30.599372+00:00"
 
 [packages."@hatch:gpu-0.3.8"]
 name = "@hatch:gpu"
@@ -1225,6 +1327,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-05-29T12:25:56.384878+00:00"
 updated_at = "2026-05-29T12:25:56.384878+00:00"
 
+[packages."@hatch:image-0.1.8"]
+name = "@hatch:image"
+version = "0.1.8"
+git = "https://github.com/wrenlift/hatch"
+description = "Image encode + decode. PNG / JPG / BMP / WebP in, RGBA8 buffer out \u2014 `Image.decode(bytes)` feeds straight into `@hatch:gpu`'s `Device.uploadImage(image)`, and `Image.encodePng(...)` writes synthesized buffers back out. Backed by the `image` crate."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:image"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/image/0.1.8/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/image/0.1.8/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:26:29.239897+00:00"
+updated_at = "2026-06-04T09:26:29.239897+00:00"
+
 [packages."@hatch:image-0.1.7"]
 name = "@hatch:image"
 version = "0.1.7"
@@ -1361,6 +1476,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T20:41:56.64897+00:00"
 updated_at = "2026-04-20T20:41:56.64897+00:00"
 
+[packages."@hatch:json-0.1.6"]
+name = "@hatch:json"
+version = "0.1.6"
+git = "https://github.com/wrenlift/hatch"
+description = "JSON parser and serializer. Pure Wren, no native deps."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:json"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/json/0.1.6/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/json/0.1.6/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:20:23.088985+00:00"
+updated_at = "2026-06-04T09:20:23.088985+00:00"
+
 [packages."@hatch:json-0.1.5"]
 name = "@hatch:json"
 version = "0.1.5"
@@ -1466,6 +1594,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:04.47264+00:00"
 updated_at = "2026-04-20T16:29:04.47264+00:00"
 
+[packages."@hatch:math-0.1.7"]
+name = "@hatch:math"
+version = "0.1.7"
+git = "https://github.com/wrenlift/hatch"
+description = "Vector + matrix + quaternion math \u2014 Vec2 / Vec3 / Vec4 / Mat4 / Quat, easings, NumRange, and scalar helpers. Built for interactive apps and games."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:math"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/math/0.1.7/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/math/0.1.7/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:20:08.535128+00:00"
+updated_at = "2026-06-04T09:20:08.535128+00:00"
+
 [packages."@hatch:math-0.1.5"]
 name = "@hatch:math"
 version = "0.1.5"
@@ -1531,6 +1672,19 @@ description = "Vector + matrix + quaternion math \u2014 Vec2 / Vec3 / Vec4 / Mat
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-23T22:18:18.505131+00:00"
 updated_at = "2026-04-23T22:18:18.505131+00:00"
+
+[packages."@hatch:noise-0.2.1"]
+name = "@hatch:noise"
+version = "0.2.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Procedural noise primitives \u2014 2D + 3D Simplex / Perlin / Value scalars, fractal Brownian motion octave-sum, and a batched Float32Array heightmap sampler. Backed by the `noise` crate so terrain generators, foliage scatter, weather simulations, and texture authoring all share the same deterministic, seeded implementations."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:noise"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/noise/0.2.1/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/noise/0.2.1/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:40:25.466694+00:00"
+updated_at = "2026-06-04T09:40:25.466694+00:00"
 
 [packages."@hatch:noise-0.1.0"]
 name = "@hatch:noise"
@@ -1614,6 +1768,19 @@ description = "Filesystem path manipulation: join, split, parent, ext, normalize
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:04.839683+00:00"
 updated_at = "2026-04-20T16:29:04.839683+00:00"
+
+[packages."@hatch:physics-0.1.8"]
+name = "@hatch:physics"
+version = "0.1.8"
+git = "https://github.com/wrenlift/hatch"
+description = "Rapier-backed physics. `World2D` and `World3D` from one import \u2014 bodies, colliders, gravity, force / impulse, position + velocity reads, raycasts, and contact-event streams. Bundles rapier2d + rapier3d in a single cdylib so games never have to choose between dimensions at the package level. Wires into `@hatch:game` for a step-per-frame physics loop."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:physics"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/physics/0.1.8/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/physics/0.1.8/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:27:23.497377+00:00"
+updated_at = "2026-06-04T09:27:23.497377+00:00"
 
 [packages."@hatch:physics-0.1.7"]
 name = "@hatch:physics"
@@ -1877,6 +2044,19 @@ description = "TCP listeners + connections and UDP datagram sockets. Blocking an
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-23T22:18:17.761353+00:00"
 updated_at = "2026-04-23T22:18:17.761353+00:00"
+
+[packages."@hatch:spatial-0.2.1"]
+name = "@hatch:spatial"
+version = "0.2.1"
+git = "https://github.com/wrenlift/hatch"
+description = "Spatial acceleration structures for 2D and 3D worlds. ClusterGrid for uniform-density buckets, Octree for adaptive 3D partitioning, Quadtree2D for sprite / UI hit-testing, and BVH over AABBs for ray casts and frustum culling. Pure Wren; composes with @hatch:gpu's Camera3D + Frustum for cull and LOD pipelines and with @hatch:noise for procedural density sampling."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:spatial"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/spatial/0.2.1/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/spatial/0.2.1/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:40:45.536157+00:00"
+updated_at = "2026-06-04T09:40:45.536157+00:00"
 
 [packages."@hatch:spatial-0.1.0"]
 name = "@hatch:spatial"
@@ -2258,6 +2438,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:27:14.724314+00:00"
 updated_at = "2026-04-20T16:27:14.724314+00:00"
 
+[packages."@hatch:web-0.1.9"]
+name = "@hatch:web"
+version = "0.1.9"
+git = "https://github.com/wrenlift/hatch"
+description = "Server-rendered, htmx-native web framework for Wren. Router, middleware, content-negotiated rendering via @hatch:template, HTTP/1.1 server on top of @hatch:socket."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:web"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/web/0.1.9/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/web/0.1.9/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:24:58.515653+00:00"
+updated_at = "2026-06-04T09:24:58.515653+00:00"
+
 [packages."@hatch:web-0.1.8"]
 name = "@hatch:web"
 version = "0.1.8"
@@ -2353,6 +2546,19 @@ description = "Server-rendered, htmx-native web framework for Wren. Router, midd
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-25T14:09:48.115122+00:00"
 updated_at = "2026-04-25T14:09:48.115122+00:00"
+
+[packages."@hatch:window-0.2.13"]
+name = "@hatch:window"
+version = "0.2.13"
+git = "https://github.com/wrenlift/hatch"
+description = "Window + input for any WrenLift app. winit on native, page-attached canvas on web \u2014 same `Window.create({...})` API, same `pollEvents` / `closeRequested` / `size` surface across targets. Bring-your-own canvas via `Window.attach(elementId)` on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:window"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/window/0.2.13/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/window/0.2.13/README.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T09:27:52.444316+00:00"
+updated_at = "2026-06-04T09:27:52.444316+00:00"
 
 [packages."@hatch:window-0.2.11"]
 name = "@hatch:window"
