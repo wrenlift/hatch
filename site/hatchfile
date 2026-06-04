@@ -11,9 +11,10 @@ description = "hatch.wrenlift.com — landing page for Hatch. Server-rendered wi
 # empty-MIR walker bailout). `@hatch:fsm@0.1.0` is the new
 # Harel-statechart package; `lib/lifecycle.wren` drives the boot
 # chart, `/readyz` reads its `Lifecycle.snapshot`.
-"@hatch:web"    = "0.1.7"
+#"@hatch:web"    = "0.1.7"
+"@hatch:web"    = { path = "../packages/hatch-web" }
 "@hatch:sqlite" = "0.1.8"
-"@hatch:http"   = "0.3.3"
+"@hatch:http"   = "0.3.4"
 "@hatch:toml"   = "0.1.1"
 "@hatch:os"     = "0.1.1"
 "@hatch:fsm"    = "0.1.0"

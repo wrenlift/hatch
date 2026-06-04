@@ -9,6 +9,6 @@ description = "100 cubes raining onto a ground plane, simulated by @hatch:physic
 # module, for one). @hatch:physics + @hatch:random aren't on the
 # game graph so they need their own path deps.
 [dependencies]
-"@hatch:game"    = { path = "../../../packages/hatch-game" }
-"@hatch:physics" = { path = "../../../packages/hatch-physics" }
+"@hatch:game"    = "0.3.29"
+"@hatch:physics" = "0.1.8"
 "@hatch:random"  = { path = "../../../packages/hatch-random" }

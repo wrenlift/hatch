@@ -4,6 +4,7 @@ entry       = "http"
 description = "HTTP/1.1 client with TLS, streaming bodies, and fiber-cooperative reads."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:http"
 readme   = "README.md"
+changelog = "CHANGELOG.md"
 
 [dependencies]
 # 0.1.3 picks up the parser's `parseString_.intern` change: repeated

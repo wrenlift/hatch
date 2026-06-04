@@ -6,6 +6,6 @@ description = "Physics-driven bouncing balls. A static ground + a stream of dyna
 # @hatch:gpu and @hatch:math come transitively through @hatch:game;
 # declaring them again here trips the resolver's cycle detector.
 [dependencies]
-"@hatch:game"    = { path = "../../../packages/hatch-game" }
-"@hatch:physics" = { path = "../../../packages/hatch-physics" }
-"@hatch:image"   = { path = "../../../packages/hatch-image" }
+"@hatch:game"    = "0.3.29"
+"@hatch:physics" = "0.1.8"
+"@hatch:image"   = "0.1.8"

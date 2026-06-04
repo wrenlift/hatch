@@ -4,4 +4,4 @@ entry       = "main"
 description = "Sample Worley + ridged-multi fBM at a few points and print the values. Shows the new @hatch:noise exports plus the WGSL companion string available for terrain / foliage compute shaders."
 
 [dependencies]
-"@hatch:noise" = { path = "../../../packages/hatch-noise" }
+"@hatch:noise" = "0.2.1"

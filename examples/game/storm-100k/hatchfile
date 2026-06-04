@@ -4,6 +4,6 @@ entry       = "main"
 description = "100,000-particle rain storm via Weather.rain in GPU mode. Compute-shader integration on every drop; CPU only seeds spawn slots at the emission rate. Demonstrates the massive-world weather track on top of Phase 6e."
 
 [dependencies]
-"@hatch:game" = { path = "../../../packages/hatch-game" }
-"@hatch:gpu"  = { path = "../../../packages/hatch-gpu" }
-"@hatch:math" = { path = "../../../packages/hatch-math" }
+"@hatch:game" = "0.3.29"
+"@hatch:gpu"  = "0.3.14"
+"@hatch:math" = "0.1.7"

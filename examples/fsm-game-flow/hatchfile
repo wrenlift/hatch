@@ -6,4 +6,4 @@ description = "Game flow controller built with @hatch:fsm. Demonstrates compound
 # @hatch:events comes transitively via @hatch:fsm; declaring
 # it again would trip the resolver's diamond-as-cycle detector.
 [dependencies]
-"@hatch:fsm" = { path = "../../packages/hatch-fsm" }
+"@hatch:fsm" = "0.1.2"

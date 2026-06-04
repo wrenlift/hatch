@@ -1,9 +1,10 @@
 name        = "@hatch:game"
-version     = "0.3.28"
+version     = "0.3.29"
 entry       = "game"
 description = "Game framework for Wren. `Game.run(MyGame)` and you're rendering — subclass `Game`, override `setup` / `update` / `draw`, get a window + GPU device + per-frame loop wired in. Composes with `@hatch:ecs` / `@hatch:assets` / `@hatch:audio` / `@hatch:physics` for the rest of a game. Same source drives a winit window on native and a page-attached canvas on web. Scene-level constructs: Transform / GlobalTransform, MeshRenderer, ParticleSystem, lights, physics bridges, SceneRenderer3D, Terrain, Foliage, Wind, Water mesh + wave-height sampler, and WaterPipeline — a self-contained render pipeline that displaces the water mesh on the GPU with the same wave field the CPU sampler uses, fresnel-blends to a sky colour, and adds Blinn-Phong specular on the wave crests."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:game"
 readme   = "README.md"
+changelog = "CHANGELOG.md"
 
 # Cross-package deps. Version pins resolve through the registry,
 # so the published bundle is fully self-describing.
@@ -19,8 +20,8 @@ readme   = "README.md"
 # show / hide + open-hidden initial state) picks up locally during
 # the lifecycle iteration. Revert to a version pin before publishing
 # @hatch:game (path deps don't resolve for downstream consumers).
-"@hatch:window" = { path = "../hatch-window" }
-"@hatch:gpu"    = { path = "../hatch-gpu" }
+"@hatch:window" = "0.2.13"
+"@hatch:gpu"    = "0.3.14"
 "@hatch:time"   = "0.1.2"
 "@hatch:math"   = "0.1.5"
 "@hatch:ecs"    = "0.2.4"
@@ -31,7 +32,7 @@ readme   = "README.md"
 # Terrain module wraps @hatch:noise's batched fillSimplex2 to
 # produce heightmap Meshes; everything else in @hatch:game can
 # still be used without ever touching Terrain.
-"@hatch:noise"  = { path = "../hatch-noise" }
+"@hatch:noise"  = "0.2.1"
 
 [spec-dependencies]
 "@hatch:test"   = "0.2.1"

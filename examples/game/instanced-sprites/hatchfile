@@ -4,4 +4,4 @@ entry       = "main"
 description = "Pack 256 sprite instances into a Float32Array, upload to a storage buffer, and submit one Renderer2D.drawInstancedSprites call. Each instance has its own position, rotation, and tint — the kind of batched UI / damage-number path the instanced sprite pipeline unlocks."
 
 [dependencies]
-"@hatch:game" = { path = "../../../packages/hatch-game" }
+"@hatch:game" = "0.3.29"
