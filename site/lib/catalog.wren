@@ -172,26 +172,39 @@ class Catalog {
     return f
   }
 
-  /// Same shape as `driveFiber_` but captures and returns the
-  /// fiber's final value (the value the body returns when it
-  /// completes). The plain `driveFiber_` discards each `try()`
-  /// return, which is fine for fire-and-forget fibers but loses
-  /// the result for fibers that wrap a value-returning call —
-  /// e.g. `Fiber.new { Http.get(url) }.try()` returns whatever
-  /// the FIRST yield emitted, not the final `Response`. Without
-  /// this pump, a slow Supabase fetch that yields once mid-read
-  /// hands the caller a half-baked yield value (often a
-  /// truncated string buffer or null), the request renderer
-  /// embeds it as the body, and the template parser aborts
-  /// downstream with `unterminated {% if %}` because it ran out
-  /// of input mid-block.
-  static driveFiberValue_(f) {
-    var last = null
+  /// Drive a value-capturing fiber to completion, returning what
+  /// the body wrote into the box.
+  ///
+  /// Calling convention — caller MUST hand back a 1-element list
+  /// that the fiber body writes into. We do NOT read the fiber's
+  /// return value via `f.try()` because wlift's `Fiber.try()` on
+  /// a clean return leaks the function's stale return-slot
+  /// contents instead of the body's actual return value (under
+  /// register allocation that varies by host arch, the slot is
+  /// `null` on Linux/amd64 even though it luckily holds the
+  /// Response on macOS/arm64). See
+  /// `feedback_fiber_try_stale_slot` in the auto-memory.
+  ///
+  /// Usage:
+  ///
+  ///   var box = [null]
+  ///   var fib = Fiber.new(Fn.new {
+  ///     box[0] = Http.get(url, ...)
+  ///   }, 1024)
+  ///   Catalog.driveFiberValue_(fib, box)
+  ///   var resp = box[0]
+  ///
+  /// The `box` arg is documented + accepted purely to make the
+  /// call shape explicit at every call site — we don't actually
+  /// touch it here, the fiber body writes through the closure
+  /// capture. Returns the box itself for chaining; most callers
+  /// ignore the return.
+  static driveFiberValue_(f, box) {
     while (!f.isDone) {
-      last = f.try()
+      f.try()
       if (!f.isDone) Fiber.yield()
     }
-    return last
+    return box
   }
 
   static createSchema_() {
@@ -320,16 +333,17 @@ class Catalog {
     // stages a ~256 KiB `InflateState` on the stack before boxing.
     // The default 256 KiB krio stack SIGBUSes on macOS arm64 during
     // that allocation.
+    var box = [null]
     var fib = Fiber.new(Fn.new {
-      Http.get(Catalog.INDEX_URL_, { "timeoutMs": 10000, "followRedirects": true })
+      box[0] = Http.get(Catalog.INDEX_URL_, { "timeoutMs": 10000, "followRedirects": true })
     }, 1024)
     // Drive the fiber to completion — `Http.get` yields
-    // cooperatively while waiting for the network and
-    // `fib.try()` would otherwise return at the first yield with
-    // a partial/null sentinel rather than the final `Response`.
-    // See `Catalog.driveFiberValue_` for the failure mode this
-    // prevents (truncated body → template parser abort).
-    var resp = Catalog.driveFiberValue_(fib)
+    // cooperatively while waiting for the network. The body
+    // writes its result into `box[0]`; we don't read it back
+    // through `f.try()` because that's the stale-slot pattern
+    // documented on `driveFiberValue_`.
+    Catalog.driveFiberValue_(fib, box)
+    var resp = box[0]
     if (fib.error != null || resp == null || !resp.ok || resp.body == null) {
       var err = fib.error != null ? fib.error : (resp == null ? "no response" : "%(resp.status)")
       Fiber.abort("Catalog.refresh: index.toml fetch failed: %(err)")
@@ -517,12 +531,14 @@ class Catalog {
     // versions; that diamond resolves now that
     // `@hatch:http@0.3.2` is on `@hatch:json@0.1.2`.
     // 1 MiB stack — see `fetchAndParse_` for the GzDecoder rationale.
+    var box = [null]
     var fib = Fiber.new(Fn.new {
-      Http.get(url, { "timeoutMs": 10000, "followRedirects": true })
+      box[0] = Http.get(url, { "timeoutMs": 10000, "followRedirects": true })
     }, 1024)
     // Pump the fiber to completion — see `driveFiberValue_`
-    // for why a single `fib.try()` returns a partial value.
-    var resp = Catalog.driveFiberValue_(fib)
+    // for the stale-slot bug that the `box[0]` write avoids.
+    Catalog.driveFiberValue_(fib, box)
+    var resp = box[0]
     if (fib.error != null || resp == null || !resp.ok || resp.body == null || resp.body.count == 0) {
       var miss = "<p class=\"readme-empty\">No README found for <code>" + name + "</code>.</p>"
       Catalog.storeReadme_(key, miss)
@@ -604,10 +620,12 @@ class Catalog {
     var version = pkg.containsKey("version") ? pkg["version"] : ""
     var key = "%(name)@%(version)@%(url)"
     if (__changelogCache.containsKey(key)) return __changelogCache[key]
+    var box = [null]
     var fib = Fiber.new(Fn.new {
-      Http.get(url, { "timeoutMs": 10000, "followRedirects": true })
+      box[0] = Http.get(url, { "timeoutMs": 10000, "followRedirects": true })
     }, 1024)
-    var resp = Catalog.driveFiberValue_(fib)
+    Catalog.driveFiberValue_(fib, box)
+    var resp = box[0]
     if (fib.error != null || resp == null || !resp.ok || resp.body == null || resp.body.count == 0) {
       var miss = "<p class=\"readme-empty\">No CHANGELOG found for <code>" + name + "</code>.</p>"
       Catalog.storeChangelog_(key, miss)
