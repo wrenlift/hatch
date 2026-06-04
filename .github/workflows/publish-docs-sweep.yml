@@ -128,6 +128,11 @@ jobs:
             # `hatch docs` returns `[]` for packages with no `///`
             # doc comments. Don't POST those — keeps the catalog
             # row's `docs_url` whatever it was (probably null).
+            #
+            # Reset `docs_url` per iteration so the previous
+            # package's value can't leak into the catalog refresh
+            # of a package whose upload was skipped/failed.
+            docs_url=""
             docs_json=$(hatch docs "$pkg_dir" 2>/dev/null) || {
               echo "::warning::$pkg: hatch docs failed, skipping"
               skipped=$((skipped+1))
@@ -169,8 +174,8 @@ jobs:
                   -H "Content-Type: application/json" \
                   --data-binary "@$body_file"); then
                   rm -f "$body_file"
-                  url=$(echo "$resp" | jq -r '.url // "?"')
-                  echo "  docs uploaded → $url"
+                  docs_url=$(echo "$resp" | jq -r '.url // ""')
+                  echo "  docs uploaded → $docs_url"
                 else
                   rm -f "$body_file"
                   echo "::error::$pkg: /docs-upload POST failed"
@@ -284,6 +289,10 @@ jobs:
             if [ -n "$homepage" ]; then
               record_args+=(--arg h "$homepage")
               record_filter="$record_filter | .homepage = \$h"
+            fi
+            if [ -n "$docs_url" ]; then
+              record_args+=(--arg du "$docs_url")
+              record_filter="$record_filter | .docs_url = \$du"
             fi
             if [ -n "$readme_url" ]; then
               record_args+=(--arg ru "$readme_url")
