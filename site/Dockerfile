@@ -56,14 +56,8 @@ FROM rust:1-trixie AS wlift-builder
 #     transient 5xx / network failures. Fixes the publish-path
 #     docs upload silently dropping for packages with large
 #     docs JSON (ARG_MAX) or hitting an Edge Function 504.
-#   - b188a62 — AOT SM-poll Done arm now gates Fiber.try return
-#     on is_try. Fixes the stale-slot bug where
-#     `var x = f.try()` read back the body's last expression
-#     instead of null under AOT. Site's Api.fetchJson_ and
-#     Catalog.fetch* sites rely on this for the natural
-#     drive-fiber-to-completion pattern.
 # Flip to a `v…` tag once a release ships these.
-ARG WLIFT_VERSION=b188a629d6dca41d1bfd28be20bd5f9e8a17a0a9
+ARG WLIFT_VERSION=86538a1ff79f3b3d85cc3c6864dcddc9e5a30bd9
 ARG WLIFT_REPO=https://github.com/wrenlift/WrenLift.git
 
 RUN apt-get update \
