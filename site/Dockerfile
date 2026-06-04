@@ -144,6 +144,26 @@ COPY --from=bundle /build/views    ./views
 COPY --from=bundle /build/content  ./content
 COPY --from=bundle /build/public   ./public
 
+# Seed the catalog mirror so `Catalog.boot()` lands a populated
+# table on first request instead of an empty one. `Catalog.
+# fetchAndParse_` prefers `./index.toml` over the network fetch
+# (see catalog.wren's `LOCAL_INDEX_`), so dropping the
+# sync-index workflow's published copy alongside the binary
+# means cold boots don't depend on the GitHub raw endpoint
+# being reachable from the deploy region. The background
+# refresh loop still pulls fresh upstream data every couple
+# hours; this just guarantees the boot path has data to seed
+# from.
+#
+# Bake-time fetch (not COPY) because the canonical mirror lives
+# in the repo root (`hatch/index.toml`), one level above the
+# site Dockerfile's build context, and we don't want to change
+# the context root or move the file.
+RUN curl --fail --silent --show-error --location \
+        --output /app/index.toml \
+        https://raw.githubusercontent.com/wrenlift/hatch/main/index.toml \
+    && wc -c /app/index.toml
+
 ENV PORT=3000
 EXPOSE 3000
 
