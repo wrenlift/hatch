@@ -179,18 +179,51 @@ jobs:
         if: matrix.use_cross == true
         run: cargo install cross --locked
 
-      - name: Install ALSA dev headers (Linux native)
-        # `wlift_audio` -> `cpal` -> `alsa-sys` needs `libasound2-dev`
-        # at build time. The `cross` container path is covered by
-        # the wren_lift Cross.toml's `pre-build`; this step covers
-        # the *native* ubuntu-latest runner where the matrix builds
-        # x86_64-unknown-linux-gnu directly. Cheap to keep on every
-        # plugin (one apt-get) — only fires for use_cross != true,
-        # so cross-builds don't double-pay.
+      - name: Install plugin system deps (Linux native)
+        # Plugin build-time system libraries needed across the
+        # current set of native crates:
+        #
+        #   libasound2-dev   → wlift_audio  (cpal → alsa-sys)
+        #   libudev-dev      → wlift_window (winit input device
+        #                       enumeration)
+        #   libxkbcommon-dev,
+        #   libwayland-dev,
+        #   libx11-dev,
+        #   libxcb1-dev,
+        #   libxrandr-dev,
+        #   libxinerama-dev,
+        #   libxcursor-dev,
+        #   libxi-dev        → wlift_window (winit X11 + wayland
+        #                       backends; winit picks at runtime,
+        #                       so both have to be linkable at
+        #                       build time even on a headless CI
+        #                       runner)
+        #
+        # The `cross` container path is covered by the wren_lift
+        # Cross.toml's `pre-build`; this step covers the *native*
+        # ubuntu-latest runner where the matrix builds
+        # x86_64-unknown-linux-gnu directly. Cheap to keep on
+        # every plugin (one apt-get) — only fires for
+        # use_cross != true, so cross-builds don't double-pay.
+        # Previously this only installed libasound2-dev, so
+        # wlift_window's libudev-sys build script aborted at
+        # publish time with "failed to run custom build command
+        # for libudev-sys".
         if: runner.os == 'Linux' && matrix.use_cross != true
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libudev-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            pkg-config
 
       - name: Cache cargo artifacts
         uses: actions/cache@v4
