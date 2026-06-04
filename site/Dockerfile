@@ -56,8 +56,14 @@ FROM rust:1-trixie AS wlift-builder
 #     transient 5xx / network failures. Fixes the publish-path
 #     docs upload silently dropping for packages with large
 #     docs JSON (ARG_MAX) or hitting an Edge Function 504.
+#   - d5f8e6d — Fiber.try() returns the body's value on clean
+#     exit (canonical Wren). Removes the misread is_try → null
+#     gate from BC interp + krio Done arm; matches AOT. Catalog
+#     drive loops, Api.fetchJson_, badge.wren, and every package
+#     spec that does `var x = f.try(); if (fib.error == null) ...`
+#     now work correctly under tiered + interp + AOT.
 # Flip to a `v…` tag once a release ships these.
-ARG WLIFT_VERSION=86538a1ff79f3b3d85cc3c6864dcddc9e5a30bd9
+ARG WLIFT_VERSION=d5f8e6d316376c5505f5dec0646a588cae936446
 ARG WLIFT_REPO=https://github.com/wrenlift/WrenLift.git
 
 RUN apt-get update \
