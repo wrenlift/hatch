@@ -552,10 +552,22 @@ class App {
       return Response.coerce(result)
     }
     var pipe = Pipeline_.new_(stack, terminal)
-    var fiber = Fiber.new { Response.coerce(pipe.run(req)) }
-    var out = fiber.try()
+    // List-as-mutable-box: Fiber.try() leaks stale slot contents on a
+    // clean return instead of the fiber body's return value (see
+    // feedback_fiber_try_stale_slot.md). Under the JIT path the stale
+    // slot here lands as `null`, and `serve_` then aborts with "Null
+    // does not implement 'body'" on `resp.body`. AOT happens to leave
+    // the right register populated, which is why the bug only
+    // surfaced on `hatch run` / tiered mode. Writing through a list
+    // element is the documented workaround — the list is captured by
+    // reference, and the element write is visible to the outer
+    // scope even when the closure-upvalue mutation bug would lose a
+    // bare `var out = ...` assignment.
+    var box = [null]
+    var fiber = Fiber.new { box[0] = Response.coerce(pipe.run(req)) }
+    fiber.try()
     if (fiber.error != null) return Response.coerce(errorFn.call(req, fiber.error))
-    return out
+    return box[0]
   }
 
   /// Bind + accept loop. `addr` looks like "127.0.0.1:3000" or
@@ -1184,11 +1196,16 @@ class Session {
     if (raw == null) return {}
     var verified = Session.verify_(secret, raw)
     if (verified == null) return {}
-    var parsed = null
-    var fiber = Fiber.new { JSON.parse(verified) }
-    var out = fiber.try()
+    // List-as-mutable-box: Fiber.try() returns stale slot contents
+    // on clean return (see feedback_fiber_try_stale_slot.md). Reading
+    // the fiber's value through a list element avoids both that bug
+    // and the closure-upvalue mutation bug for `var out = ...`
+    // assignments from inside a Fiber.new body.
+    var box = [null]
+    var fiber = Fiber.new { box[0] = JSON.parse(verified) }
+    fiber.try()
     if (fiber.error != null) return {}
-    parsed = out
+    var parsed = box[0]
     if (!(parsed is Map)) return {}
     return parsed
   }
@@ -1237,11 +1254,15 @@ class Session {
     var given   = signedCookie[(dot + 1)..(signedCookie.count - 1)]
     var expected = Hash.hmacSha256(secret, encoded)
     if (!Session.constantTimeEq_(given, expected)) return null
-    var bytes = null
-    var fiber = Fiber.new { Hash.base64UrlDecode(encoded) }
-    var out = fiber.try()
+    // List-as-mutable-box for the same reason as parse_'s fiber
+    // wrap: Fiber.try() doesn't propagate the fiber body's return
+    // value on a clean exit.
+    var box = [null]
+    var fiber = Fiber.new { box[0] = Hash.base64UrlDecode(encoded) }
+    fiber.try()
     if (fiber.error != null) return null
-    bytes = out
+    var bytes = box[0]
+    if (bytes == null) return null
     var s = ""
     for (b in bytes) s = s + String.fromByte(b)
     return s
