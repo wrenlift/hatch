@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.15 — 2026-06-04
+
+Plugin dylib rebuilt against wren_lift `7ff1310d5037bbc3af32dcc0bdf74f387590fac1`. The prior
+`7566533` rebuild lost its publish race because the Linux
+build matrix in publish-plugin.yml only apt-got libasound2-dev,
+so wlift_window's transitive libudev-sys build script aborted
+on both x86_64 and arm64. Today's wren_lift Cross.toml + hatch
+publish-plugin.yml updates install the full winit linux dep
+stack (libudev + libxkbcommon + libwayland + libx11 + libxcb1
++ libxrandr + libxinerama + libxcursor + libxi) in both the
+native-runner and cross-rs container paths, so this rebuild
+produces a complete linux-x86_64 + linux-arm64 dylib pair.
+
 ## 0.2.14 — 2026-06-04
 
 Plugin dylib rebuilt against wren_lift `7566533` (was `e52ba41`
