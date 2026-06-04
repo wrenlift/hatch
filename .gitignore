@@ -10,6 +10,12 @@ packages/**/*.hatch
 # AOT-compiled native binaries (rebuilt via `wlift --aot ...`).
 examples/**/*_aot
 site/site_aot
+site/site.hatch
+
+# Local catalog mirror seeded by site/run-aot.sh from hatch/index.toml.
+# The launcher's watchdog removes it on exit; this ignore keeps the
+# working tree clean if the watchdog ever misses.
+site/index.toml
 
 # Unused texture/heightmap assets shipped alongside the procedural-world
 # demo source archive. The gltf models in nature-kit/ reference their

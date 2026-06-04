@@ -1,0 +1,71 @@
+{% extends "docs_layout.html" %}
+
+{% block title %}{{ pkg.name }} {{ pkg.version }} · Changelog · Hatch docs{% endblock %}
+{% block description %}Release notes for {{ pkg.name }} {{ pkg.version }} — version-by-version changelog of the Hatch package for Wren.{% endblock %}
+{% block og_description %}Release notes for {{ pkg.name }} {{ pkg.version }} — version-by-version changelog of the Hatch package for Wren.{% endblock %}
+{% block og_type %}article{% endblock %}
+{% block twitter_description %}Release notes for {{ pkg.name }} {{ pkg.version }}.{% endblock %}
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "{{ pkg.name }} {{ pkg.version }} changelog",
+  "description": "Release notes for {{ pkg.name }} {{ pkg.version }}.",
+  "url": "https://hatch.wrenlift.com{% if requestPath %}{{ requestPath }}{% endif %}",
+  "mainEntityOfPage": "https://hatch.wrenlift.com{% if requestPath %}{{ requestPath }}{% endif %}",
+  "image": "https://hatch.wrenlift.com/assets/og-image.png",
+  "datePublished": "{% if pkg.created_at %}{{ pkg.created_at }}{% else %}2026-04-01{% endif %}",
+  "dateModified": "{% if pkg.created_at %}{{ pkg.created_at }}{% else %}2026-06-04{% endif %}",
+  "author": { "@id": "https://hatch.wrenlift.com/#org" },
+  "publisher": { "@id": "https://hatch.wrenlift.com/#org" },
+  "isPartOf": { "@id": "https://hatch.wrenlift.com/#website" },
+  "about": {
+    "@type": "SoftwareSourceCode",
+    "name": "{{ pkg.name }}",
+    "softwareVersion": "{{ pkg.version }}",
+    "programmingLanguage": "Wren"
+  }
+}
+</script>
+{% endblock %}
+
+{% block head %}
+  {# Marked.js renders the markdown the htmx fragment ships back —
+     same pipeline the README uses. #}
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+{% endblock %}
+
+{% block docs_main %}
+  {% include "partials/_pkg_header.html" %}
+
+  <div class="install-card">
+    <div class="install-cmd">
+      <span class="install-pr">$</span>
+      <span class="install-text">hatch add {{ pkg.name }}</span>
+    </div>
+    <button class="install-copy" type="button"
+            onclick="(function(b){var t='hatch add {{ pkg.name }}';navigator.clipboard.writeText(t).then(function(){b.textContent='copied';setTimeout(function(){b.textContent='copy';},1500);});})(this)">
+      copy
+    </button>
+  </div>
+
+  <section class="pkg-readme"
+           hx-get="/packages/{{ pkg.name }}/changelog/body"
+           hx-trigger="load"
+           hx-swap="innerHTML">
+    <div class="readme-loading">
+      <span class="spinner" aria-hidden="true"></span>
+      loading CHANGELOG…
+    </div>
+  </section>
+{% endblock %}
+
+{% block docs_toc %}
+  {# "On this page" rail. Populated client-side from the rendered
+     CHANGELOG's h2 + h3 elements after `Catalog.wrapChangelog_`
+     finishes marked.parse. Each release entry's `## <version>`
+     heading becomes a top-level TOC row. #}
+  <h5>On this page</h5>
+  <ul id="changelog-toc"></ul>
+{% endblock %}
