@@ -129,6 +129,20 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-28T12:43:42.817671+00:00"
 updated_at = "2026-04-28T12:43:42.817671+00:00"
 
+[packages."@hatch:audio-0.2.2"]
+name = "@hatch:audio"
+version = "0.2.2"
+git = "https://github.com/wrenlift/hatch"
+description = "General-purpose audio playback for WrenLift apps. cpal-backed output stream + a tiny mixer; WAV decoding via hound. `Audio.context()` opens the device, `Sound.load(bytes)` decodes a clip, `audio.play(sound)` schedules immediate playback against the global mixer."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:audio"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/audio/0.2.2/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/audio/0.2.2/README.md"
+changelog_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-changelogs/audio/0.2.2/CHANGELOG.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T14:08:37.30181+00:00"
+updated_at = "2026-06-04T14:08:37.30181+00:00"
+
 [packages."@hatch:audio-0.2.1"]
 name = "@hatch:audio"
 version = "0.2.1"
@@ -979,6 +993,19 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-05-28T19:04:06.713635+00:00"
 updated_at = "2026-05-28T19:04:06.713635+00:00"
 
+[packages."@hatch:gpu-0.3.15"]
+name = "@hatch:gpu"
+version = "0.3.15"
+git = "https://github.com/wrenlift/hatch"
+description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, ComputePipeline, CommandEncoder, RenderPass, ComputePass on the bottom; Camera2D/3D, Frustum, Lod, Renderer2D (sprite batcher + drawInstancedSprites for storage-buffer-driven sprite batches), Renderer3D (Cook-Torrance / GGX PBR with multi-light + textured metallic-roughness workflow, plus drawMeshInstanced for storage-buffer-driven instanced meshes), Shader factory, Mesh, Material on top. Storage buffers + compute dispatch + fast typed-array readback for general-purpose GPU work. Camera3D.frustumPlanes + Frustum.sphereVisible for CPU-side frustum culling; Lod.select3 for distance-based level-of-detail bucketing \u2014 together they keep per-instance CPU cost flat in total scene size for the procedural-world performance target. Same shared source drives wgpu on native and WebGPU on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:gpu"
+readme = "README.md"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/gpu/0.3.15/README.md"
+changelog_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-changelogs/gpu/0.3.15/CHANGELOG.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T14:10:11.823796+00:00"
+updated_at = "2026-06-04T14:10:11.823796+00:00"
+
 [packages."@hatch:gpu-0.3.14"]
 name = "@hatch:gpu"
 version = "0.3.14"
@@ -1209,24 +1236,6 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:03.749537+00:00"
 updated_at = "2026-04-20T16:29:03.749537+00:00"
 
-[packages."@hatch:hello-0.1.1"]
-name = "@hatch:hello"
-version = "0.1.1"
-git = "https://github.com/wrenlift/hatch"
-description = "Reference plugin layout for wasm-only `@hatch:*` packages. A `Hello.greet(name)` foreign method backed by a tiny Rust cdylib \u2014 copy this directory as the starting point for your own on-demand plugin and replace the body with the real work."
-owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
-created_at = "2026-06-04T12:47:54.879816+00:00"
-updated_at = "2026-06-04T12:47:54.879816+00:00"
-
-[packages."@hatch:hello-0.1.0"]
-name = "@hatch:hello"
-version = "0.1.0"
-git = "https://github.com/wrenlift/hatch"
-description = "Reference plugin layout for wasm-only `@hatch:*` packages. A `Hello.greet(name)` foreign method backed by a tiny Rust cdylib \u2014 copy this directory as the starting point for your own on-demand plugin and replace the body with the real work."
-owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
-created_at = "2026-05-03T06:34:57.653608+00:00"
-updated_at = "2026-05-03T06:34:57.653608+00:00"
-
 [packages."@hatch:http-0.3.4"]
 name = "@hatch:http"
 version = "0.3.4"
@@ -1372,6 +1381,19 @@ readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-05-29T12:25:56.384878+00:00"
 updated_at = "2026-05-29T12:25:56.384878+00:00"
+
+[packages."@hatch:image-0.1.9"]
+name = "@hatch:image"
+version = "0.1.9"
+git = "https://github.com/wrenlift/hatch"
+description = "Image encode + decode. PNG / JPG / BMP / WebP in, RGBA8 buffer out \u2014 `Image.decode(bytes)` feeds straight into `@hatch:gpu`'s `Device.uploadImage(image)`, and `Image.encodePng(...)` writes synthesized buffers back out. Backed by the `image` crate."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:image"
+readme = "README.md"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/image/0.1.9/README.md"
+changelog_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-changelogs/image/0.1.9/CHANGELOG.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T14:10:15.699923+00:00"
+updated_at = "2026-06-04T14:10:15.699923+00:00"
 
 [packages."@hatch:image-0.1.8"]
 name = "@hatch:image"
@@ -1722,6 +1744,20 @@ owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-23T22:18:18.505131+00:00"
 updated_at = "2026-04-23T22:18:18.505131+00:00"
 
+[packages."@hatch:noise-0.2.2"]
+name = "@hatch:noise"
+version = "0.2.2"
+git = "https://github.com/wrenlift/hatch"
+description = "Procedural noise primitives \u2014 2D + 3D Simplex / Perlin / Value scalars, fractal Brownian motion octave-sum, and a batched Float32Array heightmap sampler. Backed by the `noise` crate so terrain generators, foliage scatter, weather simulations, and texture authoring all share the same deterministic, seeded implementations."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:noise"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/noise/0.2.2/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/noise/0.2.2/README.md"
+changelog_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-changelogs/noise/0.2.2/CHANGELOG.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T14:09:27.400213+00:00"
+updated_at = "2026-06-04T14:09:27.400213+00:00"
+
 [packages."@hatch:noise-0.2.1"]
 name = "@hatch:noise"
 version = "0.2.1"
@@ -1818,6 +1854,20 @@ description = "Filesystem path manipulation: join, split, parent, ext, normalize
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-20T16:29:04.839683+00:00"
 updated_at = "2026-04-20T16:29:04.839683+00:00"
+
+[packages."@hatch:physics-0.1.9"]
+name = "@hatch:physics"
+version = "0.1.9"
+git = "https://github.com/wrenlift/hatch"
+description = "Rapier-backed physics. `World2D` and `World3D` from one import \u2014 bodies, colliders, gravity, force / impulse, position + velocity reads, raycasts, and contact-event streams. Bundles rapier2d + rapier3d in a single cdylib so games never have to choose between dimensions at the package level. Wires into `@hatch:game` for a step-per-frame physics loop."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:physics"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/physics/0.1.9/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/physics/0.1.9/README.md"
+changelog_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-changelogs/physics/0.1.9/CHANGELOG.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T14:09:55.697961+00:00"
+updated_at = "2026-06-04T14:09:55.697961+00:00"
 
 [packages."@hatch:physics-0.1.8"]
 name = "@hatch:physics"
@@ -2136,6 +2186,20 @@ readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-05-30T08:57:24.113055+00:00"
 updated_at = "2026-05-30T08:57:24.113055+00:00"
+
+[packages."@hatch:sqlite-0.1.11"]
+name = "@hatch:sqlite"
+version = "0.1.11"
+git = "https://github.com/wrenlift/hatch"
+description = "Embedded SQLite. `Database.open(path)` returns a connection; prepared statements with named parameter binding, rows iterated as Maps, transactions, error handling. Backed by rusqlite (bundled libsqlite \u2014 no system dependency)."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:sqlite"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/sqlite/0.1.11/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/sqlite/0.1.11/README.md"
+changelog_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-changelogs/sqlite/0.1.11/CHANGELOG.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T14:10:44.744478+00:00"
+updated_at = "2026-06-04T14:10:44.744478+00:00"
 
 [packages."@hatch:sqlite-0.1.10"]
 name = "@hatch:sqlite"
@@ -2613,6 +2677,20 @@ description = "Server-rendered, htmx-native web framework for Wren. Router, midd
 owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
 created_at = "2026-04-25T14:09:48.115122+00:00"
 updated_at = "2026-04-25T14:09:48.115122+00:00"
+
+[packages."@hatch:window-0.2.15"]
+name = "@hatch:window"
+version = "0.2.15"
+git = "https://github.com/wrenlift/hatch"
+description = "Window + input for any WrenLift app. winit on native, page-attached canvas on web \u2014 same `Window.create({...})` API, same `pollEvents` / `closeRequested` / `size` surface across targets. Bring-your-own canvas via `Window.attach(elementId)` on web."
+homepage = "https://hatch.wrenlift.com/packages/@hatch:window"
+readme = "README.md"
+docs_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-docs/window/0.2.15/docs.json"
+readme_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-readmes/window/0.2.15/README.md"
+changelog_url = "https://bncbgsfttafynyalrrbb.supabase.co/storage/v1/object/public/package-changelogs/window/0.2.15/CHANGELOG.md"
+owner = "edb2f21a-f77a-4c73-8375-aa2110fd5501"
+created_at = "2026-06-04T14:43:50.933572+00:00"
+updated_at = "2026-06-04T14:43:50.933572+00:00"
 
 [packages."@hatch:window-0.2.13"]
 name = "@hatch:window"
