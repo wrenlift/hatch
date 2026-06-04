@@ -5,7 +5,7 @@ description = "hatch.wrenlift.com — landing page for Hatch. Server-rendered wi
 
 [dependencies]
 "@hatch:web"    = "0.1.9"
-"@hatch:sqlite" = "0.1.10"
+"@hatch:sqlite" = "0.1.11"
 "@hatch:http"   = "0.3.4"
 "@hatch:toml"   = "0.1.2"
 "@hatch:os"     = "0.1.2"
