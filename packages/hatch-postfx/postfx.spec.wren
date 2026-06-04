@@ -4,8 +4,13 @@
 // Wren-side surface (config parsing, uniform write contents,
 // PostPass interface contract).
 
-import "./postfx" for Tonemap, Vignette, FXAA, ColorGrade, ChromaticAberration, Bloom
+// Order matters: `@hatch:game` defines `PostPass`, and every class
+// imported from `./postfx` extends it. The MIR builder requires the
+// parent's field layout to be registered before the subclass module
+// compiles — without this ordering it aborts with
+// "PostPass's field layout is not yet registered. Known classes: []".
 import "@hatch:game"    for PostPass
+import "./postfx"       for Tonemap, Vignette, FXAA, ColorGrade, ChromaticAberration, Bloom
 import "@hatch:test"    for Test
 import "@hatch:assert"  for Expect
 
