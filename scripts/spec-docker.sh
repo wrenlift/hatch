@@ -98,8 +98,9 @@ fi
 # Build image (cached unless Dockerfile changes)
 # ---------------------------------------------------------------------------
 
-echo "==> building image $IMAGE_TAG (cached unless spec-docker.Dockerfile changed)"
+echo "==> building image $IMAGE_TAG (linux/amd64, cached unless spec-docker.Dockerfile changed)"
 docker build \
+  --platform linux/amd64 \
   --quiet \
   -t "$IMAGE_TAG" \
   -f "$DOCKERFILE" \
@@ -116,6 +117,7 @@ docker build \
 docker run \
   --rm \
   -it \
+  --platform linux/amd64 \
   -v "$WLIFT_SRC:/wren_lift" \
   -v "$REPO_ROOT:/hatch" \
   -v hatch-spec-target:/spec-target \

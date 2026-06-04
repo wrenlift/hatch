@@ -39,7 +39,11 @@
 # native docker volume keeps the second rebuild fast (~10s for the
 # incremental wlift binary on a quad-core).
 
-set -u
+# `set -e` so a failure in the topo pre-build python heredoc halts the
+# script before step 4 tries to run specs against an incomplete cache.
+# We re-disable it around the per-package spec loop (each package is
+# allowed to fail without aborting the whole sweep).
+set -eu
 
 # --- 0. Resolve inputs -----------------------------------------------------
 
@@ -64,21 +68,54 @@ fi
 
 echo "==> [1/4] building wlift + plugins from $WLIFT_SRC"
 cd "$WLIFT_SRC"
-cargo build --release --bin wlift --bin hatch
+
+# Memory ceiling matters more than wall-clock here. The wlift binary
+# links half of Cranelift + dynasmrt + every native runtime stdlib
+# crate; the release-mode link step alone can spike past 8GB of RSS
+# under QEMU emulation, and Docker Desktop on a 16GB Mac defaults to
+# an 8GB container limit. A full-parallel `cargo build` will be
+# SIGKILL'd silently by the kernel OOM-killer and `set -e` will trip
+# — but only AFTER cargo has fingered up the deps tree, wasting tens
+# of minutes of emulation time on a build the runner can't finish.
+#
+# CARGO_JOBS_BIN (this script's local convention) throttles the main-
+# binary build so each link step has enough headroom. Plugins stay on
+# full parallelism — they each link a small fraction of the staticlib
+# surface and link independently in their own process. Default 2 is
+# conservative; bump in spec-docker.sh if your Docker has more RAM.
+JOBS_BIN="${CARGO_JOBS_BIN:-2}"
+cargo build --release -j "$JOBS_BIN" --bin wlift --bin hatch
 # Same plugin set + ordering as `regression.yml`'s "Build plugins"
 # step. Keep them in sync when a new plugin lands.
 for crate in wlift_audio wlift_gpu wlift_image wlift_noise wlift_physics wlift_sqlite wlift_window; do
   cargo build --release -p "$crate"
 done
 
-WLIFT="$WLIFT_SRC/target/release/wlift"
-HATCH="$WLIFT_SRC/target/release/hatch"
-if [ "${CARGO_TARGET_DIR:-}" != "" ]; then
-  WLIFT="$CARGO_TARGET_DIR/release/wlift"
-  HATCH="$CARGO_TARGET_DIR/release/hatch"
+# Cargo's effective target dir depends on a few things (CARGO_TARGET_DIR
+# env, .cargo/config.toml's `target-dir`, default `target/`) and we don't
+# want to mirror that logic — just ask cargo where the artifact actually
+# landed. `--message-format=plain` is the default, `cargo metadata` returns
+# the resolved `target_directory` even when overridden.
+TARGET_DIR=$(cargo metadata --no-deps --format-version 1 2>/dev/null \
+              | python3 -c 'import sys,json; print(json.load(sys.stdin)["target_directory"])')
+if [ -z "$TARGET_DIR" ]; then
+  echo "::error::could not resolve cargo target directory"
+  exit 2
 fi
-PLUGIN_SO_DIR="$(dirname "$WLIFT")"
 
+WLIFT="$TARGET_DIR/release/wlift"
+HATCH="$TARGET_DIR/release/hatch"
+PLUGIN_SO_DIR="$TARGET_DIR/release"
+
+if [ ! -x "$WLIFT" ]; then
+  echo "::error::wlift not found at $WLIFT (after cargo build)"
+  echo "    target dir was: $TARGET_DIR"
+  echo "    contents:"
+  ls -la "$TARGET_DIR/release/" 2>&1 | head -20
+  exit 2
+fi
+
+echo "    target: $TARGET_DIR"
 echo "    wlift:  $WLIFT"
 echo "    hatch:  $HATCH"
 echo "    libs:   $PLUGIN_SO_DIR"
@@ -117,6 +154,9 @@ PY
 
 echo "==> [3/4] topo pre-build → $HATCH_CACHE_DIR"
 mkdir -p "$HATCH_CACHE_DIR"
+# The python heredoc reads HATCH_CACHE_DIR via os.environ — make sure
+# it's exported, not just shell-local.
+export HATCH_CACHE_DIR
 python3 - "$HATCH" << 'PY'
 # Walk packages/, build each in topo order against its
 # [dependencies], and mirror under every pinned version a sibling
@@ -203,6 +243,10 @@ echo ""
 
 export HATCH_OFFLINE=1
 export HATCH_CACHE_DIR
+
+# Per-package spec runs are allowed to fail without aborting the loop —
+# the summary at the bottom reports the failure tally.
+set +e
 
 total=0
 passed=0
