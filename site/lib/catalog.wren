@@ -21,6 +21,7 @@ import "@hatch:toml"   for Toml
 import "@hatch:sqlite" for Database
 import "@hatch:http"   for Http
 import "@hatch:time"   for Clock
+import "@hatch:fs"     for Fs
 
 // Fiber.yield round-trips into the scheduler and back; when the
 // scheduler has no other runnable fiber it returns control to
@@ -44,6 +45,14 @@ var SLEEP_CHUNK_MS_ = 50
 ///   Catalog.byCategory                // {"net": N, "data": N, ...}
 class Catalog {
   static INDEX_URL_ { "https://raw.githubusercontent.com/wrenlift/hatch/main/index.toml" }
+
+  /// Optional disk-local mirror. If `./index.toml` exists relative
+  /// to the site's CWD we parse it directly and skip the network
+  /// round-trip. Useful for cold-boot in air-gapped environments
+  /// and for the `run-aot.sh` launcher, which seeds this file from
+  /// the workspace `hatch/index.toml` before exec so local dev
+  /// doesn't depend on raw.githubusercontent reachability.
+  static LOCAL_INDEX_ { "./index.toml" }
 
   /// Color tokens picked to match the design's category chips —
   /// kept on the data layer so the templates stay dumb (a card
@@ -194,6 +203,7 @@ class Catalog {
       "  description TEXT," +
       "  docs_url    TEXT," +
       "  readme_url  TEXT," +
+      "  changelog_url TEXT," +
       "  cat         TEXT NOT NULL," +
       "  created_at  TEXT NOT NULL," +
       "  PRIMARY KEY (name, version)" +
@@ -220,10 +230,10 @@ class Catalog {
       Catalog.db.execute("DELETE FROM packages")
       for (row in rows) {
         Catalog.db.execute(
-          "INSERT INTO packages (name, version, git, description, docs_url, readme_url, cat, created_at) " +
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO packages (name, version, git, description, docs_url, readme_url, changelog_url, cat, created_at) " +
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
           [row["name"], row["version"], row["git"], row["description"],
-           row["docs_url"], row["readme_url"], row["cat"], row["created_at"]]
+           row["docs_url"], row["readme_url"], row["changelog_url"], row["cat"], row["created_at"]]
         )
       }
     }
@@ -299,6 +309,13 @@ class Catalog {
   /// `@hatch:http@0.3.2` moved to json@0.1.2 so the diamond
   /// resolves.
   static fetchAndParse_() {
+    // Local mirror wins when present — the launcher seeds it from
+    // the workspace `hatch/index.toml`, so dev boot is offline-clean.
+    // Falls through to the network path when the file is missing.
+    if (Fs.exists(Catalog.LOCAL_INDEX_)) {
+      var body = Fs.readText(Catalog.LOCAL_INDEX_)
+      return Catalog.parseToRows_(body)
+    }
     // 1 MiB stack — `Http.get` pulls in `flate2::GzDecoder` which
     // stages a ~256 KiB `InflateState` on the stack before boxing.
     // The default 256 KiB krio stack SIGBUSes on macOS arm64 during
@@ -317,7 +334,14 @@ class Catalog {
       var err = fib.error != null ? fib.error : (resp == null ? "no response" : "%(resp.status)")
       Fiber.abort("Catalog.refresh: index.toml fetch failed: %(err)")
     }
-    var doc = Toml.parse(resp.body)
+    return Catalog.parseToRows_(resp.body)
+  }
+
+  /// Shared TOML→row translation for the local-file and network
+  /// paths. Keeping it factored out means a malformed local file
+  /// hits the same shape check as a malformed upstream fetch.
+  static parseToRows_(body) {
+    var doc = Toml.parse(body)
     var packages = doc["packages"]
     if (!(packages is Map)) Fiber.abort("Catalog.refresh: unexpected index.toml shape")
     var out = []
@@ -331,7 +355,8 @@ class Catalog {
         "git":         row.containsKey("git") ? row["git"] : "",
         "description": description,
         "docs_url":    row.containsKey("docs_url")   ? row["docs_url"]   : null,
-        "readme_url":  row.containsKey("readme_url") ? row["readme_url"] : null,
+        "readme_url":  row.containsKey("readme_url")   ? row["readme_url"]     : null,
+        "changelog_url": row.containsKey("changelog_url") ? row["changelog_url"] : null,
         "cat":         Catalog.categorize_(name, description),
         "created_at":  row.containsKey("created_at") ? row["created_at"] : ""
       })
@@ -542,6 +567,98 @@ class Catalog {
       Catalog.fetchReadmeHtml(pkg)
       Fiber.yield()
     }
+  }
+
+  /// Mirror of `readmeUrl` for CHANGELOG.md. Resolution order:
+  ///   1. `pkg.changelog_url` set -> use verbatim (the Supabase
+  ///      Storage URL hatch publish writes).
+  ///   2. `pkg.changelog` absolute URL -> verbatim.
+  ///   3. `pkg.changelog` relative path -> resolve against
+  ///      `pkg.git` via the host's raw-URL convention.
+  ///   4. Fall back to `<git-raw>/CHANGELOG.md`.
+  ///   5. No git URL -> null (route renders the empty-state).
+  static changelogUrl(row) {
+    var url = row.containsKey("changelog_url") ? row["changelog_url"] : null
+    if (url != null && url != "") return url
+    var changelog = row.containsKey("changelog") ? row["changelog"] : null
+    if (changelog != null && changelog != "") {
+      if (changelog.startsWith("http://") || changelog.startsWith("https://")) return changelog
+      var base = Catalog.gitRawBase_(row)
+      if (base == null) return null
+      var path = changelog.startsWith("/") ? changelog : "/" + changelog
+      return base + path
+    }
+    var base = Catalog.gitRawBase_(row)
+    if (base == null) return null
+    return base + "/CHANGELOG.md"
+  }
+
+  /// Mirror of `fetchReadmeHtml`. Per-process FIFO cache keyed
+  /// by `name@version@url`. Returns wrapped HTML, a miss stub
+  /// for fetch failures, or null when no URL resolves.
+  static fetchChangelogHtml(pkg) {
+    var url = Catalog.changelogUrl(pkg)
+    if (url == null) return null
+    if (__changelogCache == null) __changelogCache = {}
+    var name = pkg["name"]
+    var version = pkg.containsKey("version") ? pkg["version"] : ""
+    var key = "%(name)@%(version)@%(url)"
+    if (__changelogCache.containsKey(key)) return __changelogCache[key]
+    var fib = Fiber.new(Fn.new {
+      Http.get(url, { "timeoutMs": 10000, "followRedirects": true })
+    }, 1024)
+    var resp = Catalog.driveFiberValue_(fib)
+    if (fib.error != null || resp == null || !resp.ok || resp.body == null || resp.body.count == 0) {
+      var miss = "<p class=\"readme-empty\">No CHANGELOG found for <code>" + name + "</code>.</p>"
+      Catalog.storeChangelog_(key, miss)
+      return miss
+    }
+    var html = Catalog.wrapChangelog_(resp.body, name)
+    Catalog.storeChangelog_(key, html)
+    return html
+  }
+
+  /// Cache cap matching `readmeCacheCap_`.
+  static changelogCacheCap_ { 16 }
+
+  /// FIFO-bounded insert into `__changelogCache`. Mirror of
+  /// `storeReadme_`.
+  static storeChangelog_(key, value) {
+    if (__changelogCache == null) __changelogCache = {}
+    if (__changelogCacheKeys == null) __changelogCacheKeys = []
+    if (!__changelogCache.containsKey(key)) __changelogCacheKeys.add(key)
+    __changelogCache[key] = value
+    while (__changelogCacheKeys.count > Catalog.changelogCacheCap_) {
+      var evict = __changelogCacheKeys.removeAt(0)
+      if (evict != null) __changelogCache.remove(evict)
+    }
+  }
+
+  /// Mirror of `wrapReadme_`. Same marked.js + CodeMirror
+  /// harness + IntersectionObserver TOC, but the DOM ids are
+  /// `changelog-body` / `changelog-md` / `changelog-toc` so the
+  /// changelog and README harnesses don't collide when both are
+  /// mounted on the same shell.
+  static wrapChangelog_(markdown, name) {
+    var html = "<div id=\"changelog-body\" data-markdown=\"true\">"
+    html = html + "<script type=\"text/markdown\" id=\"changelog-md\">" + markdown + "</script>"
+    html = html + "<noscript><pre>" + markdown + "</pre></noscript>"
+    html = html + "</div>"
+    html = html + "<script>(function(){var el=document.getElementById('changelog-md');"
+    html = html + "if(el && window.marked){var src=el.textContent;"
+    html = html + "var html=window.marked.parse(src);"
+    html = html + "var host=document.getElementById('changelog-body');"
+    html = html + "host.innerHTML=html;"
+    html = html + "if(window.mountWrenCode){window.mountWrenCode(host);}"
+    html = html + "else{var t=setInterval(function(){if(window.mountWrenCode){clearInterval(t);window.mountWrenCode(host);}},80);setTimeout(function(){clearInterval(t);},5000);}"
+    html = html + "var toc=document.getElementById('changelog-toc');"
+    html = html + "if(toc){toc.innerHTML='';"
+    html = html + "var slug=function(s){return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');};"
+    html = html + "var heads=host.querySelectorAll('h2,h3');var entries=[];"
+    html = html + "heads.forEach(function(h){var id=h.id||slug(h.textContent);if(!id)return;h.id=id;var li=document.createElement('li');if(h.tagName==='H3')li.className='indent';var a=document.createElement('a');a.href='#'+id;a.textContent=h.textContent.trim();li.appendChild(a);toc.appendChild(li);entries.push({el:h,link:a});});"
+    html = html + "if(entries.length && 'IntersectionObserver' in window){var visible=new Set();var io=new IntersectionObserver(function(items){items.forEach(function(it){if(it.isIntersecting)visible.add(it.target);else visible.delete(it.target);});var first=null;entries.forEach(function(e){if(!first && visible.has(e.el))first=e.el;});if(!first && entries[0])first=entries[0].el;entries.forEach(function(e){e.link.classList.toggle('active',e.el===first);});},{rootMargin:'-80px 0px -70% 0px',threshold:0});entries.forEach(function(e){io.observe(e.el);});if(entries[0])entries[0].link.classList.add('active');}}"
+    html = html + "}})();</script>"
+    return html
   }
 
   /// Wrap raw README markdown in the inline-script harness that

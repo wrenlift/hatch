@@ -56,14 +56,27 @@
        reference. `view` is set by the route — `"readme"` on
        `/docs/:name`, `"api"` on `/docs/:name/api` — and flips
        which doc the button hands off to. #}
-    {% if view == "api" %}
-      <a class="pkg-doc-cta" href="/packages/{{ pkg.name }}">
-        <span>README</span><span class="arrow">←</span>
-      </a>
-    {% else %}
-      <a class="pkg-doc-cta" href="/packages/{{ pkg.name }}/api">
-        <span>API reference</span><span class="arrow">→</span>
-      </a>
-    {% endif %}
+    {# Three-way toggle between README prose, the auto-generated
+       API reference, and the CHANGELOG. `view` is set by the
+       route — `"readme"`, `"api"`, or `"changelog"` — and the
+       current view's tab is hidden so the other two stay
+       visible for a one-click hop. #}
+    <div class="pkg-doc-tabs">
+      {% if view != "readme" %}
+        <a class="pkg-doc-cta" href="/packages/{{ pkg.name }}">
+          <span>README</span>
+        </a>
+      {% endif %}
+      {% if view != "api" %}
+        <a class="pkg-doc-cta" href="/packages/{{ pkg.name }}/api">
+          <span>API reference</span>
+        </a>
+      {% endif %}
+      {% if view != "changelog" %}
+        <a class="pkg-doc-cta" href="/packages/{{ pkg.name }}/changelog">
+          <span>Changelog</span>
+        </a>
+      {% endif %}
+    </div>
   </div>
 </div>

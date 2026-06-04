@@ -212,6 +212,40 @@ jobs:
               echo "  no README at $pkg_dir$readme_path, skipping"
             fi
 
+            # ---- CHANGELOG markdown ----
+            # Mirror of the README block. Same warning-not-fatal
+            # policy: a missing CHANGELOG isn't a sweep failure.
+            changelog_path=$(awk -F'"' '/^changelog *=/ {print $2; exit}' "$pkg_dir/hatchfile")
+            [ -z "$changelog_path" ] && changelog_path="CHANGELOG.md"
+
+            changelog_url=""
+            if [ "${changelog_path#http}" != "$changelog_path" ]; then
+              echo "  changelog is an external URL, skipping upload"
+              changelog_url="$changelog_path"
+            elif [ -f "$pkg_dir/$changelog_path" ]; then
+              body_file=$(mktemp)
+              jq -n --arg n "$name" --arg v "$version" --rawfile r "$pkg_dir/$changelog_path" \
+                '{name:$n, version:$v, changelog:$r}' > "$body_file"
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "  [dry] would POST /changelog-upload ($(wc -c < "$pkg_dir/$changelog_path") bytes)"
+                rm -f "$body_file"
+              else
+                if resp=$(curl -fsSL -X POST "$base/changelog-upload" \
+                  -H "Authorization: Bearer $HATCH_BOT_SECRET" \
+                  -H "Content-Type: application/json" \
+                  --data-binary "@$body_file"); then
+                  rm -f "$body_file"
+                  changelog_url=$(echo "$resp" | jq -r '.url // ""')
+                  echo "  changelog uploaded → $changelog_url"
+                else
+                  rm -f "$body_file"
+                  echo "::warning::$pkg: /changelog-upload POST failed (continuing)"
+                fi
+              fi
+            else
+              echo "  no CHANGELOG at $pkg_dir$changelog_path, skipping"
+            fi
+
             # ---- Catalog metadata refresh ----
             #
             # Re-POST `/publish` with the current hatchfile fields
@@ -243,7 +277,11 @@ jobs:
             fi
             if [ -n "$readme_url" ]; then
               record_args+=(--arg ru "$readme_url")
-              record_filter="$record_filter | .readme = \$ru"
+              record_filter="$record_filter | .readme_url = \$ru"
+            fi
+            if [ -n "$changelog_url" ]; then
+              record_args+=(--arg cu "$changelog_url")
+              record_filter="$record_filter | .changelog_url = \$cu"
             fi
 
             record=$(jq -n "${record_args[@]}" "$record_filter")

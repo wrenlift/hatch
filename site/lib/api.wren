@@ -59,7 +59,19 @@ class Api {
       Api.store_(key, json)
       if (json == null) return null
     }
-    var modules = JSON.parse(json)
+    var parsed = JSON.parse(json)
+    // v2 wrapper shape: { schema_version, modules: [...],
+    // changelog?, readme? }. Legacy v1 still ships as a bare
+    // List — we accept both so an old `docs_url` Storage object
+    // doesn't crash the page during the rollout window.
+    var modules
+    if (parsed is Map && parsed.containsKey("modules")) {
+      modules = parsed["modules"]
+    } else if (parsed is List) {
+      modules = parsed
+    } else {
+      return null
+    }
     if (!(modules is List) || modules.count == 0) return null
     return Api.decorate_(modules, null)
   }

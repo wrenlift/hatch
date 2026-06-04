@@ -60,7 +60,10 @@ interface PackageRecord {
   description?: string
   homepage?: string
   readme?: string
+  changelog?: string
   docs_url?: string
+  readme_url?: string
+  changelog_url?: string
   owner?: string
 }
 
@@ -77,7 +80,7 @@ function validate(body: unknown): { ok: true; record: PackageRecord } | { ok: fa
     const err = need(f)
     if (err) return { ok: false, reason: err }
   }
-  for (const f of ['description', 'homepage', 'readme', 'docs_url', 'owner'] as const) {
+  for (const f of ['description', 'homepage', 'readme', 'changelog', 'docs_url', 'readme_url', 'changelog_url', 'owner'] as const) {
     if (b[f] !== undefined && typeof b[f] !== 'string') {
       return { ok: false, reason: `'${f}' must be a string when present` }
     }
@@ -291,6 +294,62 @@ async function handleReadmeUpload(req: Request): Promise<Response> {
   return json({ url: pub.publicUrl, key })
 }
 
+// `POST /changelog-upload` — body shape:
+//
+//   { "name": "@hatch:foo", "version": "1.2.3", "changelog": "<markdown>" }
+//
+// Uploads the markdown text to the public `package-changelogs`
+// bucket at `<short>/<version>/CHANGELOG.md`, mirror of
+// `/readme-upload`. Same auth model. Returns the canonical public
+// URL the consumer should write back into `packages.changelog_url`.
+//
+// Markdown ships verbatim (utf-8); marked.js still parses it
+// client-side on the docs site.
+async function handleChangelogUpload(req: Request): Promise<Response> {
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch (_) {
+    return text('invalid JSON body', 400)
+  }
+  if (typeof body !== 'object' || body === null) {
+    return text('body must be a JSON object', 400)
+  }
+  const b = body as Record<string, unknown>
+  if (typeof b.name !== 'string' || !b.name) return text("'name' must be a non-empty string", 400)
+  if (typeof b.version !== 'string' || !b.version) return text("'version' must be a non-empty string", 400)
+  if (typeof b.changelog !== 'string') return text("'changelog' must be a string", 400)
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!supabaseUrl || !serviceKey) {
+    console.error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing')
+    return text('server misconfigured', 500)
+  }
+  const client = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+
+  const short = b.name.replace(/^@hatch:/, '').replace(/[:@/]/g, '_')
+  const key = `${short}/${b.version}/CHANGELOG.md`
+  const payload = new TextEncoder().encode(b.changelog)
+
+  const { error: upErr } = await client
+    .storage
+    .from('package-changelogs')
+    .upload(key, payload, {
+      contentType: 'text/markdown; charset=utf-8',
+      upsert: true,
+    })
+  if (upErr) {
+    console.error('storage upload failed:', upErr)
+    return json({ error: upErr.message ?? 'storage error' }, 500)
+  }
+
+  const { data: pub } = client.storage.from('package-changelogs').getPublicUrl(key)
+  return json({ url: pub.publicUrl, key })
+}
+
 async function handleTag(req: Request): Promise<Response> {
   let body: unknown
   try {
@@ -484,6 +543,12 @@ Deno.serve(async (req: Request) => {
     const authErr = checkAuth(req)
     if (authErr) return authErr
     return handleReadmeUpload(req)
+  }
+
+  if (path === '/changelog-upload' && req.method === 'POST') {
+    const authErr = checkAuth(req)
+    if (authErr) return authErr
+    return handleChangelogUpload(req)
   }
 
   if (path === '/proxy') {

@@ -408,10 +408,11 @@ app.get("/packages/:name") {|req|
   var pkg = Catalog.byName(name)
   if (pkg == null) return notFound.call("/packages/" + name)
   var ctx = docsContext.call(name, {
-    "pkg":       pkg,
-    "readmeUrl": Catalog.readmeUrl(pkg),
-    "view":      "readme",
-    "activeNav": "packages"
+    "pkg":          pkg,
+    "readmeUrl":    Catalog.readmeUrl(pkg),
+    "changelogUrl": Catalog.changelogUrl(pkg),
+    "view":         "readme",
+    "activeNav":    "packages"
   })
   return req.render(registry.get("package.html"), withPath.call(req, ctx))
     .header("Cache-Control", CACHE_PACKAGE)
@@ -432,11 +433,12 @@ app.get("/packages/:name/api") {|req|
   // bundle is reachable; the template falls back to the empty
   // placeholder in that case.
   var ctx = docsContext.call(name, {
-    "pkg":        pkg,
-    "readmeUrl":  Catalog.readmeUrl(pkg),
-    "view":       "api",
-    "apiModules": Api.fetch(pkg),
-    "activeNav":  "packages"
+    "pkg":          pkg,
+    "readmeUrl":    Catalog.readmeUrl(pkg),
+    "changelogUrl": Catalog.changelogUrl(pkg),
+    "view":         "api",
+    "apiModules":   Api.fetch(pkg),
+    "activeNav":    "packages"
   })
   return req.render(registry.get("package_api.html"), withPath.call(req, ctx))
     .header("Cache-Control", CACHE_PACKAGE)
@@ -470,6 +472,51 @@ app.get("/packages/:name/readme") {|req|
   // 5-min refresh) plus `stale-while-revalidate=3600` so the
   // browser shows the prior body instantly on revisit and
   // refreshes in the background.
+  r.header("Cache-Control", CACHE_PACKAGE)
+  return r
+}
+
+// Changelog detail. Same shell as the README view — hatchfile-
+// derived header, htmx-driven fragment body — but the swap-
+// target fetches `/packages/:name/changelog/body` so marked.js
+// renders the package's CHANGELOG.md prose instead. The header
+// CTA grows a third tab that flips between README / API /
+// Changelog based on `view`.
+app.get("/packages/:name/changelog") {|req|
+  var name = req.params["name"]
+  var pkg = Catalog.byName(name)
+  if (pkg == null) return notFound.call("/packages/" + name + "/changelog")
+  var ctx = docsContext.call(name, {
+    "pkg":          pkg,
+    "readmeUrl":    Catalog.readmeUrl(pkg),
+    "changelogUrl": Catalog.changelogUrl(pkg),
+    "view":         "changelog",
+    "activeNav":    "packages"
+  })
+  return req.render(registry.get("package_changelog.html"), withPath.call(req, ctx))
+    .header("Cache-Control", CACHE_PACKAGE)
+}
+
+// htmx fragment endpoint for the changelog body. Mirror of the
+// `/packages/:name/readme` fragment — returns the marked.js +
+// CodeMirror harness so client-side rendering matches the README
+// path exactly.
+app.get("/packages/:name/changelog/body") {|req|
+  var name = req.params["name"]
+  var pkg = Catalog.byName(name)
+  if (pkg == null) {
+    var r = Response.new(404)
+    r.text("not found")
+    return r
+  }
+  var html = Catalog.fetchChangelogHtml(pkg)
+  if (html == null) {
+    var r = Response.new(204)
+    r.text("")
+    return r
+  }
+  var r = Response.new(200)
+  r.html(html)
   r.header("Cache-Control", CACHE_PACKAGE)
   return r
 }
