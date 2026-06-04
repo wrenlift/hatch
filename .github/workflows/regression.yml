@@ -438,12 +438,26 @@ jobs:
                 passed=$((passed + 1))
               else
                 echo "::error title=$pkg ($mode)::no 'ok:' summary line"
+                # Surface every Fail: line so the specific failing test
+                # is visible — `tail -30` truncated the middle of an
+                # 80+ test run and hid the Fail: line for fsm's 81/82
+                # tiered flake. Keep tail -30 as a fallback chunk after
+                # the targeted Fail: lines so the surrounding context
+                # is still inspectable.
+                echo "$clean" | grep -E "^(Fail|FAILED):" | head -20
+                echo "--- tail context ---"
                 echo "$output" | tail -30
                 failed_pkgs+=("$pkg")
               fi
             else
               rc=$?
               echo "::error title=$pkg ($mode)::wlift exited with $rc"
+              # Same fail-line surfacing for the wlift-exited-non-zero
+              # path (panic / unhandled abort) — Fail: lines surface
+              # the test that ran last before the crash.
+              echo "$output" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
+                | grep -E "^(Fail|FAILED):" | head -20
+              echo "--- tail context ---"
               echo "$output" | tail -30
               failed_pkgs+=("$pkg")
             fi

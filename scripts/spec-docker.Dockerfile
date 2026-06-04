@@ -19,7 +19,15 @@
 # `spec-docker.sh`, so the second run only recompiles changed
 # crates.
 
-FROM rust:1-bookworm
+# Pin to linux/amd64 explicitly so the image always matches CI's
+# `ubuntu-latest` runner architecture. On Apple Silicon hosts Docker
+# defaults to linux/arm64, which dodges the JIT codegen paths we
+# want to exercise — Cranelift emits different machine code per
+# target, and tiered-mode flakes that surface in x86_64 CI won't
+# reproduce under an arm64 image. The trade-off is slower builds
+# (QEMU / Rosetta emulation, ~3-5× compile time), but the whole
+# point of this image is to reproduce CI faithfully.
+FROM --platform=linux/amd64 rust:1-bookworm
 
 # Plugin system libraries — same set as `regression.yml`'s
 # "Install plugin system deps (linux)" step:
