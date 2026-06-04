@@ -153,26 +153,24 @@ class Api {
     // bundle; @hatch:http@0.3.2 moved to json@0.1.2 so the
     // diamond resolves and we can drop the shell-out.
     //
-    // The drive-loop here is load-bearing: a plain `fib.try()`
-    // returns at the FIRST yield with the partial value the
-    // child emitted, not the final `Response`. `Http.get`
-    // yields several times during a slow Supabase fetch, so
-    // a single try() gets the caller a half-baked sentinel —
-    // typically a string fragment of the response body. The
-    // template parser downstream sees a truncated docs JSON
-    // and aborts mid-`{% if %}` block ("unterminated {% if %}"
-    // in fly logs).
+    // Box pattern: `Fiber.try()` returns null on clean exit per
+    // Wren spec, not the body's value. Write the Response into
+    // a closure-captured 1-element list and read back after the
+    // drive loop completes. Matches Catalog.driveFiberValue_'s
+    // shape.
+    //
     // 1 MiB stack — `Http.get` pulls in `flate2::GzDecoder` whose
     // `InflateState` stages on the stack before boxing; the default
     // 256 KiB krio stack SIGBUSes on macOS arm64 during that alloc.
+    var box = [null]
     var fib = Fiber.new(Fn.new {
-      Http.get(url, { "timeoutMs": 5000, "followRedirects": true })
+      box[0] = Http.get(url, { "timeoutMs": 5000, "followRedirects": true })
     }, 1024)
-    var resp = null
     while (!fib.isDone) {
-      resp = fib.try()
+      fib.try()
       if (!fib.isDone) Fiber.yield()
     }
+    var resp = box[0]
     if (fib.error != null || resp == null) return null
     if (!resp.ok) return null
     var body = resp.body
