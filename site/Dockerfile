@@ -52,8 +52,12 @@ FROM rust:1-trixie AS wlift-builder
 #     cranelift_native::builder (AVX2 + BMI1/2 on fly's
 #     Skylake Xeons instead of base SSE2); perf-only, no
 #     functional change
+#   - 86538a1 — curl_post streams body via stdin + retries
+#     transient 5xx / network failures. Fixes the publish-path
+#     docs upload silently dropping for packages with large
+#     docs JSON (ARG_MAX) or hitting an Edge Function 504.
 # Flip to a `v…` tag once a release ships these.
-ARG WLIFT_VERSION=88e6b5df650bde68c0ffaadee0104c225144085a
+ARG WLIFT_VERSION=86538a1ff79f3b3d85cc3c6864dcddc9e5a30bd9
 ARG WLIFT_REPO=https://github.com/wrenlift/WrenLift.git
 
 RUN apt-get update \
