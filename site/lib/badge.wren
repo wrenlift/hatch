@@ -228,24 +228,29 @@ class Badge {
       // doesn't penalise unknown UAs.
       "User-Agent":           "hatch-badge/0.1 (+https://hatch.wrenlift.com)"
     }
+    // Box pattern: Fiber.try() returns null on clean exit; write
+    // the Response (and parsed JSON below) into closure-captured
+    // 1-element lists so we can read back after the drive loop.
+    var respBox = [null]
     var fib = Fiber.new {
-      Http.get(url, { "timeoutMs": 4000, "followRedirects": true, "headers": headers })
+      respBox[0] = Http.get(url, { "timeoutMs": 4000, "followRedirects": true, "headers": headers })
     }
-    var resp = null
     while (!fib.isDone) {
-      resp = fib.try()
+      fib.try()
       if (!fib.isDone) Fiber.yield()
     }
+    var resp = respBox[0]
     var label = workflowLabel_(workflow)
     if (fib.error != null || resp == null || !resp.ok || resp.body == null) {
       return Badge.render(label, "unknown", "unknown")
     }
-    var parsed = null
-    var fib2 = Fiber.new { JSON.parse(resp.body) }
+    var parsedBox = [null]
+    var fib2 = Fiber.new { parsedBox[0] = JSON.parse(resp.body) }
     while (!fib2.isDone) {
-      parsed = fib2.try()
+      fib2.try()
       if (!fib2.isDone) Fiber.yield()
     }
+    var parsed = parsedBox[0]
     if (fib2.error != null || parsed == null) {
       return Badge.render(label, "unknown", "unknown")
     }
