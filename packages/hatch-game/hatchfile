@@ -38,4 +38,4 @@ changelog = "CHANGELOG.md"
 "@hatch:test"   = "0.2.1"
 "@hatch:assert" = "0.2.3"
 # actions.spec validates the Actions × StateChart binding flow.
-"@hatch:fsm"    = "0.1.1"
+"@hatch:fsm"    = "0.1.2"
