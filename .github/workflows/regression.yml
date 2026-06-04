@@ -120,7 +120,19 @@ jobs:
       - name: Build plugins
         working-directory: source
         run: |
-          for crate in wlift_audio wlift_gpu wlift_image wlift_physics wlift_sqlite wlift_window; do
+          # Keep this list in sync with the set of catalog packages
+          # that declare a `[plugin_source]` in their hatchfile —
+          # `Stage plugin dylibs into packages` below reads each
+          # `crate` and copies `bin/libs/lib<crate>.so` into the
+          # owning package's `libs/<os>-<arch>/`. A missing crate
+          # here surfaces as "could not load native library" during
+          # the spec run for any consumer of the affected
+          # `@hatch:*` package, not just the package itself
+          # (e.g. `@hatch:postfx` imports `@hatch:noise` for the
+          # bloom kernel — without `wlift_noise` staged, postfx's
+          # spec aborts at dlopen). When you add a new
+          # plugin-backed package, add its `crate` here too.
+          for crate in wlift_audio wlift_gpu wlift_image wlift_noise wlift_physics wlift_sqlite wlift_window; do
             cargo build --release -p "$crate"
           done
 
