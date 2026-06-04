@@ -88,66 +88,35 @@ jobs:
 
           dispatched=0
           skipped_release=0
-          skipped_no_pkg=0
-          skipped_off_head=0
+          skipped_no_version=0
           skipped_deps=0
           dispatched_list=""
 
-          # Only consider tags pointing at the current HEAD commit.
-          # The publish wave creates tags pointing at the same wave
-          # commit on main; historical orphan tags (pointing at older
-          # commits) are intentionally left alone — they belong to
-          # past waves whose source state no longer matches the
-          # current packages/<pkg>/hatchfile, and re-dispatching them
-          # would build the CURRENT artifacts and try to attach them
-          # to MISMATCHED release names. Leave those for an operator
-          # to triage manually.
-          HEAD_SHA=$(git rev-parse HEAD)
+          # Walk every `packages/*/hatchfile` rather than `git tag -l`.
+          # Tags are created as a SIDE-EFFECT of release publishing —
+          # for a package whose version has been bumped but never
+          # published, no tag exists yet, and a tag-driven sweep
+          # would never discover it. Walking hatchfiles lets the
+          # sweep discover bumps regardless of tag state, which is
+          # exactly what a publish-wave dispatcher needs.
+          while IFS= read -r hf; do
+            [ -z "$hf" ] && continue
 
-          # Walk every publish/<pkg>@<ver> tag. Slash inside a tag
-          # name is fine; `git tag -l` returns the full ref name
-          # minus the `refs/tags/` prefix.
-          while IFS= read -r tag; do
-            [ -z "$tag" ] && continue
-
-            # Skip tags pointing at a commit other than HEAD —
-            # those belong to past waves and shouldn't be revived.
-            if [ "$(git rev-parse "${tag}^{commit}")" != "$HEAD_SHA" ]; then
-              skipped_off_head=$((skipped_off_head + 1))
+            pkg=$(basename "$(dirname "$hf")")
+            # Extract `version = "X.Y.Z"`. The `awk` form matches
+            # the same shape `publish-sweep.yml` already relies on.
+            version=$(awk -F'"' '/^version *=/ {print $2; exit}' "$hf")
+            if [ -z "$version" ]; then
+              echo "::warning file=$hf::no version field — skipping $pkg"
+              skipped_no_version=$((skipped_no_version + 1))
               continue
             fi
+            tag="publish/${pkg}@${version}"
 
-            # Parse `publish/<pkg>@<version>`. `<pkg>` is the
-            # directory under `packages/`; `<version>` is the
-            # semver. Use parameter expansion so an `@` inside
-            # `<pkg>` (there aren't any today, but defending
-            # against a future foo@bar dir) wouldn't break the
-            # split.
-            pkg=${tag#publish/}
-            pkg=${pkg%@*}
-
-            # If a GitHub Release already exists at this tag, the
-            # publish ran and succeeded. Skip silently.
+            # If a GitHub Release already exists at the target
+            # tag, the publish ran and succeeded. Skip silently.
             if gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
               skipped_release=$((skipped_release + 1))
-              continue
-            fi
-
-            # The tag exists but no release does. Either the
-            # publish workflow never dispatched, or it dispatched
-            # and failed before release creation. Either way the
-            # `workflow_dispatch` call is correct — duplicate runs
-            # on the same input are idempotent at the publish
-            # layer (release upload is keyed by tag name and
-            # treats a present-and-matching asset as success).
-            hf="packages/${pkg}/hatchfile"
-            if [ ! -f "$hf" ]; then
-              # Tag references a package directory that no longer
-              # exists (renamed / removed). Surface as a warning
-              # but don't fail — the sweep is supposed to be
-              # eventually-consistent.
-              echo "::warning::tag $tag references $hf which doesn't exist; skipping"
-              skipped_no_pkg=$((skipped_no_pkg + 1))
               continue
             fi
 
@@ -231,7 +200,7 @@ jobs:
             gh workflow run "$workflow" --repo "$REPO" -f package="$pkg"
             dispatched=$((dispatched + 1))
             dispatched_list="${dispatched_list}- $tag → $workflow"$'\n'
-          done < <(git tag -l 'publish/*@*')
+          done < <(find packages -mindepth 2 -maxdepth 2 -name hatchfile | sort)
 
           {
             echo "### Ensure publish dispatched"
@@ -239,8 +208,7 @@ jobs:
             echo "- dispatched: **$dispatched**"
             echo "- deferred (deps pending): $skipped_deps"
             echo "- skipped (release exists): $skipped_release"
-            echo "- skipped (off HEAD — past waves): $skipped_off_head"
-            echo "- skipped (no package dir): $skipped_no_pkg"
+            echo "- skipped (no version field): $skipped_no_version"
             if [ "$dispatched" -gt 0 ]; then
               echo ""
               echo "#### Dispatched"
