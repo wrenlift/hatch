@@ -405,10 +405,11 @@ class AssetLoader {
           _loaded[name] = asset
           dropEntry = true
         } else if (handle.isReady) {
-          var finishFiber = Fiber.new {
-            return entry["finish"].call(handle.result)
-          }
-          asset = finishFiber.try()
+          // Same box pattern as the sync branch below — Fiber.try()
+          // loses the return value via the stale-slot leak under JIT.
+          var finishBox = [null]
+          var finishFiber = Fiber.new { finishBox[0] = entry["finish"].call(handle.result) }
+          finishFiber.try()
           if (finishFiber.error != null) {
             dropEntry = true
             if (_onError != null) {
@@ -417,6 +418,7 @@ class AssetLoader {
               Fiber.abort("AssetLoader.update: '%(name)' finish failed: %(finishFiber.error)")
             }
           } else {
+            asset = finishBox[0]
             _loaded[name] = asset
             dropEntry = true
           }
@@ -443,8 +445,14 @@ class AssetLoader {
       dropEntry = true
       // Synchronous: wrap in a child fiber so we can route abort
       // through onError without the loader itself dying.
-      var fiber = Fiber.new(entry["load"])
-      asset = fiber.try()
+      // List-as-mutable-box because Fiber.try() leaks stale slot
+      // contents (null under the JIT path) instead of the closure's
+      // return value (see feedback_fiber_try_stale_slot.md). For
+      // loader entries whose `load` Fn returns a non-null asset, a
+      // bare `asset = fiber.try()` silently stored null.
+      var box = [null]
+      var fiber = Fiber.new { box[0] = entry["load"].call() }
+      fiber.try()
       if (fiber.error != null) {
         if (_onError != null) {
           _onError.call(name, fiber.error)
@@ -452,6 +460,7 @@ class AssetLoader {
           Fiber.abort("AssetLoader.update: '%(name)' failed: %(fiber.error)")
         }
       } else {
+        asset = box[0]
         _loaded[name] = asset
       }
     }
