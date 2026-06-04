@@ -1,5 +1,5 @@
 name        = "@hatch:image"
-version     = "0.1.8"
+version     = "0.1.9"
 entry       = "image"
 description = "Image encode + decode. PNG / JPG / BMP / WebP in, RGBA8 buffer out — `Image.decode(bytes)` feeds straight into `@hatch:gpu`'s `Device.uploadImage(image)`, and `Image.encodePng(...)` writes synthesized buffers back out. Backed by the `image` crate."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:image"
@@ -14,7 +14,7 @@ repo  = "https://github.com/wrenlift/WrenLift.git"
 # to the `wlift_abi` opaque-VM C shim — no more `wren_lift` Rust
 # internals in the cdylib. Future host bumps only need a rev
 # bump here when the `wlift_plugin_*` C surface grows.
-rev   = "e52ba41"
+rev   = "7566533e544a91c291796d6c9f92a6bca133f5b4"
 crate = "wlift_image"
 
 [native_libs.wlift_image]
