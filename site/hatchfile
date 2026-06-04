@@ -4,17 +4,9 @@ entry       = "main"
 description = "hatch.wrenlift.com — landing page for Hatch. Server-rendered with @hatch:web + @hatch:template, fragments swapped via htmx, packages catalog backed by an in-memory SQLite of the GitHub-hosted index.toml."
 
 [dependencies]
-# `@hatch:web@0.1.7` + `@hatch:http@0.3.3` track `@hatch:json@0.1.3`.
-# `@hatch:sqlite@0.1.8` rebuilds the plugin dylib against the
-# wren_lift commit (`5051d6f`) that landed the AOT runtime fixes
-# (SM-tainted CallStaticSelf routing, 8-user-arg ctor JIT entry,
-# empty-MIR walker bailout). `@hatch:fsm@0.1.0` is the new
-# Harel-statechart package; `lib/lifecycle.wren` drives the boot
-# chart, `/readyz` reads its `Lifecycle.snapshot`.
-#"@hatch:web"    = "0.1.7"
-"@hatch:web"    = { path = "../packages/hatch-web" }
-"@hatch:sqlite" = "0.1.8"
+"@hatch:web"    = "0.1.9"
+"@hatch:sqlite" = "0.1.10"
 "@hatch:http"   = "0.3.4"
-"@hatch:toml"   = "0.1.1"
-"@hatch:os"     = "0.1.1"
-"@hatch:fsm"    = "0.1.0"
+"@hatch:toml"   = "0.1.2"
+"@hatch:os"     = "0.1.2"
+"@hatch:fsm"    = "0.1.2"
