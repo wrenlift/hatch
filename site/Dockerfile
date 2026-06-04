@@ -53,7 +53,7 @@ FROM rust:1-trixie AS wlift-builder
 #     Skylake Xeons instead of base SSE2); perf-only, no
 #     functional change
 # Flip to a `v…` tag once a release ships these.
-ARG WLIFT_VERSION=7566533e544a91c291796d6c9f92a6bca133f5b4
+ARG WLIFT_VERSION=88e6b5df650bde68c0ffaadee0104c225144085a
 ARG WLIFT_REPO=https://github.com/wrenlift/WrenLift.git
 
 RUN apt-get update \
