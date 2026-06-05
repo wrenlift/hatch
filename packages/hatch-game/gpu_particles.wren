@@ -101,11 +101,26 @@ class GpuParticleSystem3D {
   //     instance format.
   static COMPUTE_WGSL_ { "
     struct Params {
-      dt_time_drag_cap: vec4<f32>,
-      gravity:          vec4<f32>,
-      color_start:      vec4<f32>,
-      color_end:        vec4<f32>,
-      size_rot:         vec4<f32>,
+      dt_time_drag_cap:   vec4<f32>,
+      gravity:            vec4<f32>,
+      color_start:        vec4<f32>,
+      color_end:          vec4<f32>,
+      size_rot:           vec4<f32>,
+      // Wind force — added to velocity each frame.
+      //   xyz = wind direction (unnormalised — magnitude carries strength)
+      //   w   = global wind strength multiplier
+      wind_dir_strength:  vec4<f32>,
+      // Curl-noise turbulence parameters. The shader perturbs each
+      // particle's velocity with a divergence-free pseudo-curl field
+      // sampled at (particle_pos * scale + time * time_scale). This is
+      // a fast approximation — not a true curl(Perlin) — but cheap
+      // enough that 1M particles still fit in a single dispatch.
+      //   x = spatial scale (1/wavelength)
+      //   y = time scale (radians/sec advance through the field)
+      //   z = amplitude (m/s of perturbation at unit strength)
+      //   w = wind-aligned bias (0 = isotropic swirl, 1 = streaks
+      //       along wind_dir)
+      wind_noise:         vec4<f32>,
     };
 
     struct State {
@@ -124,6 +139,25 @@ class GpuParticleSystem3D {
     @group(0) @binding(1) var<storage, read_write> state:   array<State>;
     @group(0) @binding(2) var<storage, read_write> render:  array<RenderInst>;
 
+    // Cheap divergence-free vector field sampled at (p, t). Built
+    // from three orthogonal trig terms — not a true curl(Perlin),
+    // but the cross-products give a swirling rotational field that
+    // visibly mimics curl noise without the cost of a real Perlin
+    // sample. Good enough for foliage-wind, dust, smoke at scale.
+    fn pseudo_curl(p: vec3<f32>, t: f32) -> vec3<f32> {
+      let a = vec3<f32>(
+        sin(p.y + t),
+        sin(p.z + t * 1.13),
+        sin(p.x + t * 0.87)
+      );
+      let b = vec3<f32>(
+        cos(p.z * 1.21 + t * 0.91),
+        cos(p.x * 1.07 + t),
+        cos(p.y * 1.33 + t * 1.07)
+      );
+      return cross(a, b);
+    }
+
     @compute @workgroup_size(64)
     fn integrate(@builtin(global_invocation_id) gid: vec3<u32>) {
       let i = gid.x;
@@ -132,6 +166,7 @@ class GpuParticleSystem3D {
 
       var s   = state[i];
       let dt  = params.dt_time_drag_cap.x;
+      let tnow = params.dt_time_drag_cap.y;
       let drg = params.dt_time_drag_cap.z;
       let g   = params.gravity.xyz;
       let life = s.vel_life.w;
@@ -146,9 +181,33 @@ class GpuParticleSystem3D {
         return;
       }
 
+      // Wind force: constant drift + divergence-free turbulence.
+      // Both terms scale with `wind_dir_strength.w` so callers can
+      // silence the whole wind subsystem by zeroing the strength
+      // (the default config does exactly this).
+      let wind_strength = params.wind_dir_strength.w;
+      let wind_dir      = params.wind_dir_strength.xyz;
+      let noise_scale   = params.wind_noise.x;
+      let noise_time    = params.wind_noise.y;
+      let noise_amp     = params.wind_noise.z;
+      let wind_align    = params.wind_noise.w;
+      var wind_force    = wind_dir * wind_strength;
+      if (noise_amp > 0.0) {
+        let p_sample = s.pos_age.xyz * noise_scale;
+        var curl     = pseudo_curl(p_sample, tnow * noise_time);
+        // Wind-aligned bias: blend the isotropic swirl toward the
+        // wind direction so streaks form along the flow instead of
+        // pure rotation.
+        if (wind_align > 0.0) {
+          let aligned = wind_dir * dot(curl, wind_dir);
+          curl = mix(curl, aligned, wind_align);
+        }
+        wind_force = wind_force + curl * (noise_amp * wind_strength);
+      }
+
       // Integrate.
       var v = s.vel_life.xyz;
-      v = v + g * dt - v * drg * dt;
+      v = v + (g + wind_force) * dt - v * drg * dt;
       var p = s.pos_age.xyz + v * dt;
       let new_age = s.pos_age.w + dt;
       s.pos_age  = vec4<f32>(p, new_age);
@@ -178,8 +237,8 @@ class GpuParticleSystem3D {
 
   static FLOATS_PER_STATE_     { 8 }   // 2 × vec4
   static FLOATS_PER_RENDER_    { 16 }  // 4 × vec4 (matches drawBillboardN)
-  static FLOATS_PER_PARAMS_    { 20 }  // 5 × vec4 (padded to 16)
-  static PARAMS_UBO_BYTES_     { 80 }  // 20 × 4 — already a multiple of 16
+  static FLOATS_PER_PARAMS_    { 28 }  // 7 × vec4 (incl. wind + curl-noise)
+  static PARAMS_UBO_BYTES_     { 112 } // 28 × 4 — already a multiple of 16
 
   /// Build the system. Allocates state + render storage buffers,
   /// the params UBO, and the compute pipeline.
@@ -215,6 +274,27 @@ class GpuParticleSystem3D {
     // the XZ velocity sampling for polar coordinates so a fountain
     // sprays in a cone instead of a square frustum.
     _radialXZ = opts.containsKey("radialXZ") ? opts["radialXZ"] : false
+
+    // Wind field state. Defaults to "no wind" — the compute pass
+    // gates on `_windStrength > 0` so the shader skips the
+    // perturbation lookup entirely when nothing's been wired up.
+    _windDir       = [0, 0, 0]
+    _windStrength  = 0
+    _windNoiseScale = 0.20
+    _windNoiseTime  = 0.50
+    _windNoiseAmp   = 0.00
+    _windAlign      = 0.00
+    if (opts.containsKey("wind"))   _windDir = GpuParticleSystem3D.triple_(opts, "wind", 0, 0, 0)
+    if (opts.containsKey("windStrength")) _windStrength = opts["windStrength"]
+    if (opts.containsKey("windNoise")) {
+      var wn = opts["windNoise"]
+      if (wn is Map) {
+        if (wn.containsKey("scale"))     _windNoiseScale = wn["scale"]
+        if (wn.containsKey("timeScale")) _windNoiseTime  = wn["timeScale"]
+        if (wn.containsKey("amplitude")) _windNoiseAmp   = wn["amplitude"]
+        if (wn.containsKey("align"))     _windAlign      = wn["align"]
+      }
+    }
 
     _device = device
 
@@ -329,6 +409,39 @@ class GpuParticleSystem3D {
     _velMax[2] = vz
   }
 
+  /// Set a wind force applied per frame in the compute pass. The
+  /// integrator adds `(dir.xyz * strength) * dt` to every particle's
+  /// velocity. Pair with `setWindNoise(...)` for curl-noise-driven
+  /// turbulence layered on top.
+  ///
+  /// @param {Num} dx
+  /// @param {Num} dy
+  /// @param {Num} dz
+  /// @param {Num} strength. Force multiplier (m/s² roughly).
+  setWind(dx, dy, dz, strength) {
+    _windDir[0] = dx
+    _windDir[1] = dy
+    _windDir[2] = dz
+    _windStrength = strength
+  }
+
+  /// Configure the curl-noise turbulence the compute shader adds
+  /// on top of the constant wind force. All four params default to
+  /// "no turbulence" (`amplitude = 0`) until the caller dials it in.
+  ///
+  /// @param {Num} scale. Spatial frequency of the field (1/wavelength).
+  /// @param {Num} timeScale. Radians/sec advance through the field.
+  /// @param {Num} amplitude. Per-particle perturbation magnitude
+  ///   (m/s at unit wind strength); a value of 0 disables noise.
+  /// @param {Num} align. 0 = isotropic swirl; 1 = streaks along wind
+  ///   direction. Intermediate values blend.
+  setWindNoise(scale, timeScale, amplitude, align) {
+    _windNoiseScale = scale
+    _windNoiseTime  = timeScale
+    _windNoiseAmp   = amplitude
+    _windAlign      = align
+  }
+
   /// Ticked by `Particles.register` each frame. CPU-side work is
   /// just: (a) advance emission accumulator, (b) seed N new slots
   /// in `_stateBuf` with fresh state. The integration itself
@@ -440,6 +553,17 @@ class GpuParticleSystem3D {
     f[17] = _size[1]
     f[18] = _rotation
     f[19] = 0
+    // wind_dir_strength (vec4 starting at f[20]).
+    f[20] = _windDir[0]
+    f[21] = _windDir[1]
+    f[22] = _windDir[2]
+    f[23] = _windStrength
+    // wind_noise (vec4 starting at f[24]): scale, timeScale,
+    // amplitude, align.
+    f[24] = _windNoiseScale
+    f[25] = _windNoiseTime
+    f[26] = _windNoiseAmp
+    f[27] = _windAlign
     _paramsUbo.writeFloats(0, _paramsScratch)
   }
 
