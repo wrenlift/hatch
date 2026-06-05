@@ -33,7 +33,8 @@ import "@hatch:game" for PostPass
 // pipelines + bind-group layouts (additive-blended upsample,
 // two-texture composite) — the single-pass `fragmentBody`
 // shape would be cramped trying to host all four sub-shaders.
-import "./bloom" for Bloom
+import "./bloom"   for Bloom
+import "./outline" for OutlinePass
 
 // Shared helper for Map-or-default float / list config.
 class Cfg_ {

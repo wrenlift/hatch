@@ -659,7 +659,8 @@ class PostFX {
           "outputView":    outputView,
           "stepIndex":     s,
           "intermediates": pass.intermediates_,
-          "depthView":     _sceneDepthView
+          "depthView":     _sceneDepthView,
+          "normalView":    _sceneNormalView
         })
         s = s + 1
       }

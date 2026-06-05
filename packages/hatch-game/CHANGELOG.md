@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.34 -- 2026-06-05
+
+§12.4 of the Ghibli/anime plan — PostFX dispatch ctx surfaces the
+scene normal view alongside depth.
+
+- `PostFX.runChain` per-step `ctx` now includes
+  `"normalView": _sceneNormalView` (parallel to the existing
+  `"depthView"`). `OutlinePass` in `@hatch:postfx` consumes it.
+  Other passes are unaffected — they read `ctx["depthView"]` as
+  before and ignore the new field.
+- No `@hatch:gpu` pin change (still 0.3.19).
+
 ## 0.3.33 -- 2026-06-05
 
 `@hatch:gpu` dep pin advanced 0.3.18 → 0.3.19 to pick up the

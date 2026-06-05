@@ -392,7 +392,7 @@ A pragmatic order picking highest-impact unblocked items first.
 | 12.1 | `Material.shadingModel = "toon"` + bands / rim / floor + `_toonPipeline` + `Mesh.sphere` | `@hatch:gpu` 0.3.17 | — | ✅ shipped |
 | 12.2 | Normal-buffer attachment alongside the colour target (forces a G-buffer format decision — RG8 octahedral vs RGB10A2 vs RGBA16F) | `@hatch:gpu` | 0.5 d | next |
 | 12.3 | `_toonInstancedPipeline` + instanced MRT — toon math on the instanced shader, dispatch via `instancedPipelineFor_`, unblocks foliage + billboards on the toon path | `@hatch:gpu` 0.3.19 | — | ✅ shipped |
-| 12.4 | `OutlinePass` reading the depth + normal targets — depth + normal Sobel, threshold dials, edge colour + thickness | `@hatch:postfx` | 2 d | blocked on 12.2 |
+| 12.4 | `OutlinePass` reading the depth + normal targets — depth + normal Sobel, threshold dials, edge colour + thickness | `@hatch:postfx` 0.1.3 | — | ✅ shipped |
 | 12.5 | `_toonSkinnedPipeline` — `Renderer3D.drawSkinned` toon path so the_strangler-tier rigs animate in cel | `@hatch:gpu` | 1 d | pending |
 | 12.6 | Phase 11.8 foliage transform-pack + wind-sway VS — grass / leaves on the toon-instanced path with a sin/curl sway term | `@hatch:game` / `@hatch:gpu` | 3 d | depends on 12.3 |
 | 12.7 | Stylized sky pass — gradient-or-noise sky dome that caps the silhouette and absorbs the orbiting sun's tint | `@hatch:gpu` / `@hatch:postfx` | 2 d | pending |
