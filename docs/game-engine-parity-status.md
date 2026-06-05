@@ -25,7 +25,7 @@ Plan source: [game-engine-parity-plan.md](./game-engine-parity-plan.md)
 | 6b | Post-processing chain | ✅ | — | — |
 | 6c | Shadows (directional) | 🟡 | medium | CSM/cubemap helpers exist but Renderer3D never consumes them |
 | 6c-cascade | Cascaded directional + cubemap point shadows | 🟡 | large | Math shipped; pipeline not wired |
-| 6d | Instanced 3D billboards / ParticleSystem3D | ✅ | small | No 100k-billboard exit-gate spec |
+| 6d | Instanced 3D billboards / ParticleSystem3D | ✅ | — | 100k @ 0.49 ms/frame via wlift_particles plugin (2026-06-05) |
 | 6e | GPU compute particle sim | ✅ | — | Wind + curl-noise uniforms + 1M-particle perf gate landed 2026-06-05 |
 | 7 | UI overlay (immediate mode HUD) | ✅ | small | Uppercase-only font; no text input/menu helper |
 | 8 | Asset pipeline + save/load | 🟡 | medium | No background loading; SaveSystem doesn't round-trip FSM state |
@@ -39,7 +39,7 @@ Plan source: [game-engine-parity-plan.md](./game-engine-parity-plan.md)
 | 11.6 | LOD selection (MeshLOD + drawInstancedLOD) | ✅ | small | Compute LOD-bucketer waits on 11.5 |
 | 11.7 | Procedural terrain (chunks + streaming) | 🟡 | medium | No triplanar splat material; no per-chunk LOD |
 | 11.8 | Foliage scatter | 🟡 | medium | No transform packing; no wind sway shader |
-| 11.9 | Weather (rain/snow/fog compute particles) | 🟡 | small | No 200k-particle exit-gate spec; fog still CPU |
+| 11.9 | Weather (rain/snow/fog compute particles) | ✅ | — | 200k rain+snow @ 1 ms/frame; volumetric/compute Fog scoped out (2026-06-05) |
 | 11.10 | Water (low + FFT high quality) | 🟡 | large | FFT-ocean path absent; no caustics/SSS |
 
 ## Shipped phases (no further work needed)
@@ -177,18 +177,11 @@ Shipped 2026-06-03. NumRange added at `hatch/packages/hatch-math/math.wren:1117`
 **Depends on**: none
 **Effort**: large
 
-### 6d — Instanced 3D billboards 🟡
+### 6d — Instanced 3D billboards ✅
 
-**Status**: shipped except for a perf exit-gate.
+**Status**: shipped end-to-end. The 100k-billboard CPU exit gate measures **0.49 ms/frame** (16× under the 8 ms parity budget) after the `wlift_particles` plugin moved the per-frame integrate + instance-buffer pack into native Rust (2026-06-05). `Renderer3D.drawBillboardN` + `ParticleSystem3D` form a fully-shipped pipeline; the Phase 6d perf-gate spec at `hatch/packages/hatch-game/particles.spec.wren` (gated behind `WLIFT_PERF=1`) green.
 
-**Gaps**:
-- No spec / playground asserting "100k billboards at 60 fps native / 30 fps wasm"
-
-**Next actions**:
-- Add a benchmark spec under `hatch/packages/hatch-game/particles.spec.wren` (or a `playground/`) driving 100k live billboards with a frame counter
-
-**Depends on**: none
-**Effort**: small
+**Why a plugin**: the same workload ran ~186 ms/frame on the legacy pure-Wren loop, dropped to ~11 ms after hot-path hoisting / pre-fill / invLife optimisation (2026-06-05), and then dropped another 22× by delegating the per-particle integration + 16-float instance pack to a `&mut [f32]` Rust loop through the `wlift_particles` plugin. Two attempts at landing the same speedup at the wlift JIT level (peephole-fold four `SubscriptSet` ops into a `v128.store`) both regressed perf even with correct codegen — Cranelift's regalloc seems to pessimise the surrounding loop body in the presence of the new MIR op. Filed for a future JIT investigation; the plugin path lands the gate now with idiomatic infrastructure (same shape as `@hatch:physics`, `@hatch:gpu`, `@hatch:audio`).
 
 ### 6e — GPU compute particle sim ✅
 
@@ -337,20 +330,11 @@ Both ship as additive sibling methods; existing `drawMeshInstanced` callers unto
 **Depends on**: 11.6, 11.7
 **Effort**: medium
 
-### 11.9 — Weather 🟡
+### 11.9 — Weather ✅
 
-**Status**: shipped factories (rain/snow/fog) + GPU opt-in (`hatch/packages/hatch-game/weather.wren:174`, `:224`, `:269`) + 200k rain+snow perf-gate spec (2026-06-05).
+**Status**: shipped factories (rain/snow/fog) + GPU opt-in (`hatch/packages/hatch-game/weather.wren:174`, `:224`, `:269`) + 200k rain+snow perf-gate spec (2026-06-05). The exit gate measures **1 ms/frame** for 100k rain + 100k snow under the same `wlift_particles` native plugin that lit up Phase 6d, against an 8 ms budget — 8× headroom.
 
-**Gaps**:
-- 200k rain+snow CPU update path is currently slower than the 8 ms/frame budget the perf gate asserts (same hot-path shape as the Phase 6d gate — ParticleSystem3D's per-particle Wren update loop dominates). Optimisation work is shared with Phase 6d, not a separate item.
-
-**Scope decision (2026-06-05)**: volumetric/compute-particle Fog is **out** of Phase 11.9. The shipped fragment-shader `Fog` class (`fog.wren`) is the deliverable; it gives the parity-level look (distance-haze blend + colour tint) without committing to a compute-particle pipeline rewrite. Revisit when a downstream demo specifically needs vertical fog density or compute-driven swirl.
-
-**Next actions**:
-- Optimise ParticleSystem3D's per-particle Wren update loop (shared with 6d) so 100k + 100k stays under the 8 ms/frame gate.
-
-**Depends on**: 6e
-**Effort**: small (gate spec shipped; remaining work is optimisation under the shared 6d/11.9 budget)
+**Scope decision (2026-06-05)**: volumetric/compute-particle Fog is **out** of Phase 11.9. The shipped fragment-shader `Fog` class (`fog.wren`) is the deliverable; gives the parity-level look (distance-haze blend + colour tint) without committing to a compute-particle pipeline rewrite. Revisit when a downstream demo specifically needs vertical fog density or compute-driven swirl.
 
 ### 11.10 — Water 🟡
 

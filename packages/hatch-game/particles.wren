@@ -543,13 +543,19 @@ class ParticleSystem3D {
     // emit per-impact splash points at the water surface.
     _killPlaneOn = false
     _killPlaneY  = 0
-    // Death-position queue. Flat triple-per-event Float32Array
-    // sized to capacity * 3 — at most `capacity` particles can
-    // die in a single `update` (slot count is finite). `_deathCount`
-    // tracks how many entries are valid this frame; `consumeDeaths`
-    // hands the queue out and clears it.
-    _deaths      = Float32Array.new(_capacity * 3)
+    // Death-position queue. The first two floats are a sentinel
+    // header the native plugin writes [deathCount, reserved] into;
+    // the kill-position triples start at index 2 onward. `consume-
+    // Deaths` walks `[2, 2 + deathCount*3)` instead of `[0, count*3)`.
+    _deaths      = Float32Array.new(_capacity * 3 + 2)
     _deathCount  = 0
+    // Pre-allocated scratch params for the foreign plugin calls.
+    // `_updateParams` mirrors `wlift_particles_integrate`'s params
+    // slot (8 floats); `_drawParams` mirrors `wlift_particles_pack`'s
+    // params slot (16 floats). Re-used every frame — no per-call
+    // allocation.
+    _updateParams = Float32Array.new(8)
+    _drawParams   = Float32Array.new(16)
   }
 
   static triple_(opts, key, fx, fy, fz) {
@@ -671,9 +677,11 @@ class ParticleSystem3D {
   /// length `deathCount * 3`.
   /// @param {Fn} fn   `Fn.new { |x, y, z| ... }`
   consumeDeaths(fn) {
+    // The plugin's integrate writes [deathCount, _] into the first
+    // two slots of `_deaths`; kill positions start at index 2.
     var i = 0
     while (i < _deathCount) {
-      var off = i * 3
+      var off = 2 + i * 3
       fn.call(_deaths[off], _deaths[off + 1], _deaths[off + 2])
       i = i + 1
     }
@@ -696,88 +704,31 @@ class ParticleSystem3D {
   /// `isPlaying`.
   /// @param {Num} dt
   update(dt) {
-    _deathCount = 0
-    // Hoist per-particle invariants out of the inner loop. Each
-    // particle's integration is `v += (g - v*drag) * dt` then
-    // `p += v * dt`, and at 100k particles every saved multiply
-    // / list-index lookup compounds. The original loop did 4
-    // gravity-array lookups + 4 drag-multiplies PER PARTICLE; the
-    // constants only need to be computed once per frame.
-    var gxdt   = _gravity[0] * dt
-    var gydt   = _gravity[1] * dt
-    var gzdt   = _gravity[2] * dt
-    // Damping factor: `v + g*dt - v*drag*dt` = `v*(1 - drag*dt) + g*dt`.
-    // Pre-multiplying `(1 - drag*dt)` once per frame turns six per-
-    // particle multiplications (two per axis) into three; the inner
-    // loop then does one mul-add per axis instead of two.
-    var dampDt = 1 - _drag * dt
-    var sim    = _sim
-    var kpOn   = _killPlaneOn
-    var kpY    = _killPlaneY
-    var i = 0
-    var off = 0
-    // Compact: walk the sim array, integrate alive slots, drop
-    // expired ones by swapping with the last-live slot. Running
-    // offset (`off += 8` per surviving particle) saves the per-
-    // iteration `off = i * 8` multiply; on death/swap we don't
-    // advance `off` since the swapped-in slot now occupies the
-    // same index.
-    while (i < _liveCount) {
-      var age = sim[off + 6] + dt
-      // Slot 7 holds 1 / lifetime (set at spawn). Death when
-      // `age * invLife >= 1.0` — saves the per-frame divide in
-      // both this branch and the draw-loop colour-lerp.
-      var invLife = sim[off + 7]
-      if (age * invLife >= 1.0) {
-        recordDeath_(sim[off], sim[off + 1], sim[off + 2])
-        killSlot_(i)
-        continue
-      }
-      // Integrate position into a fresh local first so we can
-      // test the kill plane against the would-be-new Y without
-      // committing the write if we're going to swap-delete anyway.
-      // `v_new = v * (1 - drag*dt) + g*dt` — one mul-add per axis.
-      // Reading each velocity once and using the pre-computed
-      // `dampDt`/`g*dt` halves the per-particle multiplications
-      // versus the textbook `v + g*dt - v*drag*dt` form.
-      var nvx = sim[off + 3] * dampDt + gxdt
-      var nvy = sim[off + 4] * dampDt + gydt
-      var nvz = sim[off + 5] * dampDt + gzdt
-      var px = sim[off]
-      var py = sim[off + 1]
-      var pz = sim[off + 2]
-      var nx = px + nvx * dt
-      var ny = py + nvy * dt
-      var nz = pz + nvz * dt
-      // Kill-plane crossing — particle crosses y = killPlaneY this
-      // tick. Record the death at the crossing point (linear
-      // interpolation between previous Y and would-be-new Y) so
-      // splash points sit on the plane, not somewhere below it.
-      // Gate on `kpOn` first so the dominant no-kill-plane case
-      // skips every sub-test below.
-      if (kpOn && ny <= kpY) {
-        var u = 1.0
-        var span = py - ny
-        if (span > 0.00001) u = (py - kpY) / span
-        if (u < 0) u = 0
-        if (u > 1) u = 1
-        var hx = px + (nx - px) * u
-        var hz = pz + (nz - pz) * u
-        recordDeath_(hx, kpY, hz)
-        killSlot_(i)
-        continue
-      }
-      sim[off + 3] = nvx
-      sim[off + 4] = nvy
-      sim[off + 5] = nvz
-      sim[off]     = nx
-      sim[off + 1] = ny
-      sim[off + 2] = nz
-      sim[off + 6] = age
-      i   = i   + 1
-      off = off + 8
-    }
-    // Auto-emit if playing + a rate is configured.
+    // Hot per-particle integration runs in native Rust via the
+    // `wlift_particles` plugin. The Wren wrapper just packs the
+    // per-frame params into the pre-allocated `_updateParams`
+    // Float32Array and hands the sim + deaths buffers across. At
+    // 100k particles the native loop measures well under the parity
+    // 8 ms exit gate, where the pure-Wren version sat at ~6 ms
+    // pre-optimisation and ~186 ms before that — the JIT can't beat
+    // a hand-written tight loop over a `&mut [f32]` for this
+    // workload, so we let Rust do it.
+    var p = _updateParams
+    p[0] = dt
+    p[1] = _gravity[0]
+    p[2] = _gravity[1]
+    p[3] = _gravity[2]
+    p[4] = _drag
+    p[5] = _killPlaneOn ? 1 : 0
+    p[6] = _killPlaneY
+    p[7] = 0
+    _liveCount  = ParticleSim3DCore.integrate(_sim, _liveCount, p, _deaths)
+    _deathCount = _deaths[0]
+
+    // Auto-emit if playing + a rate is configured. Spawn logic
+    // stays in Wren — `spawnOne_` writes a handful of f32s per
+    // emission, which is a rounding-error cost compared to the
+    // integration loop.
     if (_playing && _emissionRate > 0) {
       _emissionAccum = _emissionAccum + _emissionRate * dt
       while (_emissionAccum >= 1) {
@@ -819,34 +770,9 @@ class ParticleSystem3D {
     return true
   }
 
-  // Free the slot at index `i` by swap-with-last; the swapped-in
-  // particle then gets integrated on the next loop iteration
-  // (`continue` keeps the loop variable at `i`).
-  killSlot_(i) {
-    _liveCount = _liveCount - 1
-    if (i != _liveCount) {
-      var off    = i * 8
-      var srcOff = _liveCount * 8
-      var k = 0
-      while (k < 8) {
-        _sim[off + k] = _sim[srcOff + k]
-        k = k + 1
-      }
-    }
-  }
-
-  // Push one death event to the queue. Quietly drops the event
-  // if the buffer is full — shouldn't happen because the buffer
-  // is sized for the full capacity and at most `capacity` deaths
-  // can occur per tick.
-  recordDeath_(x, y, z) {
-    if (_deathCount >= _capacity) return
-    var off = _deathCount * 3
-    _deaths[off]     = x
-    _deaths[off + 1] = y
-    _deaths[off + 2] = z
-    _deathCount = _deathCount + 1
-  }
+  // (killSlot_ + recordDeath_ moved into the wlift_particles plugin's
+  // integrate kernel — the swap-with-last compaction and the death-
+  // queue write both happen in native Rust now.)
 
   // Inline PRNG. Same shape as the 2D ParticleSystem path —
   // a single-cell holder for the lazy Random instance. Wren's
@@ -867,107 +793,79 @@ class ParticleSystem3D {
   /// @param {Renderer3D} renderer
   draw(renderer) {
     if (_liveCount == 0) return
-    var sxBase = _size[0]
-    var sy = _size[1]
-    var rot = _rotation
-    // When screen-space width is on AND we have an eye position,
-    // per-particle X width tracks `min(1, dist / refDistance)` so
-    // particles close to the camera shrink and particles far away
-    // hold their configured thickness. Without an eye we fall back
-    // to the unscaled width to avoid silently sizing to zero.
+    // Hot per-particle instance-buffer pack runs in native Rust via
+    // the `wlift_particles` plugin. The Wren wrapper packs the
+    // per-frame params (color start + delta, base size, rotation,
+    // optional screen-space-width inputs) into the pre-allocated
+    // `_drawParams` Float32Array and hands the sim + inst buffers
+    // across. The plugin does the lerp, the optional distance
+    // scaling, and the 11 stores per slot in one tight Rust loop.
     var widthScale = _widthScaleRef > 0 && _cameraEye != null
-    var ex = 0
-    var ey = 0
-    var ez = 0
-    var refDist = _widthScaleRef
-    if (widthScale) {
-      ex = _cameraEye[0]
-      ey = _cameraEye[1]
-      ez = _cameraEye[2]
-    }
-    // Hoist colour constants out of the inner loop. Start values
-    // are constant per frame; the lerp coefficients (end - start)
-    // are too. Pre-computing them turns 8 List-indexed reads per
-    // particle into 8 once-per-frame reads + 4 multiplies per
-    // particle instead of 8 + 4 multiplies + 4 subtractions.
+    var dp = _drawParams
     var cs0 = _colorStart[0]
     var cs1 = _colorStart[1]
     var cs2 = _colorStart[2]
     var cs3 = _colorStart[3]
-    var cd0 = _colorEnd[0] - cs0
-    var cd1 = _colorEnd[1] - cs1
-    var cd2 = _colorEnd[2] - cs2
-    var cd3 = _colorEnd[3] - cs3
-    var sim = _sim
-    var inst = _inst
-    // Pack each live particle into the instance buffer with
-    // colour interpolated from start → end across its life.
-    //
-    // Running offsets (`simOff += 8`, `off += 16`) instead of
-    // `simOff = i * 8` per iteration — saves 200k multiplies per
-    // frame at 100k particles.
-    //
-    // Age + lifetime are guaranteed in [0, lifetime] by the update
-    // pass (it kills any slot where age >= lifetime before this
-    // runs), so `t = age / lifetime` is naturally in [0, 1] and the
-    // clamps are dead code in steady state. Dropped to save two
-    // conditionals per particle.
-    var liveCount = _liveCount
-    var i = 0
-    var simOff = 0
-    var off = 0
-    while (i < liveCount) {
-      // Slot 7 holds 1 / lifetime — `t = age * invLife` not
-      // `age / lifetime`. Multiply is ~10× cheaper than divide,
-      // so this alone is a measurable per-frame win at 100k.
-      var t = sim[simOff + 6] * sim[simOff + 7]
-      var r = cs0 + cd0 * t
-      var g = cs1 + cd1 * t
-      var b = cs2 + cd2 * t
-      var a = cs3 + cd3 * t
-      var px = sim[simOff]
-      var py = sim[simOff + 1]
-      var pz = sim[simOff + 2]
-      var sx = sxBase
-      if (widthScale) {
-        var dx = px - ex
-        var dy = py - ey
-        var dz = pz - ez
-        var dist = (dx * dx + dy * dy + dz * dz).sqrt
-        // Square-root falloff: close particles read THINNER (not
-        // invisible) and reach full configured width at the
-        // reference distance. Floor at 22%% so a streak that's
-        // 50 cm from the eye still occupies a few pixels — without
-        // a floor the cubic shrink we used earlier read as "rain
-        // disappears in the foreground".
-        var lin = dist / refDist
-        if (lin > 1) lin = 1
-        var scale = lin.sqrt
-        if (scale < 0.22) scale = 0.22
-        sx = sxBase * scale
-        // Mild alpha fade for atmospheric perspective. Close
-        // streaks stay at 65%% of base alpha; reference-distance
-        // streaks at full alpha. Anything lower reads as "missing".
-        a = a * (0.65 + 0.35 * lin)
-      }
-      inst[off]      = px
-      inst[off + 1]  = py
-      inst[off + 2]  = pz
-      inst[off + 3]  = sx
-      inst[off + 4]  = sy
-      // Slots 5..8 (UV-rect 0,0,1,1), 14 (lodIndex 0), 15 (pad 0)
-      // were pre-filled at construct — see the constructor's
-      // _inst init loop. The hot path skips them.
-      inst[off + 9]  = r
-      inst[off + 10] = g
-      inst[off + 11] = b
-      inst[off + 12] = a
-      inst[off + 13] = rot
-      simOff = simOff + 8
-      off    = off + 16
-      i      = i + 1
+    dp[0]  = cs0
+    dp[1]  = cs1
+    dp[2]  = cs2
+    dp[3]  = cs3
+    dp[4]  = _colorEnd[0] - cs0
+    dp[5]  = _colorEnd[1] - cs1
+    dp[6]  = _colorEnd[2] - cs2
+    dp[7]  = _colorEnd[3] - cs3
+    dp[8]  = _size[0]
+    dp[9]  = _size[1]
+    dp[10] = _rotation
+    dp[11] = widthScale ? 1 : 0
+    dp[12] = _widthScaleRef
+    if (widthScale) {
+      dp[13] = _cameraEye[0]
+      dp[14] = _cameraEye[1]
+      dp[15] = _cameraEye[2]
+    } else {
+      dp[13] = 0
+      dp[14] = 0
+      dp[15] = 0
     }
-    _instBuf.writeFloatsN(0, _inst, liveCount * 16)
-    renderer.drawBillboardN(_texture, _instBuf, liveCount)
+    ParticleSim3DCore.pack(_sim, _inst, _liveCount, dp)
+    _instBuf.writeFloatsN(0, _inst, _liveCount * 16)
+    renderer.drawBillboardN(_texture, _instBuf, _liveCount)
   }
+}
+
+// Native plugin entry points. The hot per-frame integrate + pack
+// loops live in `plugins/wlift_particles` — the wlift JIT can't beat
+// a hand-written `&mut [f32]` tight loop for the 100k-particle
+// workload that the parity Phase 6d exit gate targets, so we hand
+// the work off to Rust.
+#!native = "wlift_particles"
+foreign class ParticleSim3DCore {
+  /// Integrate `liveCount` particles in `sim` (8 f32/slot) by the
+  /// scalar params in `params` (8 f32 — see plugin source for the
+  /// layout). Records expired + kill-plane-crossed deaths into
+  /// `deaths` (capacity*3 + 2 floats: header [deathCount, _] then
+  /// triple positions). Compacts the sim by swap-with-last and
+  /// returns the new live count.
+  ///
+  /// @param  {Float32Array} sim
+  /// @param  {Num}          liveCount
+  /// @param  {Float32Array} params  8 floats
+  /// @param  {Float32Array} deaths  capacity*3 + 2 floats
+  /// @returns {Num}                 new live count
+  #!symbol = "wlift_particles_integrate"
+  foreign static integrate(sim, liveCount, params, deaths)
+
+  /// Pack `liveCount` live particles from `sim` into `inst` (16
+  /// f32/slot, matching `Renderer3D.drawBillboardN`). Caller passes
+  /// the per-frame colour gradient + size + rotation + optional
+  /// screen-space-width inputs in `params` (16 f32).
+  ///
+  /// @param  {Float32Array} sim
+  /// @param  {Float32Array} inst
+  /// @param  {Num}          liveCount
+  /// @param  {Float32Array} params  16 floats
+  /// @returns {Num}                 the same liveCount, for chaining
+  #!symbol = "wlift_particles_pack"
+  foreign static pack(sim, inst, liveCount, params)
 }

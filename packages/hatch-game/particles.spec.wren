@@ -531,7 +531,11 @@ Test.describe("Phase 6d — 100k billboard CPU budget (perf-gated)") {
     var totalMs = (System.clock - t0) * 1000
     var avgMs   = totalMs / frames
 
-    System.print("    100k particles · %(frames) frames · update %(updateMs.round) + draw %(drawMs.round) = %(avgMs.round) ms/frame (combined)")
+    // 3-decimal print so sub-millisecond costs (Rust plugin path)
+    // are still visible. `%(x)` interpolates the number's
+    // toString, so round to 3 decimal places via a manual scale.
+    var fmtMs = Fn.new { |n| ((n * 1000).round) / 1000 }
+    System.print("    100k particles · %(frames) frames · update %(fmtMs.call(updateMs)) + draw %(fmtMs.call(drawMs)) = %(fmtMs.call(avgMs)) ms/frame (combined)")
     Expect.that(sys.liveCount).toBe(100000)
     // CPU half of a 60 fps frame budget. If this fails, the
     // particle update / buffer-pack loop has regressed; profile
