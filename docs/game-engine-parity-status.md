@@ -278,17 +278,17 @@ Shipped 2026-06-03. NumRange added at `hatch/packages/hatch-math/math.wren:1117`
 
 ### 11.2 — Instanced draw 🟡
 
-**Status**: shipped (storage-buffer-driven, single drawIndexed) but layout is fixed.
+**Status**: shipped storage-buffer path (`drawMeshInstanced` — 32-f32 model+normalMat layout); design fork resolved 2026-06-05 to ship BOTH a tinted SSBO extension AND a per-instance VBO API (they serve different use cases).
 
-**Gaps**:
-- Plan names `Renderer3D.drawInstanced(mesh, material, instanceBuffer, count, attributeLayout)` with caller-declared per-instance attributes (model + tint + UV-rect + LOD)
-- Shipped `drawMeshInstanced` (`hatch/packages/hatch-gpu/gpu_renderer3d.wren:1969`) has fixed 32-f32 (model + normalMat) layout — tint / uvScale / LOD slots not exposed
+**Direction (2026-06-05)**:
 
-**Next actions**:
-- Either rename to `drawInstanced` and extend the per-instance attribute layout to include tint/UV-rect/LOD, or codify the rename as deliberate and amend the plan
+1. **SSBO extension** — keep `drawMeshInstanced` exactly as it is. Add a sibling `Renderer3D.drawMeshInstancedAttr(mesh, material, instanceBuffer, count)` whose instance buffer carries 48 f32 / 192 B per slot (model 16 + normal_mat 16 + tint 4 + uv_rect 4 + attr 4 with attr.x = lod). New pipeline `_attrInstancedPipeline` with a duplicate of `INSTANCED_PBR_WGSL_` that multiplies albedo by per-instance tint and remaps the input UV through uv_rect. Helpers `appendInstanceAttr` / `writeInstanceAttr` mirror the existing pair. Best for: compute-driven flows (foliage cull → indirect → tinted draw) where the shader knows the struct layout and counts can be huge.
 
-**Depends on**: none
-**Effort**: small
+2. **VBO path** — add `Renderer3D.drawInstanced(mesh, material, vertexAttrBuffer, count, attributeLayout)` where `attributeLayout` is a caller-declared list of `@location()` attributes (`[ { "shaderLocation": 4, "offset": 0, "format": "float32x4" }, ... ]`). The instance VBO is bound at `stepMode: "instance"`. Best for: CPU-authored attribute lists where the caller picks which attrs they need (decals with tint+rotation, damage numbers with sprite-index+tint, etc.) without committing to the fixed extended struct.
+
+Both ship as additive sibling methods; existing `drawMeshInstanced` callers untouched. Spec coverage gates each path independently: the SSBO-extension spec asserts tint multiply + UV remap behaviour; the VBO spec asserts a 100k-cubes-with-tints exit gate (plan's `11.2` deliverable).
+
+**Effort**: medium (both paths combined) — deferred from the 2026-06-05 wave because the WGSL duplication + pipeline scaffolding deserves a focused session rather than a fast-follow on the perf-gate work.
 
 ### 11.5 — Frustum culling + indirect draw 🟡
 
