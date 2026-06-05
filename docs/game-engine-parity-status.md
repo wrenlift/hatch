@@ -345,18 +345,18 @@ Shipped 2026-06-03. NumRange added at `hatch/packages/hatch-math/math.wren:1117`
 
 ### 11.9 — Weather 🟡
 
-**Status**: shipped factories (rain/snow/fog) + GPU opt-in (`hatch/packages/hatch-game/weather.wren:174`, `:224`, `:269`); coverage gaps.
+**Status**: shipped factories (rain/snow/fog) + GPU opt-in (`hatch/packages/hatch-game/weather.wren:174`, `:224`, `:269`) + 200k rain+snow perf-gate spec (2026-06-05).
 
 **Gaps**:
-- No bench-style spec asserting "rain + snow simultaneously, 200k combined particles, 60 fps native"
-- Fog still backs onto the pre-existing CPU `Fog` class — no compute-particle layer for volumetric fog
+- 200k rain+snow CPU update path is currently slower than the 8 ms/frame budget the perf gate asserts (same hot-path shape as the Phase 6d gate — ParticleSystem3D's per-particle Wren update loop dominates). Optimisation work is shared with Phase 6d, not a separate item.
+
+**Scope decision (2026-06-05)**: volumetric/compute-particle Fog is **out** of Phase 11.9. The shipped fragment-shader `Fog` class (`fog.wren`) is the deliverable; it gives the parity-level look (distance-haze blend + colour tint) without committing to a compute-particle pipeline rewrite. Revisit when a downstream demo specifically needs vertical fog density or compute-driven swirl.
 
 **Next actions**:
-- Add an exit-gate spec / playground bench for 100k rain + 100k snow on the GPU path
-- Decide volumetric-fog scope; if in, design a compute-particle Fog variant; otherwise codify shipped Fog as the deliverable
+- Optimise ParticleSystem3D's per-particle Wren update loop (shared with 6d) so 100k + 100k stays under the 8 ms/frame gate.
 
 **Depends on**: 6e
-**Effort**: small
+**Effort**: small (gate spec shipped; remaining work is optimisation under the shared 6d/11.9 budget)
 
 ### 11.10 — Water 🟡
 

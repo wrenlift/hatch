@@ -5,6 +5,7 @@
 import "./weather"    for Wind, Weather
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
+import "@hatch:os"     for Os
 
 // GPU stand-ins. Weather.rain / Weather.snow only need
 // device.createBuffer + a Texture-shaped opaque so they can
@@ -146,6 +147,87 @@ Test.describe("Weather.fog") {
     var fog = Weather.fog(null)
     // Default density per fog.wren is 0.020.
     Expect.that(fog.density).toBe(0.020)
+  }
+}
+
+// Lightweight Renderer3D stand-in. Weather.rain / Weather.snow
+// each return a ParticleSystem3D; their `.draw(renderer)` call
+// ends in `renderer.drawBillboardN(tex, buf, count)`, which is
+// the only method we need to stub.
+class MockRenderer3D {
+  construct new() { _calls = 0 }
+  drawBillboardN(tex, buf, count) { _calls = _calls + 1 }
+  calls { _calls }
+}
+
+// Phase 11.9 exit-gate spec — 200k combined rain + snow CPU budget.
+//
+// Drives 100k rain + 100k snow ParticleSystem3D instances through
+// 60 update+draw frames. Same shape as the Phase 6d 100k-billboard
+// gate but covers the weather-rain + weather-snow combo path:
+// `Weather.rain(...)` and `Weather.snow(...)` factories returning
+// ParticleSystem3D instances that share the same CPU sim + GPU
+// dispatch loop billboards use. CPU half of a 60 fps frame budget
+// is ~8 ms — assert combined update + pack + draw cost stays
+// under it.
+//
+// Gated behind `WLIFT_PERF=1` (matches the Phase 6d gate). Default
+// `hatch test` skips it so non-perf runs stay fast.
+Test.describe("Phase 11.9 — 200k rain+snow CPU budget (perf-gated)") {
+  Test.it("rain100k + snow100k update + pack + draw stays under 8 ms/frame avg") {
+    if (Os.env("WLIFT_PERF") != "1") {
+      System.print("    skipped (set WLIFT_PERF=1 to run)")
+      return
+    }
+
+    var dev = MockDev.new()
+    var tex = MockTex.new(1)
+    var r   = MockRenderer3D.new()
+
+    var rain = Weather.rain(dev, {
+      "texture":  tex,
+      "capacity": 100000,
+      // Long lifetime so the steady-state is 100k live; the
+      // budget targets "100k visible simultaneously" not
+      // "100k churned per frame".
+      "lifetime": [100, 100],
+      "area":     [80, 80],
+      "fallSpeed": 12
+    })
+    var snow = Weather.snow(dev, {
+      "texture":  tex,
+      "capacity": 100000,
+      "lifetime": [100, 100],
+      "area":     [80, 80],
+      "fallSpeed": 2.5
+    })
+    rain.burst(100000)
+    snow.burst(100000)
+    Expect.that(rain.liveCount).toBe(100000)
+    Expect.that(snow.liveCount).toBe(100000)
+
+    // Warm-up frame — touches every cold code path before timing.
+    rain.update(1.0 / 60.0)
+    snow.update(1.0 / 60.0)
+    rain.draw(r)
+    snow.draw(r)
+
+    var frames = 60
+    var dt = 1.0 / 60.0
+    var t0 = System.clock
+    for (i in 0...frames) {
+      rain.update(dt)
+      snow.update(dt)
+      rain.draw(r)
+      snow.draw(r)
+    }
+    var totalMs = (System.clock - t0) * 1000
+    var avgMs   = totalMs / frames
+
+    System.print("    rain 100k + snow 100k · %(frames) frames · total %(totalMs.round) ms · avg %(avgMs.round) ms/frame")
+    Expect.that(rain.liveCount).toBe(100000)
+    Expect.that(snow.liveCount).toBe(100000)
+    Expect.that(avgMs < 8.0).toBe(true)
   }
 }
 
