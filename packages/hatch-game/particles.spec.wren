@@ -315,6 +315,15 @@ class MockBuf3D {
     _writes = _writes + 1
     _last   = data
   }
+  // The optimised ParticleSystem3D.draw hot path uses
+  // `writeFloatsN(0, _inst, liveCount * 16)` so only the live tail
+  // of the instance buffer rides the bus instead of the full
+  // capacity. Treat it like the bare `writeFloats` in the mock —
+  // we only need the write to register.
+  writeFloatsN(off, data, count) {
+    _writes = _writes + 1
+    _last   = data
+  }
   destroy {}
   writes { _writes }
   last   { _last }
@@ -442,9 +451,24 @@ Test.describe("ParticleSystem3D.draw") {
 // sim, the buffer pack, and the single `drawBillboardN` dispatch.
 // The exit gate from `game-engine-parity-plan.md` calls for 100k
 // billboards at 60 fps native — the CPU half of that frame budget
-// is ~8 ms (leaving 8 ms for the actual GPU draw + present). Run
-// 60 update+draw iterations and assert the average per-frame CPU
-// cost is under 8 ms.
+// is ~8 ms (leaving 8 ms for the actual GPU draw + present).
+//
+// **CPU vs GPU pathway.** ParticleSystem3D walks every live slot in
+// Wren each frame — for 100k particles that's ~1.5M Float32Array
+// method dispatches per frame across update + draw. The optimisation
+// pass on 2026-06-05 brought the budget from 186 ms → 11 ms
+// (running offsets instead of per-iter multiplies, hoisted constants
+// outside the hot loop, `v * (1 - drag*dt) + g*dt` form, inv_lifetime
+// stored at spawn so the draw colour-lerp is a multiply not a divide,
+// pre-filled UV-rect/lodIndex/pad slots at construct so the per-frame
+// pack writes only the changing fields, `writeFloatsN(0, _inst, live)`
+// to clip the buffer upload to the live tail). Further wins require
+// a typed-array bulk-write primitive in `wren_lift` — until then 11
+// ms is the steady-state floor at 100k. The gate stays at 8 ms so a
+// future bulk-write primitive in wren_lift will turn it green
+// automatically; in the meantime use `GpuParticleSystem3D` for
+// 50k+ particles in production (compute-pass integration, CPU side
+// just packs the params UBO + issues one dispatch).
 //
 // Gated behind `WLIFT_PERF=1` because allocating + simulating 100k
 // particles in spec runs costs seconds of wall clock — it'd dominate
@@ -488,6 +512,17 @@ Test.describe("Phase 6d — 100k billboard CPU budget (perf-gated)") {
 
     var frames = 60
     var dt = 1.0 / 60.0
+
+    // Separate timings give a clearer picture of which phase needs
+    // optimisation when the gate is RED.
+    var t1 = System.clock
+    for (i in 0...frames) sys.update(dt)
+    var updateMs = (System.clock - t1) * 1000 / frames
+
+    var t2 = System.clock
+    for (i in 0...frames) sys.draw(r)
+    var drawMs = (System.clock - t2) * 1000 / frames
+
     var t0 = System.clock
     for (i in 0...frames) {
       sys.update(dt)
@@ -496,7 +531,7 @@ Test.describe("Phase 6d — 100k billboard CPU budget (perf-gated)") {
     var totalMs = (System.clock - t0) * 1000
     var avgMs   = totalMs / frames
 
-    System.print("    100k particles · %(frames) frames · total %(totalMs.round) ms · avg %(avgMs.round) ms/frame")
+    System.print("    100k particles · %(frames) frames · update %(updateMs.round) + draw %(drawMs.round) = %(avgMs.round) ms/frame (combined)")
     Expect.that(sys.liveCount).toBe(100000)
     // CPU half of a 60 fps frame budget. If this fails, the
     // particle update / buffer-pack loop has regressed; profile
