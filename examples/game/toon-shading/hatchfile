@@ -6,4 +6,4 @@ description = "Cel-shaded sphere trio comparing band counts and rim strength aga
 # @hatch:gpu and @hatch:math come transitively through
 # @hatch:game; redeclaring them here collides on shared modules.
 [dependencies]
-"@hatch:game" = "0.3.32"
+"@hatch:game" = "0.3.33"

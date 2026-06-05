@@ -984,8 +984,10 @@ class Renderer3D {
         return c;
       }
 
-      @fragment
-      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+      // Instanced PBR lighting computation — same split as the
+      // non-instanced shader so the MRT entry below shares the
+      // exact lit value and just adds a packed-normal write.
+      fn instanced_pbr_compute(in: VsOut) -> vec4<f32> {
         let albedo_sample = textureSample(albedo_tex, samp, in.uv);
         var base_color = mat.albedo_color * albedo_sample;
         let alpha_mode = mat.alpha.x;
@@ -1087,6 +1089,90 @@ class Renderer3D {
         let ldr = tonemap_aces(hdr);
         return vec4<f32>(ldr, base_color.a);
       }
+
+      // Instanced toon / cel-shaded lighting computation — bands
+      // the dominant directional light's dot(N, L), two-tone tint
+      // between scene ambient and the key colour, Fresnel rim.
+      // Same math as the non-instanced `toon_compute` so the
+      // shading is uniform whether a mesh is drawn through `draw`
+      // or `drawMeshInstanced`.
+      fn instanced_toon_compute(in: VsOut) -> vec4<f32> {
+        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+        var base_color = mat.albedo_color * albedo_sample;
+        let alpha_mode = mat.alpha.x;
+        if (alpha_mode == 1.0) {
+          if (base_color.a < mat.alpha.y) { discard; }
+        }
+
+        let N = normalize(in.normal);
+        let V = normalize(scene.camera_pos.xyz - in.world);
+
+        let bands         = max(mat.toon.x, 2.0);
+        let rim_strength  = mat.toon.y;
+        let rim_width     = max(mat.toon.z, 1.0);
+        let ambient_floor = clamp(mat.toon.w, 0.0, 1.0);
+
+        var step_max = 0.0;
+        var key_tint = vec3<f32>(1.0);
+        let dir_count = u32(scene.counts.x);
+        for (var i: u32 = 0u; i < dir_count; i = i + 1u) {
+          let dl = scene.dir_lights[i];
+          let L = normalize(-dl.dir_intensity.xyz);
+          let n_dot_l = max(dot(N, L), 0.0);
+          let stepped = floor(n_dot_l * bands + 0.5) / bands;
+          if (stepped > step_max) {
+            step_max = stepped;
+            key_tint = dl.color.rgb;
+          }
+        }
+
+        let shadow_tint  = scene.ambient.rgb;
+        let shadow_color = base_color.rgb * shadow_tint;
+        let lit_color    = base_color.rgb * key_tint;
+        let lit_amount   = max(step_max, ambient_floor);
+        var lit = mix(shadow_color, lit_color, lit_amount);
+
+        if (rim_strength > 0.0) {
+          let fresnel = 1.0 - max(0.0, dot(N, V));
+          let rim = pow(fresnel, rim_width) * rim_strength;
+          lit = lit + vec3<f32>(rim);
+        }
+
+        let toon_emissive_sample = textureSample(emissive_tex, samp, in.uv).rgb;
+        lit = lit + mat.emissive_color.rgb * toon_emissive_sample;
+
+        return vec4<f32>(lit, base_color.a);
+      }
+
+      // Single-target entries — used when the renderer is built
+      // without `normalFormat`.
+      @fragment
+      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+        return instanced_pbr_compute(in);
+      }
+      @fragment
+      fn fs_toon_main(in: VsOut) -> @location(0) vec4<f32> {
+        return instanced_toon_compute(in);
+      }
+
+      // MRT entries — used when the renderer is built with
+      // `normalFormat`. Packed world-space normal in @location(1).
+      struct FsOutMrt {
+        @location(0) color:  vec4<f32>,
+        @location(1) normal: vec4<f32>,
+      }
+      @fragment
+      fn fs_main_mrt(in: VsOut) -> FsOutMrt {
+        let color = instanced_pbr_compute(in);
+        let n = normalize(in.normal) * 0.5 + 0.5;
+        return FsOutMrt(color, vec4<f32>(n, 1.0));
+      }
+      @fragment
+      fn fs_toon_main_mrt(in: VsOut) -> FsOutMrt {
+        let color = instanced_toon_compute(in);
+        let n = normalize(in.normal) * 0.5 + 0.5;
+        return FsOutMrt(color, vec4<f32>(n, 1.0));
+      }
     "
   }
 
@@ -1165,16 +1251,16 @@ class Renderer3D {
   /// @param {String} depthFormat. Depth-attachment format, matches
   ///   the depth texture used in the pass descriptor.
   /// @param {String} normalFormat. Optional secondary normal G-buffer
-  ///   format (typically `"rgba8unorm"`). When supplied, the non-
-  ///   instanced PBR / transparent / toon pipelines bind a second
-  ///   colour target and write world-space normals (packed as
-  ///   `N * 0.5 + 0.5`) for edge-aware PostFX like OutlinePass.
-  ///   Must match `PostFX.new(g, { "normalFormat": ... })`. The
-  ///   instanced (`drawMeshInstanced`) and skinned (`drawSkinned`)
-  ///   pipelines are still single-target in this revision —
-  ///   `_toonInstancedPipeline` (§12.3) and `_toonSkinnedPipeline`
-  ///   (§12.5) add their MRT variants. Calling those draws while a
-  ///   normal target is bound will surface a wgpu validation error.
+  ///   format (typically `"rgba8unorm"`). When supplied, the PBR /
+  ///   transparent / toon / instanced PBR / instanced toon pipelines
+  ///   bind a second colour target and write world-space normals
+  ///   (packed as `N * 0.5 + 0.5`) for edge-aware PostFX like
+  ///   OutlinePass. Must match
+  ///   `PostFX.new(g, { "normalFormat": ... })`. The skinned
+  ///   (`drawSkinned`) pipeline is still single-target in this
+  ///   revision — calling it while a normal target is bound
+  ///   surfaces a wgpu validation error. The skinned MRT variant
+  ///   + `_toonSkinnedPipeline` ship in §12.5.
   construct new(device, surfaceFormat, depthFormat) {
     init_(device, surfaceFormat, depthFormat, null)
   }
@@ -1405,8 +1491,8 @@ class Renderer3D {
         }]
       },
       "fragment": {
-        "module": instancedShader, "entryPoint": "fs_main",
-        "targets": [{ "format": surfaceFormat }]
+        "module": instancedShader, "entryPoint": pbrEntry,
+        "targets": opaqueTargets
       },
       "primitive":    { "topology": "triangle-list", "cullMode": "back" },
       "depthStencil": {
@@ -1416,6 +1502,41 @@ class Renderer3D {
         "depthBiasSlopeScale":  1.0
       },
       "label": "renderer3d-instanced-pipeline"
+    })
+
+    // Toon variant of the instanced pipeline. Same VS (per-instance
+    // model matrix + wind sway), same bind groups; differs only in
+    // the fragment entry point — `instanced_toon_compute` lives in
+    // the same shader module as `instanced_pbr_compute`, so we
+    // can swap entries at no extra compile cost. Picked at draw
+    // time when the bound `Material.shadingModel == "toon"`.
+    _toonInstancedPipeline = device.createRenderPipeline({
+      "layout": _instancedPipelineLayout,
+      "vertex": {
+        "module": instancedShader, "entryPoint": "vs_main",
+        "buffers": [{
+          "arrayStride": Renderer3D.FLOATS_PER_VERTEX_ * 4,
+          "stepMode": "vertex",
+          "attributes": [
+            { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
+            { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
+            { "shaderLocation": 2, "offset": 24, "format": "float32x2" },
+            { "shaderLocation": 3, "offset": 32, "format": "float32x4" }
+          ]
+        }]
+      },
+      "fragment": {
+        "module": instancedShader, "entryPoint": toonEntry,
+        "targets": opaqueTargets
+      },
+      "primitive":    { "topology": "triangle-list", "cullMode": "back" },
+      "depthStencil": {
+        "format": depthFormat, "depthWriteEnabled": true,
+        "depthCompare":         "less-equal",
+        "depthBias":            2,
+        "depthBiasSlopeScale":  1.0
+      },
+      "label": "renderer3d-instanced-pipeline-toon"
     })
     // Bind-group cache keyed by instance-storage-buffer id. Avoids
     // re-binding on hot redraws of the same instance set.
@@ -2413,13 +2534,24 @@ class Renderer3D {
 
     var entry = bindGroupFor_(material)
     var pass = _pass
-    pass.setPipeline(_instancedPipeline)
+    pass.setPipeline(instancedPipelineFor_(material))
     pass.setBindGroup(0, _sceneBindGroup)
     pass.setBindGroup(1, instanceBindGroupFor_(instanceBuffer))
     pass.setBindGroup(2, entry["bg"])
     pass.setVertexBuffer(0, mesh.vertexBuffer)
     pass.setIndexBuffer(mesh.indexBuffer, "uint32")
     pass.drawIndexed(mesh.indexCount, instanceCount)
+  }
+
+  // Pick the right instanced pipeline for `material`. Mirrors the
+  // non-instanced draw() dispatch: toon → `_toonInstancedPipeline`,
+  // anything else → the PBR-instanced pipeline. Transparent
+  // instanced is the PBR-instanced path with the caller's own
+  // sort + alpha-blend material — there's no parallel
+  // `_transparentInstancedPipeline` yet.
+  instancedPipelineFor_(material) {
+    if (material.shadingModel == "toon") return _toonInstancedPipeline
+    return _instancedPipeline
   }
 
   /// GPU-driven indexed-instanced draw. Identical render setup to
@@ -2451,7 +2583,7 @@ class Renderer3D {
 
     var entry = bindGroupFor_(material)
     var pass = _pass
-    pass.setPipeline(_instancedPipeline)
+    pass.setPipeline(instancedPipelineFor_(material))
     pass.setBindGroup(0, _sceneBindGroup)
     pass.setBindGroup(1, instanceBindGroupFor_(instanceBuffer))
     pass.setBindGroup(2, entry["bg"])
@@ -2535,7 +2667,7 @@ class Renderer3D {
     if (!_sceneCommitted) commitScene_()
     var entry = bindGroupFor_(material)
     var pass = _pass
-    pass.setPipeline(_instancedPipeline)
+    pass.setPipeline(instancedPipelineFor_(material))
     pass.setBindGroup(0, _sceneBindGroup)
     pass.setBindGroup(2, entry["bg"])
     var i = 0

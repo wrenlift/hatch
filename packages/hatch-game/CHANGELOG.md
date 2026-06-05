@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.33 -- 2026-06-05
+
+`@hatch:gpu` dep pin advanced 0.3.18 → 0.3.19 to pick up the
+toon-instanced pipeline + instanced MRT (§12.3). No `@hatch:game`
+surface change; ParticleSystem3D and other consumers of
+`drawMeshInstanced` automatically inherit toon dispatch when their
+`Material.shadingModel` is flipped to `"toon"`.
+
 ## 0.3.32 -- 2026-06-05
 
 §12.2 of the Ghibli/anime plan — PostFX + scene-pass support for

@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.3.19 — 2026-06-05
+
+§12.3 of the Ghibli/anime plan — toon-instanced pipeline + MRT
+support for the instanced PBR pipeline.
+
+- New `_toonInstancedPipeline` — instanced toon math (band-
+  quantised dominant directional, shadow/key two-tone tint,
+  Fresnel rim) shares the instanced shader module with the PBR
+  variant. Same VS (per-instance model matrix + wind sway), same
+  bind groups, different fragment entry.
+- `INSTANCED_PBR_WGSL_` refactored to the same compute-fn +
+  thin-entry pattern as `PBR_WGSL_`: `instanced_pbr_compute` /
+  `instanced_toon_compute` carry the math; `fs_main` /
+  `fs_toon_main` / `fs_main_mrt` / `fs_toon_main_mrt` are 1-line
+  wrappers. MRT entries pack world-space normals to
+  `@location(1)` identically to the non-instanced path.
+- `drawMeshInstanced`, `drawMeshInstancedIndirect`, and
+  `drawInstancedLOD` all dispatch through a new
+  `instancedPipelineFor_(material)` helper. `Material.shadingModel
+  == "toon"` routes to `_toonInstancedPipeline`; everything else
+  to `_instancedPipeline`. Compatible with §12.2's MRT mode —
+  instanced draws now coexist with a bound normal target.
+
+**Scope remaining for §12 phase:** skinned pipeline + skinned toon
+(§12.5) is the last single-target path; `Renderer3D.drawSkinned`
+will still surface a wgpu validation error if called with a normal
+target bound until that lands.
+
 ## 0.3.18 — 2026-06-05
 
 §12.2 of the Ghibli/anime plan — secondary normal G-buffer attachment.
