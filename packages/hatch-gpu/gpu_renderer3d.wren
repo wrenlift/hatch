@@ -171,7 +171,12 @@ class Renderer3D {
   //       = 64 + 16 + 16 + 16 + 64 + 16 + 16 + 48 + 128 + 256 + 256 = 896 bytes.
   static SCENE_UBO_BYTES_  { 896 }
   static DRAW_UBO_BYTES_   { 128 }       // model(64) + normal_mat(64)
-  static MAT_UBO_BYTES_    { 64 }        // 4 vec4s
+  // 5 vec4s. The trailing slot carries the toon-shading params
+  // (band count, rim colour, rim strength) consumed by the cel-
+  // shaded pipeline; the PBR shader has a matching field on its
+  // MaterialUniforms struct but ignores it, so a single Material
+  // can drive either pipeline depending on `shadingModel`.
+  static MAT_UBO_BYTES_    { 80 }
   static SHADOW_UBO_BYTES_ { 128 }       // light_vp(64) + model(64) per draw
 
   // Pipeline-specific WGSL — structs, bindings, and entry points.
@@ -217,6 +222,14 @@ class Renderer3D {
         emissive_color: vec4<f32>,
         factors:        vec4<f32>,    // x=metallic y=roughness z=normalScale w=occlusionStrength
         alpha:          vec4<f32>,    // x=mode(0/1/2) y=cutoff z=doubleSided w=pad
+        // Toon-shading params. Read by the cel-shaded pipeline only;
+        // the PBR shader binds this struct identically but ignores
+        // the slot.
+        //   x = band count (>=2; 3 = classic three-tone Ghibli)
+        //   y = rim strength (0 disables; 1 saturates the silhouette)
+        //   z = rim width (Fresnel exponent; higher = thinner rim)
+        //   w = ambient floor (shadow side minimum brightness 0..1)
+        toon:           vec4<f32>,
       };
 
       @group(0) @binding(0) var<uniform> scene: SceneUniforms;
@@ -528,6 +541,74 @@ class Renderer3D {
         let ldr = tonemap_aces(hdr);
         return vec4<f32>(ldr, base_color.a);
       }
+
+      // -- Toon / cel-shaded fragment entry. -------------------
+      //
+      // Same VS, same scene + draw + material bind groups, same
+      // textures — only the lighting model changes. Quantises the
+      // dominant directional light's `dot(N, L)` into `mat.toon.x`
+      // bands, layers an optional Fresnel rim with `mat.toon.yz`,
+      // floors the shadow side at `mat.toon.w`, and skips ACES so
+      // the output stays in the saturated stylised palette artists
+      // author against. Albedo / emissive texture sampling + alpha-
+      // mode handling carry over from the PBR path so one Material
+      // can drive either pipeline by flipping `shadingModel`.
+      @fragment
+      fn fs_toon_main(in: VsOut) -> @location(0) vec4<f32> {
+        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+        var base_color = mat.albedo_color * albedo_sample;
+        let alpha_mode = mat.alpha.x;
+        if (alpha_mode == 1.0) {
+          if (base_color.a < mat.alpha.y) { discard; }
+        }
+
+        let N = normalize(in.normal);
+        let V = normalize(scene.camera_pos.xyz - in.world);
+
+        let bands         = max(mat.toon.x, 2.0);
+        let rim_strength  = mat.toon.y;
+        let rim_width     = max(mat.toon.z, 1.0);
+        let ambient_floor = clamp(mat.toon.w, 0.0, 1.0);
+
+        // Quantise the strongest-contributing directional light's
+        // diffuse term. Multi-dir scenes blend by max() — the
+        // dominant key wins each band, which matches how stylised
+        // illustrations get drawn (one primary light decides the
+        // shadow shape; fills modulate the colour but not the band).
+        var band_level = ambient_floor;
+        let dir_count = u32(scene.counts.x);
+        for (var i: u32 = 0u; i < dir_count; i = i + 1u) {
+          let dl = scene.dir_lights[i];
+          let L = normalize(-dl.dir_intensity.xyz);
+          let n_dot_l = max(dot(N, L), 0.0);
+          // floor(n*bands)/bands gives crisp steps at 0, 1/b, 2/b…1.
+          // The +0.5/bands phase shift puts the brightest band at
+          // the dot(N,L)=1 surface so the key light isn't dimmed.
+          let stepped = clamp(
+            floor(n_dot_l * bands + 0.5) / bands,
+            ambient_floor,
+            1.0
+          );
+          let contribution = stepped * dl.dir_intensity.w;
+          band_level = max(band_level, contribution);
+        }
+
+        var lit = base_color.rgb * band_level;
+
+        // Rim light: Fresnel-driven silhouette highlight, additive.
+        if (rim_strength > 0.0) {
+          let fresnel = 1.0 - max(0.0, dot(N, V));
+          let rim = pow(fresnel, rim_width) * rim_strength;
+          lit = lit + vec3<f32>(rim);
+        }
+
+        // Emissive carries through so authored self-glow elements
+        // still read (lanterns, signage, magic).
+        let toon_emissive_sample = textureSample(emissive_tex, samp, in.uv).rgb;
+        lit = lit + mat.emissive_color.rgb * toon_emissive_sample;
+
+        return vec4<f32>(lit, base_color.a);
+      }
     "
   }
 
@@ -588,6 +669,9 @@ class Renderer3D {
         emissive_color: vec4<f32>,
         factors:        vec4<f32>,
         alpha:          vec4<f32>,
+        // Toon-shading slot (read by the cel-shaded pipeline; this
+        // shader binds the struct identically but ignores it).
+        toon:           vec4<f32>,
       };
 
       @group(0) @binding(0) var<uniform>            scene: SceneUniforms;
@@ -715,6 +799,9 @@ class Renderer3D {
         emissive_color: vec4<f32>,
         factors:        vec4<f32>,
         alpha:          vec4<f32>,
+        // Toon-shading slot (read by the cel-shaded pipeline; this
+        // shader binds the struct identically but ignores it).
+        toon:           vec4<f32>,
       };
 
       @group(0) @binding(0) var<uniform> scene: SceneUniforms;
@@ -1149,6 +1236,42 @@ class Renderer3D {
         "depthCompare": "less-equal"
       },
       "label": "renderer3d-pipeline-transparent"
+    })
+
+    // Toon / cel-shaded pipeline. Same shader module + bind group
+    // layout as `_pipeline`; only the fragment entry point swaps
+    // to `fs_toon_main`, which reads `mat.toon` for the band count
+    // / rim params / ambient floor and skips ACES so the output
+    // stays in the saturated stylised palette. The `Material.shading-
+    // Model` field selects between this pipeline and `_pipeline`
+    // at draw time.
+    _toonPipeline = device.createRenderPipeline({
+      "layout": _pipelineLayout,
+      "vertex": {
+        "module": shader, "entryPoint": "vs_main",
+        "buffers": [{
+          "arrayStride": Renderer3D.FLOATS_PER_VERTEX_ * 4,
+          "stepMode": "vertex",
+          "attributes": [
+            { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
+            { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
+            { "shaderLocation": 2, "offset": 24, "format": "float32x2" },
+            { "shaderLocation": 3, "offset": 32, "format": "float32x4" }
+          ]
+        }]
+      },
+      "fragment": {
+        "module": shader, "entryPoint": "fs_toon_main",
+        "targets": [{ "format": surfaceFormat }]
+      },
+      "primitive":    { "topology": "triangle-list", "cullMode": "back" },
+      "depthStencil": {
+        "format": depthFormat, "depthWriteEnabled": true,
+        "depthCompare":         "less-equal",
+        "depthBias":            2,
+        "depthBiasSlopeScale":  1.0
+      },
+      "label": "renderer3d-pipeline-toon"
     })
 
     // Instanced pipeline. Same scene + material binding shape; the
@@ -2133,11 +2256,18 @@ class Renderer3D {
     // Resolve material bind group; rebuild on revision change.
     var entry = bindGroupFor_(material)
     var pass = _pass
-    // Pick the transparent pipeline when the material's alpha mode
-    // is "blend" — gives proper src-alpha blending + no depth-write
-    // for soft-fading edges (Boden floor, glass panels, etc.). All
-    // other alpha modes (opaque, mask) ride the standard PBR pipeline.
-    if (material.alphaMode == "blend") {
+    // Pipeline selection by material state:
+    //   - shadingModel "toon" → cel-shaded pipeline (mat.toon read,
+    //     ACES bypass). Wins over the alpha-mode switch because
+    //     toon assets are typically opaque or alpha-mask; if a
+    //     future toon material needs alpha-blend it gets its own
+    //     pipeline pairing.
+    //   - alphaMode "blend" → transparent PBR pipeline (depth-write
+    //     off, standard src-alpha blend).
+    //   - everything else → the default PBR pipeline.
+    if (material.shadingModel == "toon") {
+      pass.setPipeline(_toonPipeline)
+    } else if (material.alphaMode == "blend") {
       pass.setPipeline(_transparentPipeline)
     } else {
       pass.setPipeline(_pipeline)

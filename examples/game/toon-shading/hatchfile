@@ -1,0 +1,8 @@
+name        = "toon-shading"
+version     = "0.1.0"
+entry       = "main"
+description = "Cel-shaded sphere trio comparing band counts and rim strength against a PBR ground for reference. Demonstrates Material.shadingModel = \"toon\" plus the bands / rimStrength / rimWidth / ambientFloor dials on @hatch:gpu's Renderer3D."
+
+[dependencies]
+"@hatch:game" = "0.3.30"
+"@hatch:image" = "0.1.8"

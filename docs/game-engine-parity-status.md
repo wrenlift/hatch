@@ -41,6 +41,7 @@ Plan source: [game-engine-parity-plan.md](./game-engine-parity-plan.md)
 | 11.8 | Foliage scatter | 🟡 | medium | No transform packing; no wind sway shader |
 | 11.9 | Weather (rain/snow/fog compute particles) | ✅ | — | 200k rain+snow @ 1 ms/frame; volumetric/compute Fog scoped out (2026-06-05) |
 | 11.10 | Water (low + FFT high quality) | 🟡 | large | FFT-ocean path absent; no caustics/SSS |
+| 12 — Stylised shading (toon / cel) | 🟡 | medium | Material variant + dedicated Renderer3D pipeline shipped 2026-06-05; instanced/skinned pipelines + outline post-pass still pending |
 
 ## Shipped phases (no further work needed)
 
@@ -373,6 +374,20 @@ A pragmatic order picking highest-impact unblocked items first.
 12. **8 — background loading + FSM-aware save** — medium; FSM round-trip needs careful design but is unblocked by 0b (✅).
 13. **6d / 6e exit-gate specs + 11.9 weather perf spec + 7 lowercase font** — small polish items; batch as one PR each.
 14. **11.10 — FFT water + caustics** — large, lowest immediate-impact; sequence last unless a downstream demo specifically demands FFT seas.
+15. **12 — toon instanced + skinned pipelines + outline post-pass** — base toon variant landed 2026-06-05 (`Material.shadingModel = "toon"` + `bands` / `rimStrength` / `rimWidth` / `ambientFloor` + `fs_toon_main` entry on `Renderer3D._toonPipeline`). Next: `_toonInstancedPipeline` + `_toonSkinnedPipeline` so foliage / characters can opt in, then an `OutlinePass` in `@hatch:postfx` for ink edges. Unlocks the Ghibli / anime aesthetic without leaving the standard render-graph.
+
+### 12 — Stylised shading (toon / cel) 🟡
+
+**Status**: base material variant + dedicated render pipeline shipped 2026-06-05. `Material.shadingModel` accepts `"pbr"` (default) or `"toon"`; flipping it routes `Renderer3D.draw` to `_toonPipeline`, a second fragment entry (`fs_toon_main`) hung off the existing PBR shader module. The MaterialUniforms UBO grew from 64 → 80 bytes with a trailing `toon: vec4<f32>` slot (bands, rimStrength, rimWidth, ambientFloor). Defaults (`bands = 3`, `rim = 0`, `floor = 0.35`) land in a sensible three-band Ghibli look without any caller tuning. Demo: `hatch/examples/game/toon-shading`.
+
+**Gaps**:
+- No `_toonInstancedPipeline` — `drawMeshInstanced` / billboards still resolve to PBR
+- No `_toonSkinnedPipeline` — `Renderer3D.drawSkinned` is PBR-only, so toon characters need a separate path
+- No `OutlinePass` in `@hatch:postfx` — ink-line edges (Sobel on depth + normal G-buffer) are the next jump in "anime-ness" once the base shader is in shipping demos
+- Toon dials (`bands`, `rimStrength`, `rimWidth`, `ambientFloor`) are per-material — no scene-level "warm/cool ramp" texture yet for true painted-look ramps
+
+**Depends on**: 1 (✅), 6b (✅)
+**Effort**: medium
 
 ## Known issues / accepted limitations
 

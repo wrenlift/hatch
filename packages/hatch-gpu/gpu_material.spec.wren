@@ -69,7 +69,7 @@ Test.describe("Material revision bookkeeping") {
 }
 
 Test.describe("Material.packUniform_") {
-  Test.it("packs the WGSL MaterialUniforms layout (16 floats)") {
+  Test.it("packs the WGSL MaterialUniforms layout (20 floats)") {
     var m = Material.new()
     m.albedoColor      = Vec4.new(0.85, 0.42, 0.45, 1.0)
     m.emissiveColor    = Vec4.new(0.1, 0.2, 0.3, 1.0)
@@ -80,10 +80,14 @@ Test.describe("Material.packUniform_") {
     m.alphaMode        = "blend"
     m.alphaCutoff      = 0.4
     m.doubleSided      = true
+    m.bands            = 4
+    m.rimStrength      = 0.6
+    m.rimWidth         = 3.0
+    m.ambientFloor     = 0.3
 
     var out = []
     m.packUniform_(out)
-    Expect.that(out.count).toBe(16)
+    Expect.that(out.count).toBe(20)
 
     // albedo_color (4)
     Expect.that(out[0]).toBe(0.85)
@@ -100,11 +104,57 @@ Test.describe("Material.packUniform_") {
     Expect.that(out[9]).toBe(0.75)
     Expect.that(out[10]).toBe(1.5)
     Expect.that(out[11]).toBe(0.5)
-    // alpha: mode(blend=2), cutoff, doubleSided(1), pad
+    // alpha: mode(blend=2), cutoff, doubleSided(1), sway-default(0)
     Expect.that(out[12]).toBe(2)
     Expect.that(out[13]).toBe(0.4)
     Expect.that(out[14]).toBe(1.0)
     Expect.that(out[15]).toBe(0)
+    // toon: bands, rimStrength, rimWidth, ambientFloor (read by the
+    // cel-shaded pipeline; the PBR shader ignores this slot but the
+    // UBO layout stays uniform across pipelines).
+    Expect.that(out[16]).toBe(4)
+    Expect.that(out[17]).toBe(0.6)
+    Expect.that(out[18]).toBe(3.0)
+    Expect.that(out[19]).toBe(0.3)
+  }
+
+  Test.it("default material packs neutral toon params (bands=3, rim=0, floor=0.35)") {
+    // A freshly-constructed PBR material still emits the toon slot
+    // — keeps the UBO layout uniform so both pipelines bind the
+    // same struct. The defaults are chosen so a caller who flips
+    // shadingModel = "toon" without setting anything else lands in
+    // a sensible Ghibli-ish three-band look with no rim.
+    var m = Material.new()
+    var out = []
+    m.packUniform_(out)
+    Expect.that(out[16]).toBe(3)       // bands
+    Expect.that(out[17]).toBe(0)       // rim strength (off by default)
+    Expect.that(out[18]).toBe(4)       // rim width (Fresnel exponent)
+    Expect.that(out[19]).toBe(0.35)    // ambient floor
+  }
+
+  Test.it("toon param setters tick revision (renderer rebuild trigger)") {
+    var m = Material.new()
+    var r0 = m.revision_
+    m.bands = 5
+    Expect.that(m.revision_ > r0).toBe(true)
+    var r1 = m.revision_
+    m.rimStrength = 0.5
+    Expect.that(m.revision_ > r1).toBe(true)
+    var r2 = m.revision_
+    m.rimWidth = 3.0
+    Expect.that(m.revision_ > r2).toBe(true)
+    var r3 = m.revision_
+    m.ambientFloor = 0.5
+    Expect.that(m.revision_ > r3).toBe(true)
+    var r4 = m.revision_
+    m.shadingModel = "toon"
+    Expect.that(m.revision_ > r4).toBe(true)
+  }
+
+  Test.it("shadingModel defaults to 'pbr'") {
+    var m = Material.new()
+    Expect.that(m.shadingModel).toBe("pbr")
   }
 
   Test.it("alphaMode maps 'opaque' → 0 / 'mask' → 1 / 'blend' → 2") {
