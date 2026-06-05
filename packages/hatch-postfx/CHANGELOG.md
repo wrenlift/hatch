@@ -2,7 +2,7 @@
 
 ## 0.1.3 -- 2026-06-05
 
-§12.4 of the Ghibli/anime plan — `OutlinePass` ships.
+§12.4 of the stylised-shading plan — `OutlinePass` ships.
 
 - New `OutlinePass` class in `outline.wren`, re-exported through
   `@hatch:postfx`. Sobel-style edge detection on the depth +
@@ -20,7 +20,7 @@
     })
   )
   ```
-  Composes with toon shading for full Ghibli/anime; works on top
+  Composes with toon shading for a full stylised anime look; works on top
   of plain PBR for a comic-book-on-real look.
 - Requires `Renderer3D.new(.., normalFormat)` and
   `PostFX.new(g, { "normalFormat": ... })` to both be wired with

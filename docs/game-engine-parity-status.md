@@ -41,7 +41,7 @@ Plan source: [game-engine-parity-plan.md](./game-engine-parity-plan.md)
 | 11.8 | Foliage scatter | 🟡 | medium | No transform packing; no wind sway shader |
 | 11.9 | Weather (rain/snow/fog compute particles) | ✅ | — | 200k rain+snow @ 1 ms/frame; volumetric/compute Fog scoped out (2026-06-05) |
 | 11.10 | Water (low + FFT high quality) | 🟡 | large | FFT-ocean path absent; no caustics/SSS |
-| 12 — Stylised shading (toon / cel) | 🟡 | medium | Material variant + dedicated Renderer3D pipeline shipped 2026-06-05; instanced/skinned pipelines + outline post-pass still pending |
+| 12 — Stylised shading (toon / cel) | 🟡 | medium | Material variant + dedicated Renderer3D pipeline shipped 2026-06-05; instanced / skinned / outline-post-pass shipped 2026-06-05; foliage + sky still pending |
 
 ## Shipped phases (no further work needed)
 
@@ -374,15 +374,15 @@ A pragmatic order picking highest-impact unblocked items first.
 12. **8 — background loading + FSM-aware save** — medium; FSM round-trip needs careful design but is unblocked by 0b (✅).
 13. **6d / 6e exit-gate specs + 11.9 weather perf spec + 7 lowercase font** — small polish items; batch as one PR each.
 14. **11.10 — FFT water + caustics** — large, lowest immediate-impact; sequence last unless a downstream demo specifically demands FFT seas.
-15. **12 — toon instanced + skinned pipelines + outline post-pass** — base toon variant landed 2026-06-05 (`Material.shadingModel = "toon"` + `bands` / `rimStrength` / `rimWidth` / `ambientFloor` + `fs_toon_main` entry on `Renderer3D._toonPipeline`). Next: `_toonInstancedPipeline` + `_toonSkinnedPipeline` so foliage / characters can opt in, then an `OutlinePass` in `@hatch:postfx` for ink edges. Unlocks the Ghibli / anime aesthetic without leaving the standard render-graph.
+15. **12 — toon instanced + skinned pipelines + outline post-pass** — base toon variant landed 2026-06-05 (`Material.shadingModel = "toon"` + `bands` / `rimStrength` / `rimWidth` / `ambientFloor` + `fs_toon_main` entry on `Renderer3D._toonPipeline`); instanced toon (12.3), `OutlinePass` (12.4), skinned toon + billboard MRT (12.5) shipped 2026-06-05 too. Unlocks the stylised anime aesthetic without leaving the standard render-graph; foliage wind sway (12.6) + stylised sky (12.7) + painted ramps (12.8) follow on.
 
 ### 12 — Stylised shading (toon / cel) 🟡
 
-**Status**: base material variant + dedicated render pipeline shipped 2026-06-05. `Material.shadingModel` accepts `"pbr"` (default) or `"toon"`; flipping it routes `Renderer3D.draw` to `_toonPipeline`, a second fragment entry (`fs_toon_main`) hung off the existing PBR shader module. The MaterialUniforms UBO grew from 64 → 80 bytes with a trailing `toon: vec4<f32>` slot (bands, rimStrength, rimWidth, ambientFloor). Defaults (`bands = 3`, `rim = 0`, `floor = 0.35`) land in a sensible three-band Ghibli look without any caller tuning. Band math corrected and `Mesh.sphere` primitive added in `@hatch:gpu` 0.3.17 (commit `f247acb`). Demo: `hatch/examples/game/toon-shading`.
+**Status**: base material variant + dedicated render pipeline shipped 2026-06-05. `Material.shadingModel` accepts `"pbr"` (default) or `"toon"`; flipping it routes `Renderer3D.draw` to `_toonPipeline`, a second fragment entry (`fs_toon_main`) hung off the existing PBR shader module. The MaterialUniforms UBO grew from 64 → 80 bytes with a trailing `toon: vec4<f32>` slot (bands, rimStrength, rimWidth, ambientFloor). Defaults (`bands = 3`, `rim = 0`, `floor = 0.35`) land in a sensible three-band cel look without any caller tuning. Band math corrected and `Mesh.sphere` primitive added in `@hatch:gpu` 0.3.17 (commit `f247acb`). Demo: `hatch/examples/game/toon-shading`.
 
 **Design contract — do not deviate**:
 - **Cel-banding lives in the renderer.** Quantise `dot(N, L)` inside the FS lighting loop, NOT as a posterize PostFX. Bands rotate with the light direction; a framebuffer posterize buckets RGB values instead — same image, wrong physics.
-- **Outline edges live in `@hatch:postfx`.** Sobel on depth + normal buffer, screen-space. Separate so callers compose three looks independently: toon-only (soft Ghibli without ink), outline-only (PBR with silhouettes — comic-book-on-real), or both (full anime).
+- **Outline edges live in `@hatch:postfx`.** Sobel on depth + normal buffer, screen-space. Separate so callers compose three looks independently: toon-only (soft cel without ink), outline-only (PBR with silhouettes — comic-book-on-real), or both (full anime).
 - **Wind sway lives in the vertex stage**, not in CPU-side per-blade transforms. Phase 11.8 grass / foliage VS samples a sin/curl term at world-XZ × time and offsets vertex positions; CPU only ships static instance transforms.
 
 ### Phased plan (recall 2026-06-05)
@@ -393,10 +393,10 @@ A pragmatic order picking highest-impact unblocked items first.
 | 12.2 | Normal-buffer attachment alongside the colour target (forces a G-buffer format decision — RG8 octahedral vs RGB10A2 vs RGBA16F) | `@hatch:gpu` | 0.5 d | next |
 | 12.3 | `_toonInstancedPipeline` + instanced MRT — toon math on the instanced shader, dispatch via `instancedPipelineFor_`, unblocks foliage + billboards on the toon path | `@hatch:gpu` 0.3.19 | — | ✅ shipped |
 | 12.4 | `OutlinePass` reading the depth + normal targets — depth + normal Sobel, threshold dials, edge colour + thickness | `@hatch:postfx` 0.1.3 | — | ✅ shipped |
-| 12.5 | `_toonSkinnedPipeline` — `Renderer3D.drawSkinned` toon path so the_strangler-tier rigs animate in cel | `@hatch:gpu` | 1 d | pending |
+| 12.5 | `_toonSkinnedPipeline` + skinned MRT + billboard MRT — `Renderer3D.drawSkinned` toon path so the_strangler-tier rigs animate in cel; billboard pipeline writes a neutral normal placeholder for MRT compat | `@hatch:gpu` 0.3.20 | — | ✅ shipped |
 | 12.6 | Phase 11.8 foliage transform-pack + wind-sway VS — grass / leaves on the toon-instanced path with a sin/curl sway term | `@hatch:game` / `@hatch:gpu` | 3 d | depends on 12.3 |
 | 12.7 | Stylized sky pass — gradient-or-noise sky dome that caps the silhouette and absorbs the orbiting sun's tint | `@hatch:gpu` / `@hatch:postfx` | 2 d | pending |
-| 12.8 | Painted ramp textures — 1D LUT sampled instead of two-tone `mix(shadow, lit, t)`; pushes toward Mononoke watercolour ramps | `@hatch:gpu` | 1 d | nice-to-have |
+| 12.8 | Painted ramp textures — 1D LUT sampled instead of two-tone `mix(shadow, lit, t)`; pushes toward painted watercolour ramps | `@hatch:gpu` | 1 d | nice-to-have |
 
 **Remaining budget**: ~10 days end-to-end; the toon-only viewer path (12.2 + 12.3 + 12.4) is ~3 days and gives the biggest visible jump.
 

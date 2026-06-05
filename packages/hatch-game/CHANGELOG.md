@@ -1,8 +1,16 @@
 # Changelog
 
+## 0.3.35 -- 2026-06-05
+
+`@hatch:gpu` dep pin advanced 0.3.19 → 0.3.20 to pick up the
+toon-skinned pipeline + skinned/billboard MRT (§12.5). No
+`@hatch:game` surface change; `drawSkinned` consumers and
+particle systems automatically inherit MRT compatibility and
+toon dispatch when material flips `shadingModel = "toon"`.
+
 ## 0.3.34 -- 2026-06-05
 
-§12.4 of the Ghibli/anime plan — PostFX dispatch ctx surfaces the
+§12.4 of the stylised-shading plan — PostFX dispatch ctx surfaces the
 scene normal view alongside depth.
 
 - `PostFX.runChain` per-step `ctx` now includes
@@ -22,7 +30,7 @@ surface change; ParticleSystem3D and other consumers of
 
 ## 0.3.32 -- 2026-06-05
 
-§12.2 of the Ghibli/anime plan — PostFX + scene-pass support for
+§12.2 of the stylised-shading plan — PostFX + scene-pass support for
 the secondary normal G-buffer.
 
 - `PostFX.new(g, { "normalFormat": "rgba8unorm" })` 2-arg form

@@ -123,7 +123,7 @@ Test.describe("Material.packUniform_") {
     // — keeps the UBO layout uniform so both pipelines bind the
     // same struct. The defaults are chosen so a caller who flips
     // shadingModel = "toon" without setting anything else lands in
-    // a sensible Ghibli-ish three-band look with no rim.
+    // a sensible three-band cel look with no rim.
     var m = Material.new()
     var out = []
     m.packUniform_(out)

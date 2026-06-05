@@ -2745,7 +2745,7 @@ class Mesh {
         var ny = cosPhi
         var nz = sinPhi * sinTh
         // Position = normal × radius — exact unit-sphere normals
-        // for smooth Ghibli-friendly banding.
+        // for smooth cel banding.
         v.add(nx * radius)
         v.add(ny * radius)
         v.add(nz * radius)

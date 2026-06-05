@@ -1,8 +1,34 @@
 # Changelog
 
+## 0.3.20 — 2026-06-05
+
+§12.5 of the stylised-shading plan — `_toonSkinnedPipeline` + skinned
+MRT entries, plus the billboard pipeline's neutral-normal MRT
+variant.
+
+- New `_toonSkinnedPipeline` — cel-shaded skinned characters
+  share the joint-matrix-palette VS with the PBR-skinned
+  pipeline; differs only in the fragment entry. `drawSkinned`
+  dispatches via a new `skinnedPipelineFor_(material)` helper so
+  the rotor / the_strangler-tier rigs animate in toon when their
+  `Material.shadingModel = "toon"` is flipped, no caller change.
+- `SKINNED_PBR_WGSL_` refactored to the compute-fn + thin-entry
+  pattern: `skinned_pbr_compute` / `skinned_toon_compute` carry
+  the math; four `fs_*` / `fs_*_mrt` entries are 1-line wrappers.
+- Billboard pipeline (`drawBillboardN` particles, sprite billboards)
+  gains an `fs_main_mrt` entry that writes a neutral
+  camera-facing normal `(0.5, 0.5, 1.0)` to `@location(1)`.
+  Bandwidth-cheap placeholder that keeps billboards composable in
+  MRT mode without contributing false silhouettes to OutlinePass.
+- **All Renderer3D pipelines now MRT-aware.** PBR / transparent /
+  toon, instanced PBR / instanced toon, skinned PBR / skinned
+  toon, billboard — every draw path coexists with a bound normal
+  target. §12 stylised-shading trio (toon + outline + instanced) is
+  surface-complete.
+
 ## 0.3.19 — 2026-06-05
 
-§12.3 of the Ghibli/anime plan — toon-instanced pipeline + MRT
+§12.3 of the stylised-shading plan — toon-instanced pipeline + MRT
 support for the instanced PBR pipeline.
 
 - New `_toonInstancedPipeline` — instanced toon math (band-
@@ -30,7 +56,7 @@ target bound until that lands.
 
 ## 0.3.18 — 2026-06-05
 
-§12.2 of the Ghibli/anime plan — secondary normal G-buffer attachment.
+§12.2 of the stylised-shading plan — secondary normal G-buffer attachment.
 
 - `Renderer3D.new(device, surfaceFormat, depthFormat, normalFormat)`
   4-arg constructor. When `normalFormat` is supplied (typically
@@ -81,7 +107,7 @@ Follow-on to the toon-shader landing in 0.3.16:
   and rendered as near-white. Now the band amount stays in [0, 1]
   and tone comes from `mix(shadow_color, lit_color, lit_amount)`
   where shadow tints by `scene.ambient` and lit by the dominant
-  directional's colour — Ghibli's signature cool-shadow /
+  directional's colour — the canonical cool-shadow /
   warm-key two-tone, without compound darkening.
 - Toon-shading demo (`hatch/examples/game/toon-shading`) switched
   to spheres with an orbiting sun so the cel bands sweep across
@@ -96,7 +122,7 @@ Toon / cel shading lands as a first-class `Material` variant.
 - `Material.shadingModel` (`"pbr"` default, `"toon"` opts in) plus
   `bands` / `rimStrength` / `rimWidth` / `ambientFloor` dials.
   Defaults (`bands = 3`, `rim = 0`, `floor = 0.35`) produce a
-  Ghibli-style three-band look with no shadow crush; setters tick
+  three-band cel look with no shadow crush; setters tick
   `revision_` so the renderer rebuild-trigger picks them up.
 - `Renderer3D` builds a second pipeline (`_toonPipeline`) off the
   existing PBR shader module — the shader gains an `fs_toon_main`

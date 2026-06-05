@@ -151,6 +151,22 @@ class Renderer3D {
       fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         return textureSample(tex, samp, in.uv) * in.color;
       }
+
+      // MRT entry — used when the renderer is built with
+      // `normalFormat`. Billboards intentionally write a neutral
+      // (camera-facing) normal placeholder so a billboard
+      // composed against a normal target doesn't trigger wgpu
+      // validation, but also doesn't contribute false silhouettes
+      // to OutlinePass-style edge detection.
+      struct FsOutMrt {
+        @location(0) color:  vec4<f32>,
+        @location(1) normal: vec4<f32>,
+      }
+      @fragment
+      fn fs_main_mrt(in: VsOut) -> FsOutMrt {
+        let color = textureSample(tex, samp, in.uv) * in.color;
+        return FsOutMrt(color, vec4<f32>(0.5, 0.5, 1.0, 1.0));
+      }
     "
   }
 
@@ -225,7 +241,7 @@ class Renderer3D {
         // Toon-shading params. Read by the cel-shaded pipeline only;
         // the PBR shader binds this struct identically but ignores
         // the slot.
-        //   x = band count (>=2; 3 = classic three-tone Ghibli)
+        //   x = band count (>=2; 3 = classic three-tone cel look)
         //   y = rim strength (0 disables; 1 saturates the silhouette)
         //   z = rim width (Fresnel exponent; higher = thinner rim)
         //   w = ambient floor (shadow side minimum brightness 0..1)
@@ -612,9 +628,9 @@ class Renderer3D {
             key_tint = dl.color.rgb;
           }
         }
-        // Cool shadow / warm key two-tone tint — the signature
-        // Ghibli move. Build the two endpoint colours, then mix
-        // between them by the quantised lit amount. This keeps
+        // Cool shadow / warm key two-tone tint — the canonical
+        // cel-shading move. Build the two endpoint colours, then
+        // mix between them by the quantised lit amount. This keeps
         // shadows readable as the material colour (just cooler +
         // dimmer) instead of compound-darkening to near-black.
         let shadow_tint  = scene.ambient.rgb;
@@ -789,8 +805,10 @@ class Renderer3D {
         return o;
       }
 
-      @fragment
-      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+      // Skinned PBR lighting — Lambert + ambient + emissive. Same
+      // compute-fn + thin-entry split as the static + instanced
+      // shaders so the MRT entries can share the lit value.
+      fn skinned_pbr_compute(in: VsOut) -> vec4<f32> {
         let albedo_sample = textureSample(albedo_tex, samp, in.uv);
         let base_color    = mat.albedo_color * albedo_sample;
         let N = normalize(in.normal);
@@ -823,6 +841,89 @@ class Renderer3D {
         let ambient  = scene.ambient.rgb * base_color.rgb;
         let emissive = mat.emissive_color.rgb;
         return vec4<f32>(Lo + ambient + emissive, base_color.a);
+      }
+
+      // Skinned toon / cel-shaded lighting — same band-quantised
+      // dominant-directional + two-tone tint + Fresnel rim math
+      // as the static and instanced toon variants. Operates over
+      // the same VsOut shape so skinned characters can mix freely
+      // with cel-shaded static + instanced meshes.
+      fn skinned_toon_compute(in: VsOut) -> vec4<f32> {
+        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+        var base_color = mat.albedo_color * albedo_sample;
+        let alpha_mode = mat.alpha.x;
+        if (alpha_mode == 1.0) {
+          if (base_color.a < mat.alpha.y) { discard; }
+        }
+
+        let N = normalize(in.normal);
+        let V = normalize(scene.camera_pos.xyz - in.world);
+
+        let bands         = max(mat.toon.x, 2.0);
+        let rim_strength  = mat.toon.y;
+        let rim_width     = max(mat.toon.z, 1.0);
+        let ambient_floor = clamp(mat.toon.w, 0.0, 1.0);
+
+        var step_max = 0.0;
+        var key_tint = vec3<f32>(1.0);
+        let dir_count = u32(scene.counts.x);
+        for (var i: u32 = 0u; i < dir_count; i = i + 1u) {
+          let dl = scene.dir_lights[i];
+          let L = normalize(-dl.dir_intensity.xyz);
+          let n_dot_l = max(dot(N, L), 0.0);
+          let stepped = floor(n_dot_l * bands + 0.5) / bands;
+          if (stepped > step_max) {
+            step_max = stepped;
+            key_tint = dl.color.rgb;
+          }
+        }
+
+        let shadow_tint  = scene.ambient.rgb;
+        let shadow_color = base_color.rgb * shadow_tint;
+        let lit_color    = base_color.rgb * key_tint;
+        let lit_amount   = max(step_max, ambient_floor);
+        var lit = mix(shadow_color, lit_color, lit_amount);
+
+        if (rim_strength > 0.0) {
+          let fresnel = 1.0 - max(0.0, dot(N, V));
+          let rim = pow(fresnel, rim_width) * rim_strength;
+          lit = lit + vec3<f32>(rim);
+        }
+
+        let toon_emissive_sample = textureSample(emissive_tex, samp, in.uv).rgb;
+        lit = lit + mat.emissive_color.rgb * toon_emissive_sample;
+
+        return vec4<f32>(lit, base_color.a);
+      }
+
+      // Single-target entries — picked when the renderer is built
+      // without `normalFormat`.
+      @fragment
+      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+        return skinned_pbr_compute(in);
+      }
+      @fragment
+      fn fs_toon_main(in: VsOut) -> @location(0) vec4<f32> {
+        return skinned_toon_compute(in);
+      }
+
+      // MRT entries — picked when the renderer is built with
+      // `normalFormat`. Packed world-space normal in @location(1).
+      struct FsOutMrt {
+        @location(0) color:  vec4<f32>,
+        @location(1) normal: vec4<f32>,
+      }
+      @fragment
+      fn fs_main_mrt(in: VsOut) -> FsOutMrt {
+        let color = skinned_pbr_compute(in);
+        let n = normalize(in.normal) * 0.5 + 0.5;
+        return FsOutMrt(color, vec4<f32>(n, 1.0));
+      }
+      @fragment
+      fn fs_toon_main_mrt(in: VsOut) -> FsOutMrt {
+        let color = skinned_toon_compute(in);
+        let n = normalize(in.normal) * 0.5 + 0.5;
+        return FsOutMrt(color, vec4<f32>(n, 1.0));
       }
     "
   }
@@ -1251,16 +1352,18 @@ class Renderer3D {
   /// @param {String} depthFormat. Depth-attachment format, matches
   ///   the depth texture used in the pass descriptor.
   /// @param {String} normalFormat. Optional secondary normal G-buffer
-  ///   format (typically `"rgba8unorm"`). When supplied, the PBR /
-  ///   transparent / toon / instanced PBR / instanced toon pipelines
-  ///   bind a second colour target and write world-space normals
-  ///   (packed as `N * 0.5 + 0.5`) for edge-aware PostFX like
-  ///   OutlinePass. Must match
-  ///   `PostFX.new(g, { "normalFormat": ... })`. The skinned
-  ///   (`drawSkinned`) pipeline is still single-target in this
-  ///   revision — calling it while a normal target is bound
-  ///   surfaces a wgpu validation error. The skinned MRT variant
-  ///   + `_toonSkinnedPipeline` ship in §12.5.
+  ///   format (typically `"rgba8unorm"`). When supplied, ALL render
+  ///   pipelines (PBR / transparent / toon, instanced PBR /
+  ///   instanced toon, skinned PBR / skinned toon) bind a second
+  ///   colour target and write world-space normals (packed as
+  ///   `N * 0.5 + 0.5`) for edge-aware PostFX like OutlinePass.
+  ///   Must match `PostFX.new(g, { "normalFormat": ... })`. The
+  ///   billboard / particle pipelines stay single-target — they
+  ///   write a neutral (camera-facing) normal placeholder so
+  ///   nothing breaks if a billboard renders while a normal target
+  ///   is bound, but they don't contribute meaningful edges to
+  ///   outline detection (intentional — sprites shouldn't be
+  ///   ink-outlined alongside meshes).
   construct new(device, surfaceFormat, depthFormat) {
     init_(device, surfaceFormat, depthFormat, null)
   }
@@ -1594,8 +1697,8 @@ class Renderer3D {
         ]
       },
       "fragment": {
-        "module": skinnedShader, "entryPoint": "fs_main",
-        "targets": [{ "format": surfaceFormat }]
+        "module": skinnedShader, "entryPoint": pbrEntry,
+        "targets": opaqueTargets
       },
       "primitive":    { "topology": "triangle-list", "cullMode": "back" },
       "depthStencil": {
@@ -1605,6 +1708,56 @@ class Renderer3D {
         "depthBiasSlopeScale":  1.0
       },
       "label": "renderer3d-skinned-pipeline"
+    })
+
+    // Toon variant of the skinned pipeline. Shares the joint
+    // matrix palette + skinning VS; differs only in the fragment
+    // entry. Picked by `drawSkinned` when
+    // `Material.shadingModel == "toon"`. Same shader module, no
+    // extra compile cost.
+    _toonSkinnedPipeline = device.createRenderPipeline({
+      "layout": _skinnedPipelineLayout,
+      "vertex": {
+        "module": skinnedShader, "entryPoint": "vs_main",
+        "buffers": [
+          {
+            "arrayStride": Renderer3D.FLOATS_PER_VERTEX_ * 4,
+            "stepMode": "vertex",
+            "attributes": [
+              { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
+              { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
+              { "shaderLocation": 2, "offset": 24, "format": "float32x2" },
+              { "shaderLocation": 3, "offset": 32, "format": "float32x4" }
+            ]
+          },
+          {
+            "arrayStride": 16,
+            "stepMode": "vertex",
+            "attributes": [
+              { "shaderLocation": 4, "offset": 0, "format": "uint32x4" }
+            ]
+          },
+          {
+            "arrayStride": 16,
+            "stepMode": "vertex",
+            "attributes": [
+              { "shaderLocation": 5, "offset": 0, "format": "float32x4" }
+            ]
+          }
+        ]
+      },
+      "fragment": {
+        "module": skinnedShader, "entryPoint": toonEntry,
+        "targets": opaqueTargets
+      },
+      "primitive":    { "topology": "triangle-list", "cullMode": "back" },
+      "depthStencil": {
+        "format": depthFormat, "depthWriteEnabled": true,
+        "depthCompare":         "less-equal",
+        "depthBias":            2,
+        "depthBiasSlopeScale":  1.0
+      },
+      "label": "renderer3d-skinned-pipeline-toon"
     })
 
     // ---- Billboard pipeline. Spherical camera-facing quads for
@@ -1634,6 +1787,14 @@ class Renderer3D {
     _billboardPipelineLayout = device.createPipelineLayout({
       "bindGroupLayouts": [_billboardSceneBgl, _billboardInstanceBgl, _billboardMaterialBgl]
     })
+    var billboardEntry = mrt ? "fs_main_mrt" : "fs_main"
+    var billboardTargets = [{ "format": surfaceFormat, "blend": "alpha" }]
+    if (mrt) {
+      // Normal target written as a neutral camera-facing
+      // placeholder; no alpha blend (we don't want sprites to
+      // smear silhouette normals into the underlying mesh).
+      billboardTargets.add({ "format": _normalFormat })
+    }
     _billboardPipeline = device.createRenderPipeline({
       "layout": _billboardPipelineLayout,
       "vertex": {
@@ -1641,8 +1802,8 @@ class Renderer3D {
         "buffers": []
       },
       "fragment": {
-        "module": billboardShader, "entryPoint": "fs_main",
-        "targets": [{ "format": surfaceFormat, "blend": "alpha" }]
+        "module": billboardShader, "entryPoint": billboardEntry,
+        "targets": billboardTargets
       },
       "primitive":    { "topology": "triangle-list", "cullMode": "none" },
       "depthStencil": {
@@ -2554,6 +2715,15 @@ class Renderer3D {
     return _instancedPipeline
   }
 
+  // Skinned-mesh dispatch: toon → `_toonSkinnedPipeline`,
+  // anything else → the PBR-skinned pipeline. Mirrors
+  // `instancedPipelineFor_` so `drawSkinned` consumers get
+  // material-driven shading-model selection.
+  skinnedPipelineFor_(material) {
+    if (material.shadingModel == "toon") return _toonSkinnedPipeline
+    return _skinnedPipeline
+  }
+
   /// GPU-driven indexed-instanced draw. Identical render setup to
   /// [Renderer3D.drawMeshInstanced] (scene BG, instance SSBO BG,
   /// material BG, instanced pipeline, mesh VB/IB) but the instance
@@ -2626,7 +2796,7 @@ class Renderer3D {
     var skinBg = skin.bindWith(_skinBgl)
     var entry  = bindGroupFor_(material)
     var pass = _pass
-    pass.setPipeline(_skinnedPipeline)
+    pass.setPipeline(skinnedPipelineFor_(material))
     pass.setBindGroup(0, _sceneBindGroup)
     pass.setBindGroup(1, _drawBindGroupPool[i])
     pass.setBindGroup(2, entry["bg"])

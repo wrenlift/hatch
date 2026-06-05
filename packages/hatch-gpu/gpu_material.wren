@@ -261,7 +261,7 @@ class Material {
   }
 
   /// Number of diffuse light bands the toon pipeline quantises into.
-  /// Integer ≥ 2; 3 is the classic three-tone Ghibli look (highlight
+  /// Integer ≥ 2; 3 is the classic three-tone cel look (highlight
   /// / mid / shadow). Higher values approach smooth Lambertian.
   /// Ignored when `shadingModel != "toon"`.
   /// @returns {Num}
@@ -296,7 +296,7 @@ class Material {
 
   /// Floor brightness on the shadow side of the diffuse step. 0
   /// produces deep black shadow; 1 disables the toon step entirely
-  /// (flat lit). The Ghibli look typically sits around 0.3–0.45 so
+  /// (flat lit). The cel-shaded look typically sits around 0.3–0.45 so
   /// the shadowed side reads as a darker tint of the albedo rather
   /// than a hard black silhouette.
   /// Ignored when `shadingModel != "toon"`.

@@ -1,7 +1,7 @@
 // `@hatch:postfx` — OutlinePass. Depth + normal Sobel edge
 // detection that draws ink-style silhouettes over the scene
 // without re-rendering geometry. Composes with toon shading for
-// the full Ghibli / anime aesthetic; works on top of plain PBR
+// the full stylised anime aesthetic; works on top of plain PBR
 // for a "comic-book-on-real" look.
 
 import "@hatch:game" for PostPass
@@ -172,7 +172,7 @@ class OutlinePass is PostPass {
 
   // Sobel-style edge detection on depth + normal G-buffers.
   // The 4-tap cross neighbourhood is cheap and reads "drawn"
-  // enough for the Ghibli aesthetic; an 8-tap version would add
+  // enough for the cel-shaded aesthetic; an 8-tap version would add
   // diagonals at the cost of ~2× the texture reads. Edge colour
   // alpha multiplies the blend strength so opaque ink lines
   // (a=1) and softer washes (a<1) both compose cleanly.
