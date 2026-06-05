@@ -499,6 +499,25 @@ class ParticleSystem3D {
     // GPU instance buffer — Float32Array sized for the full
     // capacity matching Renderer3D.FLOATS_PER_BILLBOARD_ (16).
     _inst = Float32Array.new(_capacity * 16)
+    // Pre-fill the constant per-slot fields once at construct so
+    // the per-frame `draw` hot loop only touches position / size /
+    // colour / rotation. UV-rect (5..8), lodIndex (14), and pad
+    // (15) stay at (0, 0, 1, 1, 0, 0) for the whole system's
+    // lifetime. For 100k particles this cuts 700k writes / frame
+    // off the draw loop.
+    {
+      var k = 0
+      while (k < _capacity) {
+        var b = k * 16
+        _inst[b + 5] = 0
+        _inst[b + 6] = 0
+        _inst[b + 7] = 1
+        _inst[b + 8] = 1
+        _inst[b + 14] = 0
+        _inst[b + 15] = 0
+        k = k + 1
+      }
+    }
     _instBuf = device.createBuffer({
       "size":  _capacity * 16 * 4,
       "usage": ["storage", "copy-dst"],
@@ -678,52 +697,85 @@ class ParticleSystem3D {
   /// @param {Num} dt
   update(dt) {
     _deathCount = 0
+    // Hoist per-particle invariants out of the inner loop. Each
+    // particle's integration is `v += (g - v*drag) * dt` then
+    // `p += v * dt`, and at 100k particles every saved multiply
+    // / list-index lookup compounds. The original loop did 4
+    // gravity-array lookups + 4 drag-multiplies PER PARTICLE; the
+    // constants only need to be computed once per frame.
+    var gxdt   = _gravity[0] * dt
+    var gydt   = _gravity[1] * dt
+    var gzdt   = _gravity[2] * dt
+    // Damping factor: `v + g*dt - v*drag*dt` = `v*(1 - drag*dt) + g*dt`.
+    // Pre-multiplying `(1 - drag*dt)` once per frame turns six per-
+    // particle multiplications (two per axis) into three; the inner
+    // loop then does one mul-add per axis instead of two.
+    var dampDt = 1 - _drag * dt
+    var sim    = _sim
+    var kpOn   = _killPlaneOn
+    var kpY    = _killPlaneY
     var i = 0
+    var off = 0
     // Compact: walk the sim array, integrate alive slots, drop
-    // expired ones by swapping with the last-live slot.
+    // expired ones by swapping with the last-live slot. Running
+    // offset (`off += 8` per surviving particle) saves the per-
+    // iteration `off = i * 8` multiply; on death/swap we don't
+    // advance `off` since the swapped-in slot now occupies the
+    // same index.
     while (i < _liveCount) {
-      var off = i * 8
-      var age = _sim[off + 6] + dt
-      // Lifetime death.
-      if (age >= _sim[off + 7]) {
-        recordDeath_(_sim[off], _sim[off + 1], _sim[off + 2])
+      var age = sim[off + 6] + dt
+      // Slot 7 holds 1 / lifetime (set at spawn). Death when
+      // `age * invLife >= 1.0` — saves the per-frame divide in
+      // both this branch and the draw-loop colour-lerp.
+      var invLife = sim[off + 7]
+      if (age * invLife >= 1.0) {
+        recordDeath_(sim[off], sim[off + 1], sim[off + 2])
         killSlot_(i)
         continue
       }
       // Integrate position into a fresh local first so we can
       // test the kill plane against the would-be-new Y without
       // committing the write if we're going to swap-delete anyway.
-      var nvx = _sim[off + 3] + _gravity[0] * dt - _sim[off + 3] * _drag * dt
-      var nvy = _sim[off + 4] + _gravity[1] * dt - _sim[off + 4] * _drag * dt
-      var nvz = _sim[off + 5] + _gravity[2] * dt - _sim[off + 5] * _drag * dt
-      var nx  = _sim[off]     + nvx * dt
-      var ny  = _sim[off + 1] + nvy * dt
-      var nz  = _sim[off + 2] + nvz * dt
+      // `v_new = v * (1 - drag*dt) + g*dt` — one mul-add per axis.
+      // Reading each velocity once and using the pre-computed
+      // `dampDt`/`g*dt` halves the per-particle multiplications
+      // versus the textbook `v + g*dt - v*drag*dt` form.
+      var nvx = sim[off + 3] * dampDt + gxdt
+      var nvy = sim[off + 4] * dampDt + gydt
+      var nvz = sim[off + 5] * dampDt + gzdt
+      var px = sim[off]
+      var py = sim[off + 1]
+      var pz = sim[off + 2]
+      var nx = px + nvx * dt
+      var ny = py + nvy * dt
+      var nz = pz + nvz * dt
       // Kill-plane crossing — particle crosses y = killPlaneY this
       // tick. Record the death at the crossing point (linear
       // interpolation between previous Y and would-be-new Y) so
       // splash points sit on the plane, not somewhere below it.
-      if (_killPlaneOn && ny <= _killPlaneY) {
-        var prevY = _sim[off + 1]
+      // Gate on `kpOn` first so the dominant no-kill-plane case
+      // skips every sub-test below.
+      if (kpOn && ny <= kpY) {
         var u = 1.0
-        var span = prevY - ny
-        if (span > 0.00001) u = (prevY - _killPlaneY) / span
+        var span = py - ny
+        if (span > 0.00001) u = (py - kpY) / span
         if (u < 0) u = 0
         if (u > 1) u = 1
-        var hx = _sim[off]     + (nx - _sim[off])     * u
-        var hz = _sim[off + 2] + (nz - _sim[off + 2]) * u
-        recordDeath_(hx, _killPlaneY, hz)
+        var hx = px + (nx - px) * u
+        var hz = pz + (nz - pz) * u
+        recordDeath_(hx, kpY, hz)
         killSlot_(i)
         continue
       }
-      _sim[off + 3] = nvx
-      _sim[off + 4] = nvy
-      _sim[off + 5] = nvz
-      _sim[off]     = nx
-      _sim[off + 1] = ny
-      _sim[off + 2] = nz
-      _sim[off + 6] = age
-      i = i + 1
+      sim[off + 3] = nvx
+      sim[off + 4] = nvy
+      sim[off + 5] = nvz
+      sim[off]     = nx
+      sim[off + 1] = ny
+      sim[off + 2] = nz
+      sim[off + 6] = age
+      i   = i   + 1
+      off = off + 8
     }
     // Auto-emit if playing + a rate is configured.
     if (_playing && _emissionRate > 0) {
@@ -758,7 +810,11 @@ class ParticleSystem3D {
     _sim[off + 4] = _velMin[1] + random_() * (_velMax[1] - _velMin[1])
     _sim[off + 5] = _velMin[2] + random_() * (_velMax[2] - _velMin[2])
     _sim[off + 6] = 0
-    _sim[off + 7] = _lifetime[0] + random_() * (_lifetime[1] - _lifetime[0])
+    // Store 1/lifetime so the update + draw hot paths use a
+    // multiply instead of a divide per particle. Death check
+    // becomes `age * invLife >= 1`; colour-lerp `t = age * invLife`.
+    var life = _lifetime[0] + random_() * (_lifetime[1] - _lifetime[0])
+    _sim[off + 7] = life > 0 ? 1.0 / life : 1.0
     _liveCount = _liveCount + 1
     return true
   }
@@ -823,26 +879,55 @@ class ParticleSystem3D {
     var ex = 0
     var ey = 0
     var ez = 0
+    var refDist = _widthScaleRef
     if (widthScale) {
       ex = _cameraEye[0]
       ey = _cameraEye[1]
       ez = _cameraEye[2]
     }
+    // Hoist colour constants out of the inner loop. Start values
+    // are constant per frame; the lerp coefficients (end - start)
+    // are too. Pre-computing them turns 8 List-indexed reads per
+    // particle into 8 once-per-frame reads + 4 multiplies per
+    // particle instead of 8 + 4 multiplies + 4 subtractions.
+    var cs0 = _colorStart[0]
+    var cs1 = _colorStart[1]
+    var cs2 = _colorStart[2]
+    var cs3 = _colorStart[3]
+    var cd0 = _colorEnd[0] - cs0
+    var cd1 = _colorEnd[1] - cs1
+    var cd2 = _colorEnd[2] - cs2
+    var cd3 = _colorEnd[3] - cs3
+    var sim = _sim
+    var inst = _inst
     // Pack each live particle into the instance buffer with
     // colour interpolated from start → end across its life.
+    //
+    // Running offsets (`simOff += 8`, `off += 16`) instead of
+    // `simOff = i * 8` per iteration — saves 200k multiplies per
+    // frame at 100k particles.
+    //
+    // Age + lifetime are guaranteed in [0, lifetime] by the update
+    // pass (it kills any slot where age >= lifetime before this
+    // runs), so `t = age / lifetime` is naturally in [0, 1] and the
+    // clamps are dead code in steady state. Dropped to save two
+    // conditionals per particle.
+    var liveCount = _liveCount
     var i = 0
-    while (i < _liveCount) {
-      var simOff = i * 8
-      var t = _sim[simOff + 6] / _sim[simOff + 7]
-      if (t < 0) t = 0
-      if (t > 1) t = 1
-      var r = _colorStart[0] + (_colorEnd[0] - _colorStart[0]) * t
-      var g = _colorStart[1] + (_colorEnd[1] - _colorStart[1]) * t
-      var b = _colorStart[2] + (_colorEnd[2] - _colorStart[2]) * t
-      var a = _colorStart[3] + (_colorEnd[3] - _colorStart[3]) * t
-      var px = _sim[simOff]
-      var py = _sim[simOff + 1]
-      var pz = _sim[simOff + 2]
+    var simOff = 0
+    var off = 0
+    while (i < liveCount) {
+      // Slot 7 holds 1 / lifetime — `t = age * invLife` not
+      // `age / lifetime`. Multiply is ~10× cheaper than divide,
+      // so this alone is a measurable per-frame win at 100k.
+      var t = sim[simOff + 6] * sim[simOff + 7]
+      var r = cs0 + cd0 * t
+      var g = cs1 + cd1 * t
+      var b = cs2 + cd2 * t
+      var a = cs3 + cd3 * t
+      var px = sim[simOff]
+      var py = sim[simOff + 1]
+      var pz = sim[simOff + 2]
       var sx = sxBase
       if (widthScale) {
         var dx = px - ex
@@ -855,7 +940,7 @@ class ParticleSystem3D {
         // 50 cm from the eye still occupies a few pixels — without
         // a floor the cubic shrink we used earlier read as "rain
         // disappears in the foreground".
-        var lin = dist / _widthScaleRef
+        var lin = dist / refDist
         if (lin > 1) lin = 1
         var scale = lin.sqrt
         if (scale < 0.22) scale = 0.22
@@ -865,26 +950,24 @@ class ParticleSystem3D {
         // streaks at full alpha. Anything lower reads as "missing".
         a = a * (0.65 + 0.35 * lin)
       }
-      var off = i * 16
-      _inst[off]      = px      // ox
-      _inst[off + 1]  = py      // oy
-      _inst[off + 2]  = pz      // oz
-      _inst[off + 3]  = sx
-      _inst[off + 4]  = sy
-      _inst[off + 5]  = 0       // u0
-      _inst[off + 6]  = 0       // v0
-      _inst[off + 7]  = 1       // u1
-      _inst[off + 8]  = 1       // v1
-      _inst[off + 9]  = r
-      _inst[off + 10] = g
-      _inst[off + 11] = b
-      _inst[off + 12] = a
-      _inst[off + 13] = rot     // rotation
-      _inst[off + 14] = 0       // lodIndex
-      _inst[off + 15] = 0
-      i = i + 1
+      inst[off]      = px
+      inst[off + 1]  = py
+      inst[off + 2]  = pz
+      inst[off + 3]  = sx
+      inst[off + 4]  = sy
+      // Slots 5..8 (UV-rect 0,0,1,1), 14 (lodIndex 0), 15 (pad 0)
+      // were pre-filled at construct — see the constructor's
+      // _inst init loop. The hot path skips them.
+      inst[off + 9]  = r
+      inst[off + 10] = g
+      inst[off + 11] = b
+      inst[off + 12] = a
+      inst[off + 13] = rot
+      simOff = simOff + 8
+      off    = off + 16
+      i      = i + 1
     }
-    _instBuf.writeFloats(0, _inst)
-    renderer.drawBillboardN(_texture, _instBuf, _liveCount)
+    _instBuf.writeFloatsN(0, _inst, liveCount * 16)
+    renderer.drawBillboardN(_texture, _instBuf, liveCount)
   }
 }
