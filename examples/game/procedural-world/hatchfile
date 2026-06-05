@@ -14,7 +14,7 @@ description = "Procedural terrain + animated water + instanced foliage with live
 # shared transitive here on its own path so every consumer
 # resolves through the single workspace copy.
 [dependencies]
-"@hatch:game"    = "0.3.29"
+"@hatch:game" = "0.3.30"
 "@hatch:hud"     = "0.1.6"
 "@hatch:gpu"     = "0.3.14"
 "@hatch:spatial" = "0.2.1"

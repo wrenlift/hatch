@@ -8,7 +8,7 @@ description = "Load a buster-drone glTF and play its embedded TRS animation: 100
 # `save` module (see project_gpu_material_collision memory note).
 # @hatch:assets isn't on the game graph so it stays explicit.
 [dependencies]
-"@hatch:game"   = "0.3.29"
+"@hatch:game" = "0.3.30"
 "@hatch:gltf"   = "0.1.1"
 "@hatch:assets" = "0.2.6"
 "@hatch:postfx" = "0.1.1"

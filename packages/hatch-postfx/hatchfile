@@ -1,5 +1,5 @@
 name        = "@hatch:postfx"
-version     = "0.1.1"
+version     = "0.1.2"
 entry       = "postfx"
 description = "Common post-processing effects for the WrenLift game framework. `Tonemap`, `Vignette`, `Bloom`, `FXAA`, `ColorGrade`, `ChromaticAberration` — each a `PostPass` subclass that drops into `g.postFX = PostFX.new(g)` from `@hatch:game`. Effects ship here so the engine stays lean; new effects can be added without bumping `@hatch:game`."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:postfx"
@@ -12,7 +12,7 @@ changelog   = "CHANGELOG.md"
 # `@hatch:game` workspace copy the consumer demo also pulls. Revert
 # to a registry pin before publish.
 [dependencies]
-"@hatch:game" = "0.3.29"
+"@hatch:game" = "0.3.30"
 
 [spec-dependencies]
 "@hatch:test"   = "0.2.1"

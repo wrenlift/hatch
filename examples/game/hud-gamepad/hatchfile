@@ -4,5 +4,5 @@ entry       = "main"
 description = "Three-button pause menu navigable by both mouse and gamepad. DPad / left-stick moves focus; A presses. Showcases the HUD's per-frame focus model + the @hatch:game Input layer's gamepadJustPressed surface."
 
 [dependencies]
-"@hatch:game" = "0.3.29"
+"@hatch:game" = "0.3.30"
 "@hatch:hud"  = "0.1.6"

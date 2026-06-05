@@ -1,5 +1,5 @@
 name        = "@hatch:gltf"
-version     = "0.1.1"
+version     = "0.1.2"
 entry       = "gltf"
 description = "Pure-Wren glTF 2.0 / .glb loader. Parses the binary container into nodes / meshes / materials, resolves accessors into typed vertex + index arrays (Float32Array / Int32Array / ByteArray), decodes embedded images via @hatch:image, and spawns a Transform-rooted hierarchy into a `@hatch:ecs` World with fully-textured PBR `Material`s wired to every glTF slot (baseColor / metallicRoughness / normal / occlusion / emissive)."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:gltf"
@@ -16,7 +16,7 @@ changelog = "CHANGELOG.md"
 "@hatch:ecs" = "0.2.4"
 "@hatch:gpu" = "0.3.14"
 "@hatch:image" = "0.1.8"
-"@hatch:game" = "0.3.29"
+"@hatch:game" = "0.3.30"
 
 [spec-dependencies]
 "@hatch:test" = "0.2.1"
