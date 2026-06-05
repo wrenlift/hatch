@@ -48,6 +48,11 @@ class Material {
     _alphaCutoff             = 0.5
     _doubleSided             = false
     _sway                    = 0.0
+    _shadingModel            = "pbr"
+    _bands                   = 3
+    _rimStrength             = 0.0
+    _rimWidth                = 4.0
+    _ambientFloor            = 0.35
     _revision                = 0
   }
 
@@ -72,6 +77,11 @@ class Material {
     _alphaCutoff             = 0.5
     _doubleSided             = false
     _sway                    = 0.0
+    _shadingModel            = "pbr"
+    _bands                   = 3
+    _rimStrength             = 0.0
+    _rimWidth                = 4.0
+    _ambientFloor            = 0.35
     _revision                = 0
   }
 
@@ -226,6 +236,77 @@ class Material {
     _revision = _revision + 1
   }
 
+  // ---------------------------------------------------------------
+  // Toon / cel-shading
+  //
+  // The renderer picks a different pipeline when `shadingModel ==
+  // "toon"`. The toon shader replaces the PBR lighting model with
+  // a quantised diffuse band step + optional Fresnel-driven rim
+  // light, keeping albedo / emissive texture sampling intact so the
+  // same Material drives either pipeline by flipping one field.
+  // The parameter slots all serialise into the trailing `toon` vec4
+  // of MaterialUniforms — PBR materials still write the slot (zeros)
+  // for layout consistency; the PBR shader ignores it.
+  // ---------------------------------------------------------------
+
+  /// Lighting model. `"pbr"` (default) uses the Cook-Torrance / GGX
+  /// metallic-roughness pipeline; `"toon"` switches to the cel-
+  /// shaded pipeline (quantised diffuse + optional rim light).
+  /// Unrecognised values fall back to `"pbr"`.
+  /// @returns {String}
+  shadingModel     { _shadingModel }
+  shadingModel=(v) {
+    _shadingModel = v
+    _revision = _revision + 1
+  }
+
+  /// Number of diffuse light bands the toon pipeline quantises into.
+  /// Integer ≥ 2; 3 is the classic three-tone Ghibli look (highlight
+  /// / mid / shadow). Higher values approach smooth Lambertian.
+  /// Ignored when `shadingModel != "toon"`.
+  /// @returns {Num}
+  bands     { _bands }
+  bands=(v) {
+    _bands = v
+    _revision = _revision + 1
+  }
+
+  /// Rim-light strength. 0 disables the rim; 1 saturates the
+  /// silhouette in pure white-ish highlight on the side facing
+  /// away from the camera. The classic anime hair / character
+  /// edge highlight lands around 0.4–0.7.
+  /// Ignored when `shadingModel != "toon"`.
+  /// @returns {Num}
+  rimStrength     { _rimStrength }
+  rimStrength=(v) {
+    _rimStrength = v
+    _revision = _revision + 1
+  }
+
+  /// Fresnel exponent for the rim band. Higher values produce a
+  /// thinner, sharper rim; lower values widen the bloom around the
+  /// silhouette. Sensible range 1.5–8.0; default 4.0.
+  /// Ignored when `shadingModel != "toon"`.
+  /// @returns {Num}
+  rimWidth     { _rimWidth }
+  rimWidth=(v) {
+    _rimWidth = v
+    _revision = _revision + 1
+  }
+
+  /// Floor brightness on the shadow side of the diffuse step. 0
+  /// produces deep black shadow; 1 disables the toon step entirely
+  /// (flat lit). The Ghibli look typically sits around 0.3–0.45 so
+  /// the shadowed side reads as a darker tint of the albedo rather
+  /// than a hard black silhouette.
+  /// Ignored when `shadingModel != "toon"`.
+  /// @returns {Num}
+  ambientFloor     { _ambientFloor }
+  ambientFloor=(v) {
+    _ambientFloor = v
+    _revision = _revision + 1
+  }
+
   /// Internal — counter that ticks on every mutation, so the
   /// renderer can detect "this material has changed since the
   /// last time I built a bind group for it" without diffing
@@ -234,9 +315,9 @@ class Material {
   revision_ { _revision }
 
   /// Internal — pack the material's plain-old-data into the
-  /// 64-byte uniform block the WGSL shader expects. Texture
+  /// 80-byte uniform block the WGSL shader expects. Texture
   /// handles aren't part of this — they bind separately.
-  /// Appends 16 floats to `out` (4 vec4 rows).
+  /// Appends 20 floats to `out` (5 vec4 rows).
   packUniform_(out) {
     out.add(_albedoColor.x)
     out.add(_albedoColor.y)
@@ -259,6 +340,14 @@ class Material {
     // `alpha.w` repurposed as the wind-sway factor — the renderer's
     // vertex shader uses it to bend the mesh with the scene's wind.
     out.add(_sway)
+    // Toon vec4 (read by the cel-shaded pipeline, ignored by PBR):
+    //   x = band count, y = rim strength, z = rim width (Fresnel
+    //   exponent), w = ambient floor. PBR materials still emit the
+    //   slot so the UBO layout stays uniform across pipelines.
+    out.add(_bands)
+    out.add(_rimStrength)
+    out.add(_rimWidth)
+    out.add(_ambientFloor)
   }
 
   /// Legacy compatibility — `color` was the only knob on the
