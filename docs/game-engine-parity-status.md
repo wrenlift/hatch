@@ -208,16 +208,17 @@ Shipped 2026-06-03. NumRange added at `hatch/packages/hatch-math/math.wren:1117`
 
 ### 7 — HUD overlay 🟡
 
-**Status**: shipped end-to-end; quality/coverage gaps.
+**Status**: shipped end-to-end; remaining gaps are widget surface.
 
 **Gaps**:
-- `BuiltinFont` at `hatch/packages/hatch-hud/hud.wren:54-148` is uppercase-only (digits + A-Z + ~10 punctuation); labels fold mixed case
 - No editable text-input widget, no dropdown, no scrollable list/grid layout (HUDPanel offers slider/toggle/button/read-only-text/divider)
 - HUDPanel background is fixed-height pre-draw (`hud.wren:651-666` comment)
 - No canned pause-menu helper / FSM-driven menu flow (parity exit gate)
 
+**Shipped 2026-06-05**:
+- Lowercase a-z glyphs added to `BuiltinFont` + `HUD.label` no longer folds case (`hud.wren:131-159`). Mixed-case labels render with their own glyph shapes.
+
 **Next actions**:
-- Add lowercase glyphs or wire a `@hatch:image`-loaded bitmap font into BuiltinFont
 - Refactor HUDPanel to defer the background draw until row count is known
 - Ship a `Menu`/`Modal` helper composing HUDPanel rows with `@hatch:fsm` transitions for the canonical pause-menu pattern
 

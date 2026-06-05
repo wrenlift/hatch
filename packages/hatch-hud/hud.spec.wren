@@ -241,7 +241,7 @@ Test.describe("HUD.label") {
     Expect.that(r.calls[0]["h"]).toBe(3)
   }
 
-  Test.it("folds lowercase to uppercase before glyph lookup") {
+  Test.it("renders distinct upper- and lowercase glyphs") {
     var g = MockGameState.new()
     var hud = HUD.new(g)
     var rA = MockRenderer.new()
@@ -252,7 +252,14 @@ Test.describe("HUD.label") {
     hud.beginFrame(g, ra)
     hud.label("a", 0, 0, 1)
     hud.endFrame
-    Expect.that(rA.calls.count).toBe(ra.calls.count)
+    // Both characters draw some on-pixels but the two glyphs have
+    // distinct bit patterns under the 5×7 font (uppercase A is
+    // taller with a horizontal bar; lowercase a is shorter with a
+    // closed bowl). Asserting the call counts differ proves the
+    // lowercase glyph isn't being folded back to uppercase.
+    Expect.that(rA.calls.count > 0).toBe(true)
+    Expect.that(ra.calls.count > 0).toBe(true)
+    Expect.that(rA.calls.count == ra.calls.count).toBe(false)
   }
 
   Test.it("custom color tints every emitted sprite") {
