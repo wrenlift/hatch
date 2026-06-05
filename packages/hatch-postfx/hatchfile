@@ -12,7 +12,7 @@ changelog   = "CHANGELOG.md"
 # `@hatch:game` workspace copy the consumer demo also pulls. Revert
 # to a registry pin before publish.
 [dependencies]
-"@hatch:game" = "0.3.35"
+"@hatch:game" = "0.3.36"
 
 [spec-dependencies]
 "@hatch:test"   = "0.2.1"

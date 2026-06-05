@@ -3083,6 +3083,73 @@ class Renderer3D {
     scratch[off + 31] = n[15]
   }
 
+  /// Foliage fast path. Writes one instance directly into
+  /// `scratch[slot]` from `(x, y, z, scale, yawRad)` without
+  /// constructing a Mat4. Same 32-float layout as `writeInstance`
+  /// — model matrix in the first 16, normal matrix in the second.
+  /// The normal matrix drops the uniform scale (vector transforms
+  /// don't need it; the renormalize in the VS would cancel it
+  /// anyway).
+  ///
+  /// Use this for scattered grass / leaf / rock fields where each
+  /// instance is a translation × Y-rotation × uniform scale; the
+  /// allocator-free path keeps a 100k-blade frame in CPU budget.
+  /// For sheared / non-uniform transforms, fall back to
+  /// `writeInstance`.
+  ///
+  /// @param {Float32Array} scratch
+  /// @param {Num} slot
+  /// @param {Num} x
+  /// @param {Num} y
+  /// @param {Num} z
+  /// @param {Num} scale  uniform scale (1.0 = mesh-native size)
+  /// @param {Num} yawRad rotation around the +Y axis (radians)
+  static writeInstanceXYZ(scratch, slot, x, y, z, scale, yawRad) {
+    var off = slot * 32
+    var cy = yawRad.cos
+    var sy = yawRad.sin
+    var sc = scale * cy
+    var ss = scale * sy
+    // Model — column-major in storage (writeInstance comment
+    // explains why). col 0 = (s·cy, 0, -s·sy, 0); col 2 = (s·sy, 0,
+    // s·cy, 0); col 3 = (x, y, z, 1); col 1 = (0, s, 0, 0).
+    scratch[off]      = sc
+    scratch[off + 1]  = 0
+    scratch[off + 2]  = -ss
+    scratch[off + 3]  = 0
+    scratch[off + 4]  = 0
+    scratch[off + 5]  = scale
+    scratch[off + 6]  = 0
+    scratch[off + 7]  = 0
+    scratch[off + 8]  = ss
+    scratch[off + 9]  = 0
+    scratch[off + 10] = sc
+    scratch[off + 11] = 0
+    scratch[off + 12] = x
+    scratch[off + 13] = y
+    scratch[off + 14] = z
+    scratch[off + 15] = 1
+    // Normal matrix — rotation only, scale dropped (the VS
+    // normalizes the result, and uniform scale cancels under
+    // normalize).
+    scratch[off + 16] = cy
+    scratch[off + 17] = 0
+    scratch[off + 18] = -sy
+    scratch[off + 19] = 0
+    scratch[off + 20] = 0
+    scratch[off + 21] = 1
+    scratch[off + 22] = 0
+    scratch[off + 23] = 0
+    scratch[off + 24] = sy
+    scratch[off + 25] = 0
+    scratch[off + 26] = cy
+    scratch[off + 27] = 0
+    scratch[off + 28] = 0
+    scratch[off + 29] = 0
+    scratch[off + 30] = 0
+    scratch[off + 31] = 1
+  }
+
   // Reserve the next free per-draw slot. Grows the parallel
   // pool arrays when the scene's draw count exceeds previous
   // frames'; otherwise just bumps the index. Returns the slot

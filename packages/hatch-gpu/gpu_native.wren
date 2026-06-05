@@ -2790,6 +2790,88 @@ class Mesh {
     return Mesh.fromArrays(device, v, indices)
   }
 
+  /// Single grass blade — a vertical quad strip standing on the
+  /// X-Z plane and rising along +Y. `segments` controls how many
+  /// horizontal divisions split the blade vertically; more
+  /// segments → smoother wind-sway curve at the top. Tangents
+  /// point along +X for normal-map compatibility; normals face
+  /// the camera-canonical +Z direction (the instanced VS doesn't
+  /// rotate normals further — the per-instance yaw + sway in
+  /// `apply_sway` handles motion).
+  ///
+  /// Vertex anchor is the BASE of the blade (y=0) so wind sway
+  /// — which scales with `local_pos.y` — keeps the base planted
+  /// and bends the top.
+  ///
+  /// @param {Device} device
+  /// @param {Num}    height   blade height in world units
+  /// @param {Num}    width    blade width at the base; the tip
+  ///                          tapers to ~30% (the natural grass
+  ///                          / leaf silhouette)
+  /// @param {Num}    segments vertical subdivision count (4–8 is
+  ///                          a good range; 4 stays cheap, 8 is
+  ///                          smoother under heavy wind)
+  static grassBlade(device) { grassBlade(device, 0.6, 0.05, 5) }
+  static grassBlade(device, height) { grassBlade(device, height, 0.05, 5) }
+  static grassBlade(device, height, width) { grassBlade(device, height, width, 5) }
+  static grassBlade(device, height, width, segments) {
+    var segs = (segments < 1) ? 1 : segments
+    var v = []
+    // (segs + 1) rows × 2 columns of vertices. Width tapers
+    // linearly from `width` at the base to `0.3 * width` at the
+    // tip — gives the natural grass / leaf silhouette without
+    // needing a separate "tip" primitive.
+    var i = 0
+    while (i <= segs) {
+      var t = i / segs                // 0 base → 1 tip
+      var y = t * height
+      var halfW = (1 - 0.7 * t) * 0.5 * width
+      // Vertices on a (segs+1) × 2 grid. Order: left, right.
+      v.add(-halfW)
+      v.add(y)
+      v.add(0)
+      v.add(0)
+      v.add(0)
+      v.add(1)               // normal facing +Z
+      v.add(0)
+      v.add(1 - t)           // uv (left edge, v decreases toward tip)
+      v.add(1)
+      v.add(0)
+      v.add(0)
+      v.add(1)               // tangent +X
+      v.add(halfW)
+      v.add(y)
+      v.add(0)
+      v.add(0)
+      v.add(0)
+      v.add(1)
+      v.add(1)
+      v.add(1 - t)
+      v.add(1)
+      v.add(0)
+      v.add(0)
+      v.add(1)
+      i = i + 1
+    }
+    // Indices: two triangles per segment (segs strips × 2 tris × 3).
+    var indices = []
+    var s = 0
+    while (s < segs) {
+      var bl = s * 2          // bottom-left of this segment
+      var br = s * 2 + 1
+      var tl = (s + 1) * 2
+      var tr = (s + 1) * 2 + 1
+      indices.add(bl)
+      indices.add(br)
+      indices.add(tr)
+      indices.add(bl)
+      indices.add(tr)
+      indices.add(tl)
+      s = s + 1
+    }
+    return Mesh.fromArrays(device, v, indices)
+  }
+
   /// Flat plane on the X-Z axis (Y up), centred on origin.
   /// Vertex layout: pos.xyz + normal.xyz + uv.xy + tangent.xyzw =
   /// 12 floats. Tangent points along +X (the U direction), the

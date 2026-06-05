@@ -394,7 +394,7 @@ A pragmatic order picking highest-impact unblocked items first.
 | 12.3 | `_toonInstancedPipeline` + instanced MRT — toon math on the instanced shader, dispatch via `instancedPipelineFor_`, unblocks foliage + billboards on the toon path | `@hatch:gpu` 0.3.19 | — | ✅ shipped |
 | 12.4 | `OutlinePass` reading the depth + normal targets — depth + normal Sobel, threshold dials, edge colour + thickness | `@hatch:postfx` 0.1.3 | — | ✅ shipped |
 | 12.5 | `_toonSkinnedPipeline` + skinned MRT + billboard MRT — `Renderer3D.drawSkinned` toon path so the_strangler-tier rigs animate in cel; billboard pipeline writes a neutral normal placeholder for MRT compat | `@hatch:gpu` 0.3.20 | — | ✅ shipped |
-| 12.6 | Phase 11.8 foliage transform-pack + wind-sway VS — grass / leaves on the toon-instanced path with a sin/curl sway term | `@hatch:game` / `@hatch:gpu` | 3 d | depends on 12.3 |
+| 12.6 | Phase 11.8 foliage transform-pack + wind-sway VS — `Renderer3D.writeInstanceXYZ` foliage fast path, `Mesh.grassBlade` primitive, demo `examples/game/grass-field` (5k cel-shaded blades, single instanced draw, orbiting camera reads wind direction). VS sway term was already in `apply_sway` shipped pre-12.6. | `@hatch:gpu` 0.3.21 | — | ✅ shipped |
 | 12.7 | Stylized sky pass — gradient-or-noise sky dome that caps the silhouette and absorbs the orbiting sun's tint | `@hatch:gpu` / `@hatch:postfx` | 2 d | pending |
 | 12.8 | Painted ramp textures — 1D LUT sampled instead of two-tone `mix(shadow, lit, t)`; pushes toward painted watercolour ramps | `@hatch:gpu` | 1 d | nice-to-have |
 

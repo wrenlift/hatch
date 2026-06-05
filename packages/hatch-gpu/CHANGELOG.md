@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.21 — 2026-06-05
+
+§12.6 of the stylised-shading plan — foliage transform-pack
+helpers + grass-blade primitive. Wind-sway VS already shipped in
+`apply_sway` (instanced shader); this round adds the CPU-side
+ergonomics so a 5k-blade field packs in microseconds, not
+milliseconds.
+
+- `Renderer3D.writeInstanceXYZ(scratch, slot, x, y, z, scale,
+  yawRad)` — foliage fast path. Writes one instance directly into
+  a `Float32Array` slot from translation + Y-rotation + uniform
+  scale; skips the Mat4 construct cycle. Same 32-float layout as
+  `writeInstance`. Normal-matrix half drops the scale (orthonormal
+  rotation only; the VS renormalize cancels uniform scale anyway).
+- `Mesh.grassBlade(device, height, width, segments)` — vertical
+  multi-segment quad strip. Base at y=0, tapers to ~30% width at
+  the tip (natural grass / leaf silhouette). `segments` controls
+  the wind-sway curve smoothness — 4-6 is the sweet spot.
+- Demo: `hatch/examples/game/grass-field` — 5,000 cel-shaded
+  blades, single `drawMeshInstanced`, orbiting camera reads the
+  wind direction as the field bends.
+
 ## 0.3.20 — 2026-06-05
 
 §12.5 of the stylised-shading plan — `_toonSkinnedPipeline` + skinned

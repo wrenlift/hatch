@@ -1,0 +1,7 @@
+name        = "grass-field"
+version     = "0.1.0"
+entry       = "main"
+description = "Cel-shaded grass field — 5,000 toon-shaded blades scattered via Foliage.scatter, rendered through a single drawMeshInstanced, swaying in the wind via the vertex-stage `apply_sway` term in @hatch:gpu's instanced shader. Camera orbits so you can read the wind direction as the field bends."
+
+[dependencies]
+"@hatch:game" = "0.3.36"

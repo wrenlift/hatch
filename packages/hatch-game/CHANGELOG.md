@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.36 -- 2026-06-05
+
+`@hatch:gpu` dep pin advanced 0.3.20 → 0.3.21 to pick up the
+foliage transform-pack helpers (`Renderer3D.writeInstanceXYZ`)
+and `Mesh.grassBlade` primitive (§12.6). No `@hatch:game`
+surface change; the existing `Foliage.scatter` already supplies
+the (x, z) placement points that feed the new fast path.
+
 ## 0.3.35 -- 2026-06-05
 
 `@hatch:gpu` dep pin advanced 0.3.19 → 0.3.20 to pick up the
