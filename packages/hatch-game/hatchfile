@@ -42,26 +42,18 @@ windows          = "libs/wlift_particles.dll"
 # `gpu_native.wren` + plugin dylib pick up locally during the
 # shore-foam / depth-sample iteration. Revert this entry to the
 # matching version pin (e.g. "0.3.9" after a publish) before
-# publishing @hatch:game itself — path deps don't resolve for
-# downstream consumers of the registry bundle.
+# Dual-form deps — `path` is tried first (workspace dev), and
+# the resolver falls back to the registry `version` pin when the
+# path doesn't exist (downstream consumers of the registry
+# bundle). One hatchfile works in both contexts.
 [dependencies]
-# Path dep so the in-tree `window_native.wren` (Window.setVisible /
-# show / hide + open-hidden initial state) picks up locally during
-# the lifecycle iteration. Revert to a version pin before publishing
-# @hatch:game (path deps don't resolve for downstream consumers).
-"@hatch:window" = "0.2.13"
-"@hatch:gpu"    = "0.3.21"
-"@hatch:time"   = "0.1.2"
-"@hatch:math"   = "0.1.5"
-"@hatch:ecs"    = "0.2.4"
-# `Actions` uses an EventEmitter so statecharts can subscribe via
-# `chart.bindEvents(Actions.emitter, [...])` — same shape every
-# @hatch:fsm consumer already speaks.
-"@hatch:events" = "0.2.2"
-# Terrain module wraps @hatch:noise's batched fillSimplex2 to
-# produce heightmap Meshes; everything else in @hatch:game can
-# still be used without ever touching Terrain.
-"@hatch:noise"  = "0.2.1"
+"@hatch:window" = { path = "../hatch-window", version = "0.2.13" }
+"@hatch:gpu"    = { path = "../hatch-gpu",    version = "0.3.21" }
+"@hatch:time"   = { path = "../hatch-time",   version = "0.1.2" }
+"@hatch:math"   = { path = "../hatch-math",   version = "0.1.5" }
+"@hatch:ecs"    = { path = "../hatch-ecs",    version = "0.2.4" }
+"@hatch:events" = { path = "../hatch-events", version = "0.2.2" }
+"@hatch:noise"  = { path = "../hatch-noise",  version = "0.2.1" }
 
 [spec-dependencies]
 "@hatch:test"   = "0.2.1"
