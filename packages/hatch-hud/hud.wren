@@ -129,6 +129,39 @@ class BuiltinFont {
     g["Y"] = [17, 17, 10,  4,  4,  4,  4]
     g["Z"] = [31,  1,  2,  4,  8, 16, 31]
 
+    // Lowercase a–z. Designed in the standard 5×7 grid; letters
+    // without ascenders occupy rows 2–6 (the top two rows are
+    // blank), letters with ascenders (b, d, f, h, k, l, t) use the
+    // full 7 rows, and descenders (g, j, p, q, y) extend below the
+    // baseline into row 7. The base 5×7 cell is fixed-height so
+    // descenders simply consume the bottom row.
+    g["a"] = [ 0,  0, 14,  1, 15, 17, 15]
+    g["b"] = [16, 16, 22, 25, 17, 17, 30]
+    g["c"] = [ 0,  0, 14, 16, 16, 17, 14]
+    g["d"] = [ 1,  1, 13, 19, 17, 17, 15]
+    g["e"] = [ 0,  0, 14, 17, 31, 16, 15]
+    g["f"] = [ 6,  9,  8, 30,  8,  8,  8]
+    g["g"] = [ 0,  0, 15, 17, 15,  1, 14]
+    g["h"] = [16, 16, 22, 25, 17, 17, 17]
+    g["i"] = [ 4,  0, 12,  4,  4,  4, 14]
+    g["j"] = [ 2,  0,  6,  2,  2, 18, 12]
+    g["k"] = [16, 16, 18, 20, 24, 20, 18]
+    g["l"] = [12,  4,  4,  4,  4,  4, 14]
+    g["m"] = [ 0,  0, 26, 21, 21, 21, 21]
+    g["n"] = [ 0,  0, 22, 25, 17, 17, 17]
+    g["o"] = [ 0,  0, 14, 17, 17, 17, 14]
+    g["p"] = [ 0,  0, 30, 17, 30, 16, 16]
+    g["q"] = [ 0,  0, 15, 17, 15,  1,  1]
+    g["r"] = [ 0,  0, 22, 25, 16, 16, 16]
+    g["s"] = [ 0,  0, 15, 16, 14,  1, 30]
+    g["t"] = [ 8,  8, 30,  8,  8,  9,  6]
+    g["u"] = [ 0,  0, 17, 17, 17, 19, 13]
+    g["v"] = [ 0,  0, 17, 17, 17, 10,  4]
+    g["w"] = [ 0,  0, 17, 17, 21, 21, 10]
+    g["x"] = [ 0,  0, 17, 10,  4, 10, 17]
+    g["y"] = [ 0,  0, 17, 17, 15,  1, 14]
+    g["z"] = [ 0,  0, 31,  2,  4,  8, 31]
+
     // Punctuation + common HUD-symbol glyphs.
     g[":"] = [ 0,  4,  0,  0,  0,  4,  0]
     g["."] = [ 0,  0,  0,  0,  0,  0,  4]
@@ -328,9 +361,9 @@ class HUD {
 
   /// Render a string of text at `(x, y)` using the built-in
   /// 5×7 font. Each "on" pixel becomes a 1-pixel sprite scaled
-  /// by `scale`. Lowercase characters are folded to uppercase
-  /// before lookup so labels written in mixed case still
-  /// render.
+  /// by `scale`. Both upper- and lowercase letters render with
+  /// their own glyph shapes; characters outside the supported
+  /// alphabet fall back to space.
   ///
   /// Default color is white; pass an explicit `[r, g, b, a]`
   /// for tinted text.
@@ -359,10 +392,6 @@ class HUD {
     var i = 0
     while (i < text.count) {
       var ch = text[i]
-      // Fold lowercase to uppercase so callers can write either.
-      if (ch.bytes[0] >= 97 && ch.bytes[0] <= 122) {
-        ch = String.fromCodePoint(ch.bytes[0] - 32)
-      }
       drawGlyph_(BuiltinFont.glyph(ch), cursor, y, scale, color)
       cursor = cursor + advance
       i = i + 1
