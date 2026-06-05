@@ -4,7 +4,7 @@ entry       = "main"
 description = "Load the_strangler glTF, play its embedded skeletal animation: 102 joints / 4-influences-per-vertex skinning via GPU storage-buffer palette, vertex-shader matrix blend. End-to-end demo of @hatch:gltf skin parsing + @hatch:gpu.SkinPalette + Renderer3D.drawSkinned."
 
 [dependencies]
-"@hatch:game"   = "0.3.29"
+"@hatch:game" = "0.3.30"
 "@hatch:gltf"   = "0.1.1"
 "@hatch:gpu"    = "0.3.14"
 "@hatch:assets" = "0.2.6"

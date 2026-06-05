@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.2 -- 2026-06-05
+
+`@hatch:game` dep pin advanced 0.3.29 → 0.3.30 to pick up the
+`wlift_particles` plugin path. No PostFX-side surface change —
+the bump keeps PostFX composing with the new fast particle
+pipeline, and the long-standing `PostPass` field-aliasing
+limitation continues to live under `memory/project_postfx_
+inheritance_blocker.md` until a wlift-level field-layout fix
+lands.
+
 ## 0.1.1 -- 2026-06-04
 
 Maintenance bump for the publish wave (2026-06-04).

@@ -6,6 +6,6 @@ description = "ECS-driven asteroid field. Position + Velocity + Sprite component
 # @hatch:gpu comes transitively through @hatch:game; declaring it
 # again here trips the resolver's cycle detector.
 [dependencies]
-"@hatch:game"  = "0.3.29"
+"@hatch:game" = "0.3.30"
 "@hatch:ecs"   = "0.2.5"
 "@hatch:image" = "0.1.8"

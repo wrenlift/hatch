@@ -4,6 +4,6 @@ entry       = "main"
 description = "Click-to-stamp persistent surface decals on a ground plane. Showcases the new DecalLayer + Decal API — one instanced draw call covers every live decal, age-driven fade in/out, oriented to the surface normal."
 
 [dependencies]
-"@hatch:game" = "0.3.29"
+"@hatch:game" = "0.3.30"
 "@hatch:gpu"  = "0.3.14"
 "@hatch:math" = "0.1.7"

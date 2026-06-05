@@ -4,6 +4,6 @@ entry       = "main"
 description = "50,000 particles integrated entirely in a compute shader via GpuParticleSystem3D. CPU only seeds new spawn slots at the emission rate; per-frame pos/vel/colour interpolation runs on the GPU against a persistent storage buffer that the billboard pipeline reads directly."
 
 [dependencies]
-"@hatch:game" = "0.3.29"
+"@hatch:game" = "0.3.30"
 "@hatch:gpu"  = "0.3.14"
 "@hatch:math" = "0.1.7"
