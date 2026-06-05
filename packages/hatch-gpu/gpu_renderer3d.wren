@@ -575,25 +575,39 @@ class Renderer3D {
         // dominant key wins each band, which matches how stylised
         // illustrations get drawn (one primary light decides the
         // shadow shape; fills modulate the colour but not the band).
-        var band_level = ambient_floor;
+        //
+        // The band itself stays in [0, 1] — `intensity` is an HDR
+        // PBR concept and would crush every step past 1 without a
+        // tonemap, which is exactly the stylised look we are NOT
+        // reaching for. Tone comes from the key vs ambient tint
+        // blend below.
+        var step_max = 0.0;
+        var key_tint = vec3<f32>(1.0);
         let dir_count = u32(scene.counts.x);
         for (var i: u32 = 0u; i < dir_count; i = i + 1u) {
           let dl = scene.dir_lights[i];
           let L = normalize(-dl.dir_intensity.xyz);
           let n_dot_l = max(dot(N, L), 0.0);
-          // floor(n*bands)/bands gives crisp steps at 0, 1/b, 2/b…1.
-          // The +0.5/bands phase shift puts the brightest band at
-          // the dot(N,L)=1 surface so the key light isn't dimmed.
-          let stepped = clamp(
-            floor(n_dot_l * bands + 0.5) / bands,
-            ambient_floor,
-            1.0
-          );
-          let contribution = stepped * dl.dir_intensity.w;
-          band_level = max(band_level, contribution);
+          // floor(n*bands + 0.5)/bands gives crisp steps at 0,
+          // 1/b, 2/b…1. The +0.5/bands phase shift puts the
+          // brightest band at the dot(N,L)=1 surface so the key
+          // light isn't dimmed.
+          let stepped = floor(n_dot_l * bands + 0.5) / bands;
+          if (stepped > step_max) {
+            step_max = stepped;
+            key_tint = dl.color.rgb;
+          }
         }
-
-        var lit = base_color.rgb * band_level;
+        // Cool shadow / warm key two-tone tint — the signature
+        // Ghibli move. Build the two endpoint colours, then mix
+        // between them by the quantised lit amount. This keeps
+        // shadows readable as the material colour (just cooler +
+        // dimmer) instead of compound-darkening to near-black.
+        let shadow_tint  = scene.ambient.rgb;
+        let shadow_color = base_color.rgb * shadow_tint;
+        let lit_color    = base_color.rgb * key_tint;
+        let lit_amount   = max(step_max, ambient_floor);
+        var lit = mix(shadow_color, lit_color, lit_amount);
 
         // Rim light: Fresnel-driven silhouette highlight, additive.
         if (rim_strength > 0.0) {

@@ -34,7 +34,9 @@ class ToonShading is Game {
     _camera = Camera3D.perspective(45, aspect, 0.1, 100)
     _camera.lookAt(Vec3.new(0, 1.8, 7.5), Vec3.new(0, 0.6, 0), Vec3.new(0, 1, 0))
 
-    _sunDir       = Vec3.new(-0.3, -0.8, -0.5)
+    // Sun direction is recomputed in draw() so the key light
+    // orbits the scene — that's where toon shading really shows
+    // off, watching the discrete bands sweep across each sphere.
     _sunColor     = Vec3.new(1.00, 0.96, 0.88)
     _sunIntensity = 3.5
     _ambient      = Vec3.new(0.30, 0.35, 0.45)
@@ -61,12 +63,15 @@ class ToonShading is Game {
     _ghibli.rimStrength  = 0.0
     _ghibli.ambientFloor = 0.45
 
-    // 4-band hero-light with rim — anime / action key shot.
+    // 4-band hero-light with a thin rim — anime / action key shot.
+    // rimWidth is the fresnel exponent (higher = thinner rim), so
+    // 6.0 keeps the glow at the silhouette edge instead of bleeding
+    // across whole side faces of a cube.
     _heroRim = Material.new(Vec4.new(0.96, 0.84, 0.42, 1.0))
     _heroRim.shadingModel = "toon"
     _heroRim.bands        = 4
-    _heroRim.rimStrength  = 0.85
-    _heroRim.rimWidth     = 3.5
+    _heroRim.rimStrength  = 0.35
+    _heroRim.rimWidth     = 6.0
     _heroRim.ambientFloor = 0.30
   }
 
@@ -82,15 +87,20 @@ class ToonShading is Game {
     var t = g.elapsed
     _renderer3d.beginFrame(g.pass, _camera)
     _renderer3d.setAmbient(_ambient, 1.0)
-    _renderer3d.addDirectional(_sunDir, _sunColor, _sunIntensity)
+
+    // Orbit the sun around Y so the lit band sweeps across each
+    // sphere — toon shading reads as a sequence of discrete
+    // crescents while the light rotates. Period ≈ 6 s.
+    var orbit = t * 1.05
+    var sunDir = Vec3.new(orbit.cos * 0.85, -0.55, orbit.sin * 0.85)
+    _renderer3d.addDirectional(sunDir, _sunColor, _sunIntensity)
 
     var groundXf = Mat4.translation(0, -0.2, 0)
     _renderer3d.draw(_ground, _groundMat, groundXf)
 
-    var spin = Mat4.rotationY(t * 0.7)
-    _renderer3d.draw(_sphere, _hardCel, Mat4.translation(-2.4, 0.6, 0) * spin)
-    _renderer3d.draw(_sphere, _ghibli,  Mat4.translation( 0.0, 0.6, 0) * spin)
-    _renderer3d.draw(_sphere, _heroRim, Mat4.translation( 2.4, 0.6, 0) * spin)
+    _renderer3d.draw(_sphere, _hardCel, Mat4.translation(-2.4, 0.6, 0))
+    _renderer3d.draw(_sphere, _ghibli,  Mat4.translation( 0.0, 0.6, 0))
+    _renderer3d.draw(_sphere, _heroRim, Mat4.translation( 2.4, 0.6, 0))
   }
 }
 

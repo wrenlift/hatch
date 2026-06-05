@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.17 — 2026-06-05
+
+Follow-on to the toon-shader landing in 0.3.16:
+
+- `Mesh.sphere(device, radius, segments)` UV-sphere primitive
+  (smooth normals, longitude × latitude grid). Toon banding only
+  reads as crescent steps on curved geometry — cubes show one
+  flat tone per face, which obscures the effect.
+- `fs_toon_main` band math rewrite. The previous version
+  multiplied each quantised step by `dl.dir_intensity.w`, which
+  with a typical sun intensity of 3.5 crushed every band past 1.0
+  and rendered as near-white. Now the band amount stays in [0, 1]
+  and tone comes from `mix(shadow_color, lit_color, lit_amount)`
+  where shadow tints by `scene.ambient` and lit by the dominant
+  directional's colour — Ghibli's signature cool-shadow /
+  warm-key two-tone, without compound darkening.
+- Toon-shading demo (`hatch/examples/game/toon-shading`) switched
+  to spheres with an orbiting sun so the cel bands sweep across
+  each surface dynamically; rim dialled to 0.35 strength × 6.0
+  width (the prior 0.85 × 3.5 was bleeding onto whole side
+  faces).
+
 ## 0.3.16 — 2026-06-05
 
 Toon / cel shading lands as a first-class `Material` variant.

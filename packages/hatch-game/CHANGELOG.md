@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.31 -- 2026-06-05
+
+`@hatch:gpu` dep pin advanced 0.3.16 → 0.3.17 to pick up the
+toon-shader band-math fix and the new `Mesh.sphere` primitive.
+No `@hatch:game` surface change — the bump keeps the engine on
+the corrected cel pipeline so games flipping
+`Material.shadingModel = "toon"` get readable midtones instead
+of the saturation-crushed near-white the 0.3.16 shader produced
+under typical sun intensities.
+
 ## 0.3.30 -- 2026-06-05
 
 `ParticleSystem3D` delegates its per-frame hot loops to a new
