@@ -13,6 +13,7 @@ import "@hatch:os"     for Os
 class MockBuf {
   construct new() {}
   writeFloats(off, data) {}
+  writeFloatsN(off, data, count) {}
   destroy {}
 }
 class MockDev {

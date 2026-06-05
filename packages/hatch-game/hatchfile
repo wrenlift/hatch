@@ -6,6 +6,34 @@ homepage    = "https://hatch.wrenlift.com/packages/@hatch:game"
 readme   = "README.md"
 changelog = "CHANGELOG.md"
 
+# Search path for the wlift_particles dylib at spec / dev time. CI
+# populates `libs/<label>/` from the `[plugin_source]` build, but
+# local development can drop a freshly-built dylib here too:
+#
+#     cargo build -p wlift_particles --release
+#     cp target/release/libwlift_particles.dylib hatch/packages/hatch-game/libs/
+native_search_paths = ["libs"]
+
+[plugin_source]
+repo  = "https://github.com/wrenlift/WrenLift.git"
+# Bump when the plugin's `wlift_particles_*` C surface adds new
+# entries the Wren-side wrapper needs.
+rev   = "HEAD"
+crate = "wlift_particles"
+
+[native_libs.wlift_particles]
+# CI populates `libs/<label>/`; bare-OS keys are the local-dev
+# fallback. See hatch-physics's manifest for the cross-target
+# rationale.
+"macos-arm64"    = "libs/macos-arm64/libwlift_particles.dylib"
+"macos-x86_64"   = "libs/macos-x86_64/libwlift_particles.dylib"
+"linux-x86_64"   = "libs/linux-x86_64/libwlift_particles.so"
+"linux-arm64"    = "libs/linux-arm64/libwlift_particles.so"
+"windows-x86_64" = "libs/windows-x86_64/wlift_particles.dll"
+macos            = "libs/libwlift_particles.dylib"
+linux            = "libs/libwlift_particles.so"
+windows          = "libs/wlift_particles.dll"
+
 # Cross-package deps. Version pins resolve through the registry,
 # so the published bundle is fully self-describing.
 #
