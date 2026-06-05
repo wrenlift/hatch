@@ -35,6 +35,7 @@ import "@hatch:game" for PostPass
 // shape would be cramped trying to host all four sub-shaders.
 import "./bloom"   for Bloom
 import "./outline" for OutlinePass
+import "./sky"     for SkyPass
 
 // Shared helper for Map-or-default float / list config.
 class Cfg_ {

@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.1.4 -- 2026-06-05
+
+§12.7 of the stylised-shading plan — `SkyPass` ships.
+
+- New `SkyPass` class (`sky.wren`, re-exported through
+  `@hatch:postfx`). Vertical gradient sky-dome composited where
+  scene depth is at the far plane (no geometry written). Two-stop
+  zenith/horizon mix with a `falloff` exponent for transition
+  sharpness.
+- Public surface:
+  ```wren
+  g.postFX = PostFX.new(g)
+  g.postFX.add(SkyPass.new({
+    "zenith":  [0.55, 0.75, 0.92, 1.0],
+    "horizon": [0.92, 0.85, 0.72, 1.0],
+    "falloff": 1.2
+  }))
+  g.postFX.add(Tonemap.new())
+  ```
+  Composes cleanly with `OutlinePass` (depth=1.0 sky fragments
+  don't fire edges; the depth discontinuity at the geometry
+  boundary triggers an outline against the sky — exactly the
+  silhouette read the cel aesthetic wants).
+- Standard PostPass wiring — `wantsDepth = true`, 48 B uniform
+  block, no custom layout. Drops into the default
+  `buildFragmentPipeline_` path.
+- Placement: put it early in the chain (before Tonemap) so ACES
+  normalises sky + scene together. Put it last when you want the
+  painted gradient verbatim.
+
 ## 0.1.3 -- 2026-06-05
 
 §12.4 of the stylised-shading plan — `OutlinePass` ships.
