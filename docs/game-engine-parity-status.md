@@ -1,6 +1,6 @@
 # Game Framework Parity — Status & Roadmap
 
-Last audited: 2026-06-03 (date-locked snapshot — re-run /audit when state changes)
+Last audited: 2026-06-05 (date-locked snapshot — re-run /audit when state changes)
 
 Plan source: [game-engine-parity-plan.md](./game-engine-parity-plan.md)
 
@@ -403,4 +403,4 @@ A pragmatic order picking highest-impact unblocked items first.
 - **GPU loop runaway memory** — long-running `@hatch:game` + `@hatch:physics` + `@hatch:gpu` render loop leaks RSS into tens of GB even after all per-frame Wren-side allocs eliminated (65 GB OOM in ecs-cubes ~100 bodies; 13 GB idle with 3). Suspected upstream: wgpu staging-belt recycling or Wren GC not destroying foreign-handle wrappers. See `memory/project_gpu_loop_runaway_memory.md`.
 - **Renderer2D auto-flush + Game.run Fiber.try** — landed 2026-05-29; documented for completeness so future regressions are easy to spot (`memory/project_renderer2d_auto_flush.md`).
 - **Bare var branch assign aliasing** — late-in-method locals can slot-alias each other under wlift codegen; workaround: instance field or helper method instead of a deep local. Touches any phase that introduces new long methods.
-- **Fiber.try stale slot** — `Fiber.try()` may return stale slot contents instead of `null` on clean return; guard call sites with `raw is String ? raw : null` before treating as abort. Affects Phase 8 background loading + Phase 10 replay if either uses `Fiber.try` as a control-flow primitive.
+- ~~**Fiber.try stale slot**~~ RESOLVED 2026-06-04 (wren_lift commit `d5f8e6d`). The misread of the spec is gone from the BC interp + krio paths; canonical Wren `var x = f.try()` works under interpreter/tiered/AOT on macOS arm64 + linux/amd64. Use `fiber.error` as the clean-vs-abort discriminator.

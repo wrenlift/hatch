@@ -39,3 +39,7 @@ changelog = "CHANGELOG.md"
 "@hatch:assert" = "0.2.3"
 # actions.spec validates the Actions × StateChart binding flow.
 "@hatch:fsm"    = "0.1.2"
+# particles.spec uses `Os.env("WLIFT_PERF")` to gate the 100k-
+# billboard exit-gate benchmark (Phase 6d) — runs in seconds,
+# would dominate the default `hatch test` time otherwise.
+"@hatch:os"     = "0.1.2"

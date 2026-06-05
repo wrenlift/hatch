@@ -4,6 +4,7 @@
 import "./particles"   for ParticleSystem, ParticleSystem3D, Particles
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
+import "@hatch:os"     for Os
 
 // A test "texture" — only `.id` is read by the spec for the
 // renderer mock's texture-switch check. The real `Texture` from
@@ -430,6 +431,78 @@ Test.describe("ParticleSystem3D.draw") {
     sys.draw(r)
     Expect.that(dev.buffers[0].writes).toBe(0)
     Expect.that(r.calls.count).toBe(0)
+  }
+}
+
+// Phase 6d exit-gate spec — 100k billboards CPU sim budget.
+//
+// Gates the per-frame CPU cost of updating + uploading 100k live
+// `ParticleSystem3D` instances. Real GPU work isn't measured (the
+// spec runs against MockDev3D / MockRenderer3D); only the Wren-side
+// sim, the buffer pack, and the single `drawBillboardN` dispatch.
+// The exit gate from `game-engine-parity-plan.md` calls for 100k
+// billboards at 60 fps native — the CPU half of that frame budget
+// is ~8 ms (leaving 8 ms for the actual GPU draw + present). Run
+// 60 update+draw iterations and assert the average per-frame CPU
+// cost is under 8 ms.
+//
+// Gated behind `WLIFT_PERF=1` because allocating + simulating 100k
+// particles in spec runs costs seconds of wall clock — it'd dominate
+// regular `hatch test` time. Set the env var when you specifically
+// want to gate against this budget:
+//
+//   WLIFT_PERF=1 hatch test packages/hatch-game
+Test.describe("Phase 6d — 100k billboard CPU budget (perf-gated)") {
+  Test.it("update + pack + draw for 100k particles stays under 8 ms/frame avg") {
+    if (Os.env("WLIFT_PERF") != "1") {
+      System.print("    skipped (set WLIFT_PERF=1 to run)")
+      return
+    }
+
+    var dev = MockDev3D.new()
+    var r   = MockRenderer3D.new()
+    var sys = ParticleSystem3D.new(dev, {
+      "texture":  MockTexture.new(1),
+      "capacity": 100000,
+      // Long lifetime so all 100k stay live across the run; the
+      // budget is "100k live particles per frame", not "100k
+      // particles spawned + most expired."
+      "lifetime": [100, 100],
+      "gravity":  [0, -1, 0],
+      // Spread so positions vary and the integration loop doesn't
+      // shortcut on degenerate uniform values.
+      "spread":   [50, 50, 50],
+      "velocity": [[-2, -2, -2], [2, 2, 2]],
+      "drag":     0.05,
+      "size":     [0.5, 1.5]
+    })
+    sys.burst(100000)
+    Expect.that(sys.liveCount).toBe(100000)
+
+    // Warm-up frame — touches every cold code path before timing
+    // (JIT tier-up, page-fault the buffer scratch, etc.) so the
+    // average reflects steady-state cost rather than the first-
+    // frame surcharge.
+    sys.update(1.0 / 60.0)
+    sys.draw(r)
+
+    var frames = 60
+    var dt = 1.0 / 60.0
+    var t0 = System.clock
+    for (i in 0...frames) {
+      sys.update(dt)
+      sys.draw(r)
+    }
+    var totalMs = (System.clock - t0) * 1000
+    var avgMs   = totalMs / frames
+
+    System.print("    100k particles · %(frames) frames · total %(totalMs.round) ms · avg %(avgMs.round) ms/frame")
+    Expect.that(sys.liveCount).toBe(100000)
+    // CPU half of a 60 fps frame budget. If this fails, the
+    // particle update / buffer-pack loop has regressed; profile
+    // `ParticleSystem3D.update` and `.draw` for the hot allocation
+    // or branch site that grew.
+    Expect.that(avgMs < 8.0).toBe(true)
   }
 }
 
