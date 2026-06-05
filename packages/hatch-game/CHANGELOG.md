@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.32 -- 2026-06-05
+
+§12.2 of the Ghibli/anime plan — PostFX + scene-pass support for
+the secondary normal G-buffer.
+
+- `PostFX.new(g, { "normalFormat": "rgba8unorm" })` 2-arg form
+  opts in to a third scene-attached target. `PostFX.sceneNormalView_`
+  and `PostFX.normalFormat_` expose the resource so OutlinePass
+  (§12.4) and similar edge-aware passes can sample it.
+- `Game.run` attaches `sceneNormalView_` as a second colour
+  attachment on the scene render pass when present, with clear
+  value `(0.5, 0.5, 1.0, 1.0)` (packed +Z unit normal — anything
+  the scene doesn't write resolves to "no edge" under depth+normal
+  Sobel).
+- `@hatch:gpu` dep pin advanced 0.3.17 → 0.3.18 for
+  `Renderer3D.new(.., normalFormat)` and the `fs_main_mrt` /
+  `fs_toon_main_mrt` shader entries that emit packed world-space
+  normals into `@location(1)`.
+
 ## 0.3.31 -- 2026-06-05
 
 `@hatch:gpu` dep pin advanced 0.3.16 → 0.3.17 to pick up the

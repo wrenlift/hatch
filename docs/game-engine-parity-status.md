@@ -378,16 +378,30 @@ A pragmatic order picking highest-impact unblocked items first.
 
 ### 12 — Stylised shading (toon / cel) 🟡
 
-**Status**: base material variant + dedicated render pipeline shipped 2026-06-05. `Material.shadingModel` accepts `"pbr"` (default) or `"toon"`; flipping it routes `Renderer3D.draw` to `_toonPipeline`, a second fragment entry (`fs_toon_main`) hung off the existing PBR shader module. The MaterialUniforms UBO grew from 64 → 80 bytes with a trailing `toon: vec4<f32>` slot (bands, rimStrength, rimWidth, ambientFloor). Defaults (`bands = 3`, `rim = 0`, `floor = 0.35`) land in a sensible three-band Ghibli look without any caller tuning. Demo: `hatch/examples/game/toon-shading`.
+**Status**: base material variant + dedicated render pipeline shipped 2026-06-05. `Material.shadingModel` accepts `"pbr"` (default) or `"toon"`; flipping it routes `Renderer3D.draw` to `_toonPipeline`, a second fragment entry (`fs_toon_main`) hung off the existing PBR shader module. The MaterialUniforms UBO grew from 64 → 80 bytes with a trailing `toon: vec4<f32>` slot (bands, rimStrength, rimWidth, ambientFloor). Defaults (`bands = 3`, `rim = 0`, `floor = 0.35`) land in a sensible three-band Ghibli look without any caller tuning. Band math corrected and `Mesh.sphere` primitive added in `@hatch:gpu` 0.3.17 (commit `f247acb`). Demo: `hatch/examples/game/toon-shading`.
 
-**Gaps**:
-- No `_toonInstancedPipeline` — `drawMeshInstanced` / billboards still resolve to PBR
-- No `_toonSkinnedPipeline` — `Renderer3D.drawSkinned` is PBR-only, so toon characters need a separate path
-- No `OutlinePass` in `@hatch:postfx` — ink-line edges (Sobel on depth + normal G-buffer) are the next jump in "anime-ness" once the base shader is in shipping demos
-- Toon dials (`bands`, `rimStrength`, `rimWidth`, `ambientFloor`) are per-material — no scene-level "warm/cool ramp" texture yet for true painted-look ramps
+**Design contract — do not deviate**:
+- **Cel-banding lives in the renderer.** Quantise `dot(N, L)` inside the FS lighting loop, NOT as a posterize PostFX. Bands rotate with the light direction; a framebuffer posterize buckets RGB values instead — same image, wrong physics.
+- **Outline edges live in `@hatch:postfx`.** Sobel on depth + normal buffer, screen-space. Separate so callers compose three looks independently: toon-only (soft Ghibli without ink), outline-only (PBR with silhouettes — comic-book-on-real), or both (full anime).
+- **Wind sway lives in the vertex stage**, not in CPU-side per-blade transforms. Phase 11.8 grass / foliage VS samples a sin/curl term at world-XZ × time and offsets vertex positions; CPU only ships static instance transforms.
+
+### Phased plan (recall 2026-06-05)
+
+| # | Step | Package | Budget | Status |
+|---|---|---|---|---|
+| 12.1 | `Material.shadingModel = "toon"` + bands / rim / floor + `_toonPipeline` + `Mesh.sphere` | `@hatch:gpu` 0.3.17 | — | ✅ shipped |
+| 12.2 | Normal-buffer attachment alongside the colour target (forces a G-buffer format decision — RG8 octahedral vs RGB10A2 vs RGBA16F) | `@hatch:gpu` | 0.5 d | next |
+| 12.3 | `_toonInstancedPipeline` — bundle with 12.2 (same shader-emission surface); unblocks foliage + billboards on the toon path | `@hatch:gpu` | 0.5 d | pending |
+| 12.4 | `OutlinePass` reading the depth + normal targets — depth + normal Sobel, threshold dials, edge colour + thickness | `@hatch:postfx` | 2 d | blocked on 12.2 |
+| 12.5 | `_toonSkinnedPipeline` — `Renderer3D.drawSkinned` toon path so the_strangler-tier rigs animate in cel | `@hatch:gpu` | 1 d | pending |
+| 12.6 | Phase 11.8 foliage transform-pack + wind-sway VS — grass / leaves on the toon-instanced path with a sin/curl sway term | `@hatch:game` / `@hatch:gpu` | 3 d | depends on 12.3 |
+| 12.7 | Stylized sky pass — gradient-or-noise sky dome that caps the silhouette and absorbs the orbiting sun's tint | `@hatch:gpu` / `@hatch:postfx` | 2 d | pending |
+| 12.8 | Painted ramp textures — 1D LUT sampled instead of two-tone `mix(shadow, lit, t)`; pushes toward Mononoke watercolour ramps | `@hatch:gpu` | 1 d | nice-to-have |
+
+**Remaining budget**: ~10 days end-to-end; the toon-only viewer path (12.2 + 12.3 + 12.4) is ~3 days and gives the biggest visible jump.
 
 **Depends on**: 1 (✅), 6b (✅)
-**Effort**: medium
+**Effort**: medium (per step, sequenced)
 
 ## Known issues / accepted limitations
 

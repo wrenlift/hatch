@@ -955,20 +955,35 @@ class Game {
       var post = g.postFX
       var sceneColorView = frame.view
       var sceneDepthView = depthView
+      var sceneNormalView = null
       if (post != null) {
         post.resize_(g.width, g.height)
         sceneColorView = post.sceneView_
         if (post.sceneDepthView_ != null) sceneDepthView = post.sceneDepthView_
+        sceneNormalView = post.sceneNormalView_
       }
 
-      var passDesc = {
-        "colorAttachments": [{
-          "view":       sceneColorView,
+      var colorAttachments = [{
+        "view":       sceneColorView,
+        "loadOp":     "clear",
+        "clearValue": c["clearColor"],
+        "storeOp":    "store"
+      }]
+      // Secondary normal G-buffer — only attached when PostFX was
+      // built with `{ "normalFormat": ... }` (typically an
+      // OutlinePass downstream). Cleared to (0.5, 0.5, 1, 1) which
+      // packs as the +Z (camera-facing) unit normal, so any
+      // fragment the scene doesn't write resolves to "no edge"
+      // under depth+normal Sobel.
+      if (sceneNormalView != null) {
+        colorAttachments.add({
+          "view":       sceneNormalView,
           "loadOp":     "clear",
-          "clearValue": c["clearColor"],
+          "clearValue": [0.5, 0.5, 1.0, 1.0],
           "storeOp":    "store"
-        }]
+        })
       }
+      var passDesc = { "colorAttachments": colorAttachments }
       if (sceneDepthView != null) {
         passDesc["depthStencilAttachment"] = {
           "view":            sceneDepthView,

@@ -269,11 +269,23 @@ class PostFX {
   /// texture so depth-tested 3D scenes still resolve correctly
   /// while drawing into the offscreen target.
   ///
+  /// Pass `opts = { "normalFormat": "rgba8unorm" }` to opt into a
+  /// secondary normal G-buffer. Game.run attaches it as a second
+  /// colour target on the scene render pass, the scene shader
+  /// writes world-space normals to it, and edge-aware passes like
+  /// OutlinePass sample it for silhouette extraction. The format
+  /// must match `Renderer3D.new(.., normalFormat)`'s argument.
+  ///
   /// @param {GameState} g
-  construct new(g) {
+  /// @param {Map}       opts  optional — supports `"normalFormat"`
+  construct new(g) { init_(g, {}) }
+  construct new(g, opts) { init_(g, opts) }
+
+  init_(g, opts) {
     _device        = g.device
     _surfaceFormat = g.surfaceFormat
     _depthFormat   = g.depthFormat
+    _normalFormat  = opts.containsKey("normalFormat") ? opts["normalFormat"] : null
     _width         = 0       // forces first-frame allocation
     _height        = 0
     _passes        = []
@@ -281,6 +293,8 @@ class PostFX {
     _sceneView     = null
     _sceneDepthTex = null
     _sceneDepthView= null
+    _sceneNormalTex= null
+    _sceneNormalView=null
     _pongTex       = null
     _pongView      = null
     _scratch       = []      // grown on first uniform write per pass
@@ -371,6 +385,20 @@ class PostFX {
   /// configured.
   /// @returns {TextureView}
   sceneDepthView_  { _sceneDepthView }
+
+  /// Internal: secondary normal G-buffer view, or `null` when no
+  /// `normalFormat` was passed to the constructor. Game.run binds
+  /// this as the second colour attachment when present so the
+  /// scene shader's `fs_main_mrt` entry can write world-space
+  /// normals for downstream edge-aware passes (OutlinePass, SSAO).
+  /// @returns {TextureView}
+  sceneNormalView_ { _sceneNormalView }
+
+  /// Internal: the normal G-buffer format the chain was built
+  /// with (`null` when no normal target). Consumers (OutlinePass,
+  /// Renderer3D) must match this format when sampling / writing.
+  /// @returns {String}
+  normalFormat_    { _normalFormat }
 
   /// Append `pass` to the chain. Triggers the pass's `onAdded_`
   /// hook so it pre-builds pipelines + uniform buffers; targets
@@ -527,6 +555,8 @@ class PostFX {
     destroyTex_(_sceneTex)
     destroyView_(_sceneDepthView)
     destroyTex_(_sceneDepthTex)
+    destroyView_(_sceneNormalView)
+    destroyTex_(_sceneNormalTex)
     destroyView_(_pongView)
     destroyTex_(_pongTex)
 
@@ -545,6 +575,15 @@ class PostFX {
         "label":  "postfx-scene-depth"
       })
       _sceneDepthView = _sceneDepthTex.createView()
+    }
+    if (_normalFormat != null) {
+      _sceneNormalTex = _device.createTexture({
+        "width": width, "height": height,
+        "format": _normalFormat,
+        "usage":  ["render-attachment", "texture-binding"],
+        "label":  "postfx-scene-normal"
+      })
+      _sceneNormalView = _sceneNormalTex.createView()
     }
     _pongTex = _device.createTexture({
       "width": width, "height": height,

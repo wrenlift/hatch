@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.3.18 — 2026-06-05
+
+§12.2 of the Ghibli/anime plan — secondary normal G-buffer attachment.
+
+- `Renderer3D.new(device, surfaceFormat, depthFormat, normalFormat)`
+  4-arg constructor. When `normalFormat` is supplied (typically
+  `"rgba8unorm"`), the non-instanced PBR / transparent / toon
+  pipelines bind a second colour target at `@location(1)` and
+  write packed world-space normals (`N * 0.5 + 0.5`) via new
+  `fs_main_mrt` / `fs_toon_main_mrt` shader entry points.
+- WGSL refactor: `fs_main` body extracted into `pbr_compute`, with
+  thin `fs_main` (single-target) + `fs_main_mrt` (MRT) entries
+  delegating to it. Same split for `fs_toon_main` →
+  `toon_compute` + entries. No behaviour change on the existing
+  single-target path.
+- Pipeline build sites branch on `_normalFormat`: single-target
+  pipelines pick `fs_main` / `fs_toon_main` + `[surface]`; MRT
+  pipelines pick `*_mrt` + `[surface, normal]`. Transparent
+  pipeline preserves its src-alpha blend on `@location(0)` while
+  writing the normal target with default blend (no overdraw on
+  the normal channel — handy: transparents don't smear silhouette
+  edges).
+- New `Renderer3D.normalFormat` getter so OutlinePass (§12.4) can
+  introspect the bound format.
+- Format pick: `rgba8unorm` for the demo / recommended path.
+  ~0.7° normal-encoding error, universally supported including
+  web. RG8 octahedral and RGB10A2 are valid alternatives and the
+  API accepts any wgpu-supported colour format — the consumer is
+  responsible for matching the pipeline + PostFX bindings.
+
+**Scope:** non-instanced pipelines only. `_instancedPipeline` and
+`_skinnedPipeline` stay single-target — calling them while the
+scene pass has a normal attachment surfaces a wgpu validation
+error. §12.3 adds `_toonInstancedPipeline` + instanced MRT;
+§12.5 adds skinned MRT + `_toonSkinnedPipeline`.
+
+New spec: `gpu_renderer3d_mrt.spec.wren` — hardware smoke
+asserting the MRT pipelines compile and instantiate.
+
 ## 0.3.17 — 2026-06-05
 
 Follow-on to the toon-shader landing in 0.3.16:

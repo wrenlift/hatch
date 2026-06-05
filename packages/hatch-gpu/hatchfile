@@ -1,5 +1,5 @@
 name        = "@hatch:gpu"
-version     = "0.3.17"
+version     = "0.3.18"
 entry       = "gpu"
 description = "GPU primitives + 2D/3D renderers. Device, Buffer, Texture, Sampler, ShaderModule, BindGroup, RenderPipeline, ComputePipeline, CommandEncoder, RenderPass, ComputePass on the bottom; Camera2D/3D, Frustum, Lod, Renderer2D (sprite batcher + drawInstancedSprites for storage-buffer-driven sprite batches), Renderer3D (Cook-Torrance / GGX PBR with multi-light + textured metallic-roughness workflow, plus drawMeshInstanced for storage-buffer-driven instanced meshes), Shader factory, Mesh, Material on top. Storage buffers + compute dispatch + fast typed-array readback for general-purpose GPU work. Camera3D.frustumPlanes + Frustum.sphereVisible for CPU-side frustum culling; Lod.select3 for distance-based level-of-detail bucketing — together they keep per-instance CPU cost flat in total scene size for the procedural-world performance target. Same shared source drives wgpu on native and WebGPU on web."
 homepage    = "https://hatch.wrenlift.com/packages/@hatch:gpu"

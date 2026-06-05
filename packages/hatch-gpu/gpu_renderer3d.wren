@@ -381,8 +381,14 @@ class Renderer3D {
         return c;
       }
 
-      @fragment
-      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+      // PBR lighting computation, extracted from `fs_main` so the
+      // MRT entry point (`fs_main_mrt`, defined at the end of this
+      // module) can reuse the exact same lit value while ALSO
+      // emitting world-space normals into the secondary G-buffer.
+      // WGSL doesn't allow one @fragment entry point to call
+      // another, so the shared logic has to live in a plain
+      // function.
+      fn pbr_compute(in: VsOut) -> vec4<f32> {
         // 1. Albedo: factor × texture. Texture sampled as sRGB
         //    (the shader expects linear input — when the host
         //    creates the texture with `*-srgb` format, the
@@ -542,6 +548,13 @@ class Renderer3D {
         return vec4<f32>(ldr, base_color.a);
       }
 
+      // Single-target PBR entry — used when the renderer is built
+      // without `normalFormat`. Pure delegation to `pbr_compute`.
+      @fragment
+      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+        return pbr_compute(in);
+      }
+
       // -- Toon / cel-shaded fragment entry. -------------------
       //
       // Same VS, same scene + draw + material bind groups, same
@@ -553,8 +566,9 @@ class Renderer3D {
       // author against. Albedo / emissive texture sampling + alpha-
       // mode handling carry over from the PBR path so one Material
       // can drive either pipeline by flipping `shadingModel`.
-      @fragment
-      fn fs_toon_main(in: VsOut) -> @location(0) vec4<f32> {
+      // Toon lighting computation — same compute / entry split as
+      // `pbr_compute` so the MRT entry can share it.
+      fn toon_compute(in: VsOut) -> vec4<f32> {
         let albedo_sample = textureSample(albedo_tex, samp, in.uv);
         var base_color = mat.albedo_color * albedo_sample;
         let alpha_mode = mat.alpha.x;
@@ -622,6 +636,38 @@ class Renderer3D {
         lit = lit + mat.emissive_color.rgb * toon_emissive_sample;
 
         return vec4<f32>(lit, base_color.a);
+      }
+
+      // Single-target toon entry.
+      @fragment
+      fn fs_toon_main(in: VsOut) -> @location(0) vec4<f32> {
+        return toon_compute(in);
+      }
+
+      // -- MRT entries. --------------------------------------------
+      //
+      // Used when the renderer is built with `normalFormat` set.
+      // The PostFX chain's OutlinePass (and any other depth+normal
+      // edge-aware effect) samples `@location(1)`. World-space
+      // normals are packed `N * 0.5 + 0.5` into rgba8unorm so the
+      // clear value (0.5, 0.5, 1.0) reads as the +Z unit normal —
+      // anything the scene doesn't write registers as 'no edge'
+      // under depth+normal Sobel.
+      struct FsOutMrt {
+        @location(0) color:  vec4<f32>,
+        @location(1) normal: vec4<f32>,
+      }
+      @fragment
+      fn fs_main_mrt(in: VsOut) -> FsOutMrt {
+        let color = pbr_compute(in);
+        let n = normalize(in.normal) * 0.5 + 0.5;
+        return FsOutMrt(color, vec4<f32>(n, 1.0));
+      }
+      @fragment
+      fn fs_toon_main_mrt(in: VsOut) -> FsOutMrt {
+        let color = toon_compute(in);
+        let n = normalize(in.normal) * 0.5 + 0.5;
+        return FsOutMrt(color, vec4<f32>(n, 1.0));
       }
     "
   }
@@ -1118,8 +1164,27 @@ class Renderer3D {
   ///   matches the surface configure (`"bgra8unorm"` etc.).
   /// @param {String} depthFormat. Depth-attachment format, matches
   ///   the depth texture used in the pass descriptor.
+  /// @param {String} normalFormat. Optional secondary normal G-buffer
+  ///   format (typically `"rgba8unorm"`). When supplied, the non-
+  ///   instanced PBR / transparent / toon pipelines bind a second
+  ///   colour target and write world-space normals (packed as
+  ///   `N * 0.5 + 0.5`) for edge-aware PostFX like OutlinePass.
+  ///   Must match `PostFX.new(g, { "normalFormat": ... })`. The
+  ///   instanced (`drawMeshInstanced`) and skinned (`drawSkinned`)
+  ///   pipelines are still single-target in this revision —
+  ///   `_toonInstancedPipeline` (§12.3) and `_toonSkinnedPipeline`
+  ///   (§12.5) add their MRT variants. Calling those draws while a
+  ///   normal target is bound will surface a wgpu validation error.
   construct new(device, surfaceFormat, depthFormat) {
-    _device = device
+    init_(device, surfaceFormat, depthFormat, null)
+  }
+  construct new(device, surfaceFormat, depthFormat, normalFormat) {
+    init_(device, surfaceFormat, depthFormat, normalFormat)
+  }
+
+  init_(device, surfaceFormat, depthFormat, normalFormat) {
+    _device       = device
+    _normalFormat = normalFormat
 
     var shader = Shader.module(device, [
       Shader.prelude,
@@ -1169,6 +1234,34 @@ class Renderer3D {
       "bindGroupLayouts": [_sceneBgl, _drawBgl, _materialBgl]
     })
 
+    // MRT-aware entry-point + target selection. When the renderer
+    // is constructed with `normalFormat != null`, the non-instanced
+    // pipelines route to the `_mrt` shader entries (which write
+    // packed world-space normals to `@location(1)`) and declare a
+    // second colour target. Existing single-target builds are
+    // unchanged.
+    var mrt = _normalFormat != null
+    var pbrEntry  = mrt ? "fs_main_mrt"      : "fs_main"
+    var toonEntry = mrt ? "fs_toon_main_mrt" : "fs_toon_main"
+    var transparentBlend = {
+      "color": {
+        "srcFactor": "src-alpha",
+        "dstFactor": "one-minus-src-alpha",
+        "operation": "add"
+      },
+      "alpha": {
+        "srcFactor": "one",
+        "dstFactor": "one-minus-src-alpha",
+        "operation": "add"
+      }
+    }
+    var opaqueTargets = [{ "format": surfaceFormat }]
+    var transparentTargets = [{ "format": surfaceFormat, "blend": transparentBlend }]
+    if (mrt) {
+      opaqueTargets.add({ "format": _normalFormat })
+      transparentTargets.add({ "format": _normalFormat })
+    }
+
     _pipeline = device.createRenderPipeline({
       "layout": _pipelineLayout,
       "vertex": {
@@ -1185,8 +1278,8 @@ class Renderer3D {
         }]
       },
       "fragment": {
-        "module": shader, "entryPoint": "fs_main",
-        "targets": [{ "format": surfaceFormat }]
+        "module": shader, "entryPoint": pbrEntry,
+        "targets": opaqueTargets
       },
       "primitive":    { "topology": "triangle-list", "cullMode": "back" },
       "depthStencil": {
@@ -1227,22 +1320,8 @@ class Renderer3D {
         }]
       },
       "fragment": {
-        "module": shader, "entryPoint": "fs_main",
-        "targets": [{
-          "format": surfaceFormat,
-          "blend": {
-            "color": {
-              "srcFactor": "src-alpha",
-              "dstFactor": "one-minus-src-alpha",
-              "operation": "add"
-            },
-            "alpha": {
-              "srcFactor": "one",
-              "dstFactor": "one-minus-src-alpha",
-              "operation": "add"
-            }
-          }
-        }]
+        "module": shader, "entryPoint": pbrEntry,
+        "targets": transparentTargets
       },
       "primitive":    { "topology": "triangle-list", "cullMode": "back" },
       "depthStencil": {
@@ -1275,8 +1354,8 @@ class Renderer3D {
         }]
       },
       "fragment": {
-        "module": shader, "entryPoint": "fs_toon_main",
-        "targets": [{ "format": surfaceFormat }]
+        "module": shader, "entryPoint": toonEntry,
+        "targets": opaqueTargets
       },
       "primitive":    { "topology": "triangle-list", "cullMode": "back" },
       "depthStencil": {
@@ -1991,6 +2070,13 @@ class Renderer3D {
   /// debug overlays + shadow-map preview UIs.
   /// @returns {TextureView}
   shadowMapView_  { _shadowView }
+
+  /// The secondary normal G-buffer format the renderer was built
+  /// with, or `null` when single-target. OutlinePass + other edge-
+  /// aware PostFX consumers read this to verify their texture-
+  /// binding format matches the renderer's MRT setup.
+  /// @returns {String}
+  normalFormat    { _normalFormat }
 
   static numOr_(opts, key, fallback) {
     if (!opts.containsKey(key)) return fallback
