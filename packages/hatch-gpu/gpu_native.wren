@@ -2712,6 +2712,84 @@ class Mesh {
     return Mesh.fromArrays(device, v, indices)
   }
 
+  /// UV sphere centred on origin. `segments` controls longitude
+  /// (around) and `segments / 2` latitude (top-to-bottom); minimum
+  /// 8. Smooth shading — normals are the unit position vector so
+  /// per-vertex lighting (and toon banding) reads as a curved
+  /// surface rather than visible facets.
+  ///
+  /// @param device   the @hatch:gpu Device that owns the VBO/IBO
+  /// @param radius   sphere radius in world units
+  /// @param segments longitude segment count (latitude = segments / 2)
+  static sphere(device) { sphere(device, 1, 24) }
+  static sphere(device, radius) { sphere(device, radius, 24) }
+  static sphere(device, radius, segments) {
+    var longSegs = (segments < 8) ? 8 : segments
+    var latSegs  = longSegs / 2
+    if (latSegs < 4) latSegs = 4
+    var v = []
+    // Vertices on a (latSegs+1) × (longSegs+1) grid. The seam
+    // duplicates the longitude=0 verts at longitude=longSegs so UVs
+    // wrap without a stitch artefact.
+    var lat = 0
+    while (lat <= latSegs) {
+      var phi = (lat / latSegs) * Num.pi
+      var sinPhi = phi.sin
+      var cosPhi = phi.cos
+      var lon = 0
+      while (lon <= longSegs) {
+        var theta  = (lon / longSegs) * Num.pi * 2
+        var sinTh  = theta.sin
+        var cosTh  = theta.cos
+        var nx = sinPhi * cosTh
+        var ny = cosPhi
+        var nz = sinPhi * sinTh
+        // Position = normal × radius — exact unit-sphere normals
+        // for smooth Ghibli-friendly banding.
+        v.add(nx * radius)
+        v.add(ny * radius)
+        v.add(nz * radius)
+        v.add(nx)
+        v.add(ny)
+        v.add(nz)
+        v.add(lon / longSegs)
+        v.add(1 - lat / latSegs)
+        // Tangent along d(pos)/d(theta) — perpendicular to the
+        // normal, lying in the latitude plane.
+        v.add(-sinTh)
+        v.add(0)
+        v.add(cosTh)
+        v.add(1)
+        lon = lon + 1
+      }
+      lat = lat + 1
+    }
+    // Indices: two tris per quad on the (latSegs × longSegs) grid.
+    // Polar rows produce degenerate tris (north + south); the
+    // renderer handles them as zero-area triangles.
+    var indices = []
+    var row = longSegs + 1
+    lat = 0
+    while (lat < latSegs) {
+      var lon = 0
+      while (lon < longSegs) {
+        var a =  lat      * row + lon
+        var b =  lat      * row + lon + 1
+        var c = (lat + 1) * row + lon
+        var d = (lat + 1) * row + lon + 1
+        indices.add(a)
+        indices.add(c)
+        indices.add(b)
+        indices.add(b)
+        indices.add(c)
+        indices.add(d)
+        lon = lon + 1
+      }
+      lat = lat + 1
+    }
+    return Mesh.fromArrays(device, v, indices)
+  }
+
   /// Flat plane on the X-Z axis (Y up), centred on origin.
   /// Vertex layout: pos.xyz + normal.xyz + uv.xy + tangent.xyzw =
   /// 12 floats. Tangent points along +X (the U direction), the
