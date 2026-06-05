@@ -26,7 +26,7 @@ Plan source: [game-engine-parity-plan.md](./game-engine-parity-plan.md)
 | 6c | Shadows (directional) | 🟡 | medium | CSM/cubemap helpers exist but Renderer3D never consumes them |
 | 6c-cascade | Cascaded directional + cubemap point shadows | 🟡 | large | Math shipped; pipeline not wired |
 | 6d | Instanced 3D billboards / ParticleSystem3D | ✅ | small | No 100k-billboard exit-gate spec |
-| 6e | GPU compute particle sim | ✅ | small | No wind/curl-noise uniforms; no 1M-particle spec |
+| 6e | GPU compute particle sim | ✅ | — | Wind + curl-noise uniforms + 1M-particle perf gate landed 2026-06-05 |
 | 7 | UI overlay (immediate mode HUD) | ✅ | small | Uppercase-only font; no text input/menu helper |
 | 8 | Asset pipeline + save/load | 🟡 | medium | No background loading; SaveSystem doesn't round-trip FSM state |
 | 9 | Audio v2 (OGG / spatial / groups / effects) | 🟡 | large | No spatial pan/attenuation, no effects bus, no wasm backend |
@@ -190,21 +190,14 @@ Shipped 2026-06-03. NumRange added at `hatch/packages/hatch-math/math.wren:1117`
 **Depends on**: none
 **Effort**: small
 
-### 6e — GPU compute particle sim 🟡
+### 6e — GPU compute particle sim ✅
 
-**Status**: shipped; missing wind-field uniform + perf exit-gate.
+**Status**: shipped 2026-06-05. The compute shader now consumes a `wind_dir_strength` uniform (constant drift force) + a `wind_noise` uniform (curl-noise turbulence — divergence-free pseudo-curl built from sin/cos cross products, cheap enough for 1M particles). Exposed Wren-side as `GpuParticleSystem3D.setWind(dx, dy, dz, strength)` + `.setWindNoise(scale, timeScale, amplitude, align)` plus opts-Map constructor entries (`wind`, `windStrength`, `windNoise`). 1M-particle CPU dispatch perf gate at `packages/hatch-game/gpu_particles.spec.wren` (gated behind `WLIFT_PERF=1`).
 
-**Gaps**:
-- Compute shader only has constant gravity + drag + colour/size lerp; no wind / curl-noise / attractor field uniforms
-- `Wind.sample` exists CPU-side in `hatch/packages/hatch-game/weather.wren:66` but is not fed into the compute pass
-- No 1M-particle perf spec
-
-**Next actions**:
-- Add a wind / curl-noise uniform path + WGSL sample inside `gpu_particles.wren:263` pipeline; expose `gpuParticles.setWind(vec3)` or driver from `Wind.sample`
-- Add a perf-gated spec asserting 1M-particle update + draw budget
+**Wind.sample integration** stays optional — `Wind.sample` is the CPU-side foliage-sway driver and remains independent; the GPU particle wind field is its own uniform path so foliage and particle wind can diverge intentionally.
 
 **Depends on**: none
-**Effort**: small
+**Effort**: — (shipped)
 
 ### 7 — HUD overlay 🟡
 
