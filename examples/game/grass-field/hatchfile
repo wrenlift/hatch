@@ -8,4 +8,4 @@ description = "Cel-shaded grass field — 5,000 toon-shaded blades scattered via
 # workspace checkout) the resolver falls back to the registry
 # `version` pin. The example builds in both contexts.
 [dependencies]
-"@hatch:game" = { path = "../../../packages/hatch-game", version = "0.3.36" }
+"@hatch:game" = { path = "../../../packages/hatch-game", version = "0.3.37" }

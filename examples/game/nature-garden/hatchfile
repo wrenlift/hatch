@@ -1,0 +1,13 @@
+name        = "nature-garden"
+version     = "0.1.0"
+entry       = "main"
+description = "Cel-shaded nature scene — trees, rocks, bushes, and mushrooms scattered across a soil-brown plain with 50,000 wind-swept grass blades. Loads Quaternius nature-kit glTF assets through @hatch:gltf, overrides every loaded material with the toon shading model, and uses Foliage.scatter for organic placement."
+
+# Dual-form deps — `path` is tried first (workspace dev), with
+# the registry `version` pin as the publish fallback.
+[dependencies]
+"@hatch:game"   = { path = "../../../packages/hatch-game",   version = "0.3.37" }
+"@hatch:gltf"   = { path = "../../../packages/hatch-gltf",   version = "0.1.3" }
+"@hatch:assets" = { path = "../../../packages/hatch-assets", version = "0.2.6" }
+"@hatch:fsm"    = { path = "../../../packages/hatch-fsm",    version = "0.1.2" }
+"@hatch:postfx" = { path = "../../../packages/hatch-postfx", version = "0.2.0" }
