@@ -1897,16 +1897,21 @@ class Renderer3D {
       "bindGroupLayouts": [_billboardSceneBgl, _billboardInstanceBgl, _billboardMaterialBgl]
     })
     var billboardEntry = mrt ? "fs_main_mrt" : "fs_main"
-    // Color target uses ADDITIVE blend so HDR-emissive sprites
-    // (fireflies, sparks, halos) ADD their brightness on top of
-    // the background instead of alpha-blending into it. With
-    // alpha-blend a clamped (>1) src and a near-bright dst produce
-    // similar luma at the spark center and at the surrounding
-    // bloomed grass, so the spark reads as a "dark donut" against
-    // a brighter bloom halo. Additive lets the center always peak
-    // at the clamp ceiling regardless of background luma, which
-    // is the canonical emissive blend for glowing point sources.
-    var billboardTargets = [{ "format": surfaceFormat, "blend": "additive" }]
+    // Color target uses PREMULTIPLIED alpha so the same pipeline
+    // serves both translucent sprites (rain, smoke, fog) AND
+    // HDR-emissive ones (fireflies, sparks, halos). With the FS
+    // outputting RGB already premultiplied by alpha + mask, the
+    // formula `src.rgb + dst.rgb * (1 - src.a)` produces:
+    //   - translucent overlay for alpha-fading sprites — src.a
+    //     attenuates dst correctly, no "donut against bright
+    //     bloom" failure mode of standard alpha blend
+    //   - bright LDR-clamped centre for emissive sprites — bloom
+    //     extracts the saturated bright pixels and casts the
+    //     visible glow halo through the postFX chain
+    // Pure additive (One, One) would correctly handle emissives
+    // but turn rain drops into glowing white streaks; this single
+    // pipeline keeps both classes of sprite looking right.
+    var billboardTargets = [{ "format": surfaceFormat, "blend": "premultiplied" }]
     if (mrt) {
       // Normal target stays alpha-blended against the underlying
       // surface normal so the disc's soft falloff edges don't
