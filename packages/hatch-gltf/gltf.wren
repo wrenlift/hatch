@@ -38,7 +38,7 @@
 // needs it.
 
 import "@hatch:json"  for JSON
-import "@hatch:math"  for Vec3, Vec4, Quat
+import "@hatch:math"  for Vec2, Vec3, Vec4, Quat
 import "@hatch:gpu"   for Mesh, Material
 import "@hatch:image" for Image
 import "@hatch:game"  for Transform, MeshRenderer
@@ -659,6 +659,37 @@ class GltfScene {
     return t2i[texIdx]
   }
 
+  // Parse `KHR_texture_transform` from a glTF texture-info slot,
+  // returning a 5-element list `[scaleX, scaleY, offsetX, offsetY,
+  // rotationRad]` or `null` when the extension isn't present.
+  // Per spec: defaults are `scale = (1, 1)`, `offset = (0, 0)`,
+  // `rotation = 0`. `texCoord` (selecting a non-zero UV channel)
+  // is currently ignored — our meshes carry a single UV set.
+  static textureTransformOf_(slot) {
+    if (!(slot is Map)) return null
+    var ext = slot["extensions"]
+    if (!(ext is Map)) return null
+    var t = ext["KHR_texture_transform"]
+    if (!(t is Map)) return null
+    var sx = 1.0
+    var sy = 1.0
+    var ox = 0.0
+    var oy = 0.0
+    var rot = 0.0
+    var s = t["scale"]
+    if (s is List && s.count >= 2) {
+      sx = s[0]
+      sy = s[1]
+    }
+    var o = t["offset"]
+    if (o is List && o.count >= 2) {
+      ox = o[0]
+      oy = o[1]
+    }
+    if (t["rotation"] is Num) rot = t["rotation"]
+    return [sx, sy, ox, oy, rot]
+  }
+
   static buildMaterials_(json) {
     var out = []
     var arr = json["materials"]
@@ -739,13 +770,29 @@ class GltfScene {
       var alphaCutoff  = m["alphaCutoff"] is Num ? m["alphaCutoff"] : 0.5
       var doubleSided  = m["doubleSided"] == true
 
-      out.add(GltfMaterial.new_(
+      // KHR_texture_transform — per-slot in the glTF spec; we
+      // collapse to one transform per material by reading from
+      // `baseColorTexture` (the dominant slot in practice). When
+      // a Quaternius / Poly Haven / Substance asset ships with
+      // KHR_texture_transform on the albedo binding, the same
+      // scale + rotation + offset propagates to every other slot
+      // sampled by the toon / PBR shader so normal / MR / AO
+      // stay aligned with the albedo tile.
+      var uvXform = null
+      if (pbr is Map) uvXform = GltfScene.textureTransformOf_(pbr["baseColorTexture"])
+      if (uvXform == null && sg is Map) {
+        uvXform = GltfScene.textureTransformOf_(sg["diffuseTexture"])
+      }
+
+      var gm = GltfMaterial.new_(
         name,
         bc, metallic, roughness,
         albedoImgIdx, mrImgIdx, normalImgIdx, normalScale,
         occlusionImgIdx, occlusionStrength,
         emissiveImgIdx, emissive,
-        alphaMode, alphaCutoff, doubleSided))
+        alphaMode, alphaCutoff, doubleSided)
+      if (uvXform != null) gm.uvTransform_ = uvXform
+      out.add(gm)
     }
     return out
   }
@@ -2114,6 +2161,35 @@ class GltfMaterial {
     _alphaMode = alphaMode
     _alphaCutoff = alphaCutoff
     _doubleSided = doubleSided
+    // KHR_texture_transform — identity by default. Loader sets
+    // this via `uvTransform_=` when the extension is present on the
+    // material's baseColorTexture / diffuseTexture slot.
+    _uvScale    = Vec2.new(1.0, 1.0)
+    _uvOffset   = Vec2.new(0.0, 0.0)
+    _uvRotation = 0.0
+  }
+
+  /// KHR_texture_transform getters — exposed so callers can inspect
+  /// what the glTF asset declared without round-tripping through a
+  /// `Material`.
+  /// @returns {Vec2}
+  uvScale     { _uvScale }
+  /// @returns {Vec2}
+  uvOffset    { _uvOffset }
+  /// @returns {Num}
+  uvRotation  { _uvRotation }
+
+  /// Internal — called by the loader to plumb a parsed
+  /// `[scaleX, scaleY, offsetX, offsetY, rotation]` list into the
+  /// material's per-axis fields. Public setter takes the list
+  /// rather than separate vec2 / scalar arguments so the loader
+  /// doesn't have to allocate intermediate Vec2 objects.
+  /// @param {List<Num>} v. 5-element list as returned by
+  ///   `GltfScene.textureTransformOf_`.
+  uvTransform_=(v) {
+    _uvScale    = Vec2.new(v[0], v[1])
+    _uvOffset   = Vec2.new(v[2], v[3])
+    _uvRotation = v[4]
   }
 
   name              { _name }
@@ -2151,6 +2227,9 @@ class GltfMaterial {
     m.alphaMode        = _alphaMode
     m.alphaCutoff      = _alphaCutoff
     m.doubleSided      = _doubleSided
+    m.uvScale          = _uvScale
+    m.uvOffset         = _uvOffset
+    m.uvRotation       = _uvRotation
 
     if (_albedoImg    != null) m.albedoTexture            = textures[_albedoImg]
     if (_mrImg        != null) m.metallicRoughnessTexture = textures[_mrImg]

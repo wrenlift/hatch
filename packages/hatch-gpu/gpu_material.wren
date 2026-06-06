@@ -4,7 +4,7 @@
 // handles + a packing helper; the renderer owns the bind group
 // caching.
 
-import "@hatch:math" for Vec4
+import "@hatch:math" for Vec2, Vec4
 
 /// PBR material in the glTF metallic-roughness workflow. Each
 /// property pairs a *factor* (scalar / colour multiplier) with an
@@ -53,6 +53,9 @@ class Material {
     _rimStrength             = 0.0
     _rimWidth                = 4.0
     _ambientFloor            = 0.35
+    _uvScale                 = Vec2.new(1.0, 1.0)
+    _uvOffset                = Vec2.new(0.0, 0.0)
+    _uvRotation              = 0.0
     _revision                = 0
   }
 
@@ -82,6 +85,9 @@ class Material {
     _rimStrength             = 0.0
     _rimWidth                = 4.0
     _ambientFloor            = 0.35
+    _uvScale                 = Vec2.new(1.0, 1.0)
+    _uvOffset                = Vec2.new(0.0, 0.0)
+    _uvRotation              = 0.0
     _revision                = 0
   }
 
@@ -261,7 +267,7 @@ class Material {
   }
 
   /// Number of diffuse light bands the toon pipeline quantises into.
-  /// Integer ≥ 2; 3 is the classic three-tone Ghibli look (highlight
+  /// Integer ≥ 2; 3 is the classic three-tone cel look (highlight
   /// / mid / shadow). Higher values approach smooth Lambertian.
   /// Ignored when `shadingModel != "toon"`.
   /// @returns {Num}
@@ -296,7 +302,7 @@ class Material {
 
   /// Floor brightness on the shadow side of the diffuse step. 0
   /// produces deep black shadow; 1 disables the toon step entirely
-  /// (flat lit). The Ghibli look typically sits around 0.3–0.45 so
+  /// (flat lit). The cel-shaded look typically sits around 0.3–0.45 so
   /// the shadowed side reads as a darker tint of the albedo rather
   /// than a hard black silhouette.
   /// Ignored when `shadingModel != "toon"`.
@@ -307,6 +313,57 @@ class Material {
     _revision = _revision + 1
   }
 
+  // ---------------------------------------------------------------
+  // KHR_texture_transform
+  //
+  // Per-material UV transform applied to ALL texture samples in the
+  // shader (albedo / MR / normal / occlusion / emissive). Implements
+  // the glTF `KHR_texture_transform` extension semantics: the
+  // shader computes `uv' = R * (uv * scale) + offset`, where `R` is
+  // a rotation by `uvRotation` radians around the origin.
+  //
+  // Useful for tiling a single source texture across a large mesh
+  // (e.g. `uvScale = Vec2.new(8, 8)` repeats an authored 2k tile
+  // 8× across a `[0..1]` UV span) without re-authoring the mesh
+  // UVs, and for the glTF loader to honour per-material UV
+  // transforms shipped with KHR_texture_transform-using assets.
+  // ---------------------------------------------------------------
+
+  /// Per-material UV scale, applied before rotation + offset.
+  /// `(1, 1)` is identity. Pair with a `repeat` wrap mode on the
+  /// sampler (the default in Renderer3D) to tile a small texture
+  /// across a large mesh.
+  /// @returns {Vec2}
+  uvScale     { _uvScale }
+  /// @param {Vec2} v
+  uvScale=(v) {
+    _uvScale  = v
+    _revision = _revision + 1
+  }
+
+  /// Per-material UV offset, applied after scale + rotation.
+  /// `(0, 0)` is identity. Useful for scrolling a texture (e.g.
+  /// flowing water) or aligning a tile to a feature.
+  /// @returns {Vec2}
+  uvOffset     { _uvOffset }
+  /// @param {Vec2} v
+  uvOffset=(v) {
+    _uvOffset = v
+    _revision = _revision + 1
+  }
+
+  /// Per-material UV rotation in radians, applied between scale
+  /// and offset. Rotation is around the origin `(0, 0)`, per the
+  /// `KHR_texture_transform` spec — to rotate around a different
+  /// pivot, pre-translate the texture via `uvOffset`.
+  /// @returns {Num}
+  uvRotation     { _uvRotation }
+  /// @param {Num} v
+  uvRotation=(v) {
+    _uvRotation = v
+    _revision   = _revision + 1
+  }
+
   /// Internal — counter that ticks on every mutation, so the
   /// renderer can detect "this material has changed since the
   /// last time I built a bind group for it" without diffing
@@ -315,9 +372,9 @@ class Material {
   revision_ { _revision }
 
   /// Internal — pack the material's plain-old-data into the
-  /// 80-byte uniform block the WGSL shader expects. Texture
+  /// 112-byte uniform block the WGSL shader expects. Texture
   /// handles aren't part of this — they bind separately.
-  /// Appends 20 floats to `out` (5 vec4 rows).
+  /// Appends 28 floats to `out` (7 vec4 rows).
   packUniform_(out) {
     out.add(_albedoColor.x)
     out.add(_albedoColor.y)
@@ -348,6 +405,18 @@ class Material {
     out.add(_rimStrength)
     out.add(_rimWidth)
     out.add(_ambientFloor)
+    // KHR_texture_transform vec4 #1 — xy = scale, zw = offset.
+    out.add(_uvScale.x)
+    out.add(_uvScale.y)
+    out.add(_uvOffset.x)
+    out.add(_uvOffset.y)
+    // KHR_texture_transform vec4 #2 — x = cos(rotation),
+    // y = sin(rotation), z/w padding. Pre-computed so the
+    // shader doesn't have to evaluate trig per fragment.
+    out.add(_uvRotation.cos)
+    out.add(_uvRotation.sin)
+    out.add(0.0)
+    out.add(0.0)
   }
 
   /// Legacy compatibility — `color` was the only knob on the

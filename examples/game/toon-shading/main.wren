@@ -5,14 +5,14 @@
 // Three spheres demonstrating the toon dials:
 //
 //   left   — 2 bands, no rim                (hard cel cut)
-//   middle — 3 bands, no rim                (canonical Ghibli)
+//   middle — 3 bands, no rim                (canonical cel)
 //   right  — 4 bands, strong fresnel rim    (anime hero light)
 //
 // A PBR ground plane runs behind them so the difference between
 // the cel-quantised lighting and the smooth PBR term reads at a
 // glance. One directional sun + a light ambient term feeds both
 // pipelines; the toon path adds an `ambientFloor` so the shadow
-// side never crushes to black (Ghibli's signature).
+// side never crushes to black (the cel-shading signature).
 
 import "@hatch:game"  for Game
 import "@hatch:gpu"   for Renderer3D, Camera3D, Mesh, Material
@@ -56,12 +56,12 @@ class ToonShading is Game {
     _hardCel.rimStrength  = 0.0
     _hardCel.ambientFloor = 0.40
 
-    // 3-band Ghibli-default cel.
-    _ghibli = Material.new(Vec4.new(0.55, 0.78, 0.92, 1.0))
-    _ghibli.shadingModel = "toon"
-    _ghibli.bands        = 3
-    _ghibli.rimStrength  = 0.0
-    _ghibli.ambientFloor = 0.45
+    // 3-band default cel — soft midtones.
+    _softCel = Material.new(Vec4.new(0.55, 0.78, 0.92, 1.0))
+    _softCel.shadingModel = "toon"
+    _softCel.bands        = 3
+    _softCel.rimStrength  = 0.0
+    _softCel.ambientFloor = 0.45
 
     // 4-band hero-light with a thin rim — anime / action key shot.
     // rimWidth is the fresnel exponent (higher = thinner rim), so
@@ -99,7 +99,7 @@ class ToonShading is Game {
     _renderer3d.draw(_ground, _groundMat, groundXf)
 
     _renderer3d.draw(_sphere, _hardCel, Mat4.translation(-2.4, 0.6, 0))
-    _renderer3d.draw(_sphere, _ghibli,  Mat4.translation( 0.0, 0.6, 0))
+    _renderer3d.draw(_sphere, _softCel,  Mat4.translation( 0.0, 0.6, 0))
     _renderer3d.draw(_sphere, _heroRim, Mat4.translation( 2.4, 0.6, 0))
   }
 }

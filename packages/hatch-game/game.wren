@@ -823,16 +823,17 @@ class Game {
     // `Gltf.fromAssetsDir` — get a responsive window throughout.
     // System.print("[launch] entering setup(): %(((Clock.mono - tStart) * 1000).round)ms")
     var setupFiber = Fiber.new { instance.setup(g) }
-    var setupErrRaw = null
     while (!setupFiber.isDone) {
       if (window.closeRequested) break
-      setupErrRaw = setupFiber.call()
+      setupFiber.call()
       paintLoadingFrame.call()
     }
-    // Stale-slot guard — fiber.call can leak a stale slot value
-    // on a clean return (see feedback_fiber_try_stale_slot.md).
-    var setupErr = setupErrRaw is String ? setupErrRaw : null
-    if (setupErr != null) Fiber.abort(setupErr)
+    // Canonical Wren discriminator: `fiber.error` is null on
+    // clean exit and the abort value on `Fiber.abort(...)`. The
+    // call() return value is the body's yielded / last expression
+    // which can be a String (e.g. setup ending in System.print),
+    // so type-checking the return is unreliable.
+    if (setupFiber.error != null) Fiber.abort(setupFiber.error)
 
     // System.print("[launch] setup done, main loop: %(((Clock.mono - tStart) * 1000).round)ms")
     g.lastTime_  = Clock.mono
@@ -955,20 +956,35 @@ class Game {
       var post = g.postFX
       var sceneColorView = frame.view
       var sceneDepthView = depthView
+      var sceneNormalView = null
       if (post != null) {
         post.resize_(g.width, g.height)
         sceneColorView = post.sceneView_
         if (post.sceneDepthView_ != null) sceneDepthView = post.sceneDepthView_
+        sceneNormalView = post.sceneNormalView_
       }
 
-      var passDesc = {
-        "colorAttachments": [{
-          "view":       sceneColorView,
+      var colorAttachments = [{
+        "view":       sceneColorView,
+        "loadOp":     "clear",
+        "clearValue": c["clearColor"],
+        "storeOp":    "store"
+      }]
+      // Secondary normal G-buffer — only attached when PostFX was
+      // built with `{ "normalFormat": ... }` (typically an
+      // OutlinePass downstream). Cleared to (0.5, 0.5, 1, 1) which
+      // packs as the +Z (camera-facing) unit normal, so any
+      // fragment the scene doesn't write resolves to "no edge"
+      // under depth+normal Sobel.
+      if (sceneNormalView != null) {
+        colorAttachments.add({
+          "view":       sceneNormalView,
           "loadOp":     "clear",
-          "clearValue": c["clearColor"],
+          "clearValue": [0.5, 0.5, 1.0, 1.0],
           "storeOp":    "store"
-        }]
+        })
       }
+      var passDesc = { "colorAttachments": colorAttachments }
       if (sceneDepthView != null) {
         passDesc["depthStencilAttachment"] = {
           "view":            sceneDepthView,
@@ -1000,16 +1016,15 @@ class Game {
       // Surface. We capture the error, finish the frame, and
       // re-raise after the device has been told to submit.
       var drawFiber = Fiber.new { instance.draw(g) }
-      var drawErrRaw = drawFiber.try()
-      // Workaround for a wlift codegen bug: `Fiber.try()` on a
-      // cleanly-returning fiber occasionally returns whatever was
-      // last in the result slot (a stale String / Num / Object) in
-      // place of `null`. A genuine `Fiber.abort(...)` always passes
-      // a String message, so we accept only Strings as real errors.
-      // Anything else (Num, Map, instance, etc.) we treat as a
-      // clean exit. If we ever start using non-string abort values
-      // intentionally, switch this to a sentinel match instead.
-      var drawErr = drawErrRaw is String ? drawErrRaw : null
+      drawFiber.try()
+      // Canonical Wren: `fiber.error` is the discriminator —
+      // null on clean exit, the abort value on `Fiber.abort(...)`.
+      // The `try()` return value is the body's last expression on
+      // clean exit and the abort String on abort; relying on its
+      // type to discriminate breaks when `draw()` ends in any
+      // call whose return is itself a String (e.g. `Map[k]` where
+      // the value is a String).
+      var drawErr = drawFiber.error
       // End whichever pass is currently active on `g`. If the user
       // ended `pass` (the framework-opened one) and started their
       // own follow-up, `g.pass` now references the follow-up; we

@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.3.36 -- 2026-06-05
+
+`@hatch:gpu` dep pin advanced 0.3.20 → 0.3.21 to pick up the
+foliage transform-pack helpers (`Renderer3D.writeInstanceXYZ`)
+and `Mesh.grassBlade` primitive (§12.6). No `@hatch:game`
+surface change; the existing `Foliage.scatter` already supplies
+the (x, z) placement points that feed the new fast path.
+
+## 0.3.35 -- 2026-06-05
+
+`@hatch:gpu` dep pin advanced 0.3.19 → 0.3.20 to pick up the
+toon-skinned pipeline + skinned/billboard MRT (§12.5). No
+`@hatch:game` surface change; `drawSkinned` consumers and
+particle systems automatically inherit MRT compatibility and
+toon dispatch when material flips `shadingModel = "toon"`.
+
+## 0.3.34 -- 2026-06-05
+
+§12.4 of the stylised-shading plan — PostFX dispatch ctx surfaces the
+scene normal view alongside depth.
+
+- `PostFX.runChain` per-step `ctx` now includes
+  `"normalView": _sceneNormalView` (parallel to the existing
+  `"depthView"`). `OutlinePass` in `@hatch:postfx` consumes it.
+  Other passes are unaffected — they read `ctx["depthView"]` as
+  before and ignore the new field.
+- No `@hatch:gpu` pin change (still 0.3.19).
+
+## 0.3.33 -- 2026-06-05
+
+`@hatch:gpu` dep pin advanced 0.3.18 → 0.3.19 to pick up the
+toon-instanced pipeline + instanced MRT (§12.3). No `@hatch:game`
+surface change; ParticleSystem3D and other consumers of
+`drawMeshInstanced` automatically inherit toon dispatch when their
+`Material.shadingModel` is flipped to `"toon"`.
+
+## 0.3.32 -- 2026-06-05
+
+§12.2 of the stylised-shading plan — PostFX + scene-pass support for
+the secondary normal G-buffer.
+
+- `PostFX.new(g, { "normalFormat": "rgba8unorm" })` 2-arg form
+  opts in to a third scene-attached target. `PostFX.sceneNormalView_`
+  and `PostFX.normalFormat_` expose the resource so OutlinePass
+  (§12.4) and similar edge-aware passes can sample it.
+- `Game.run` attaches `sceneNormalView_` as a second colour
+  attachment on the scene render pass when present, with clear
+  value `(0.5, 0.5, 1.0, 1.0)` (packed +Z unit normal — anything
+  the scene doesn't write resolves to "no edge" under depth+normal
+  Sobel).
+- `@hatch:gpu` dep pin advanced 0.3.17 → 0.3.18 for
+  `Renderer3D.new(.., normalFormat)` and the `fs_main_mrt` /
+  `fs_toon_main_mrt` shader entries that emit packed world-space
+  normals into `@location(1)`.
+
 ## 0.3.31 -- 2026-06-05
 
 `@hatch:gpu` dep pin advanced 0.3.16 → 0.3.17 to pick up the

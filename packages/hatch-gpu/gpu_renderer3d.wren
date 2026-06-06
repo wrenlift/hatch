@@ -23,7 +23,7 @@ import "./gpu_shader"   for Shader
 ///   renderer rebuilds this once per `beginFrame`.
 /// - Group 1 (per-draw): model + normal matrix. Rebuilt per
 ///   `draw` call.
-/// - Group 2 (material): 64-byte material uniform + 5 textures
+/// - Group 2 (material): 112-byte material uniform + 5 textures
 ///   (albedo / metallic-roughness / normal / occlusion / emissive)
 ///   + 1 sampler. Cached per-Material; the cache reuses the
 ///   group while the material's `revision_` is unchanged and
@@ -149,7 +149,48 @@ class Renderer3D {
 
       @fragment
       fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-        return textureSample(tex, samp, in.uv) * in.color;
+        let tex_s = textureSample(tex, samp, in.uv);
+        // Premultiplied-additive: RGB is gated by tex.a (disc
+        // falloff for old constant-RGB discs) AND tex.rgb (for
+        // discs that bake falloff into RGB), AND in.color.a
+        // (lifetime fade). Under additive blend the spark fades
+        // out at end-of-life and reads as a circular halo.
+        let life = in.color.a;
+        let mask = tex_s.a;
+        let rgb  = tex_s.rgb * in.color.rgb * life * mask;
+        return vec4<f32>(rgb, life * mask);
+      }
+
+      // MRT entry — used when the renderer is built with
+      // `normalFormat`. Billboards intentionally write a neutral
+      // (camera-facing) normal placeholder so a billboard
+      // composed against a normal target doesn't trigger wgpu
+      // validation, but also doesn't contribute false silhouettes
+      // to OutlinePass-style edge detection.
+      struct FsOutMrt {
+        @location(0) color:  vec4<f32>,
+        @location(1) normal: vec4<f32>,
+      }
+      @fragment
+      fn fs_main_mrt(in: VsOut) -> FsOutMrt {
+        let tex_s = textureSample(tex, samp, in.uv);
+        // Premultiplied-alpha output under the premultiplied
+        // blend pipeline: RGB is gated by tex.a (disc falloff)
+        // AND in.color.a (lifetime fade) so the spark is a soft
+        // circle that cleanly fades out at end-of-life. The
+        // output alpha matches the same gate, so at the disc
+        // edge / end-of-life the blend formula
+        // `src + dst*(1 - src.a)` collapses to `dst` and the
+        // background is preserved instead of erased to black.
+        let life = in.color.a;
+        let mask = tex_s.a;
+        let rgb  = tex_s.rgb * in.color.rgb * life * mask;
+        // Normal MRT alpha is HARD-ZERO so the alpha-blended
+        // normal target preserves `dst` everywhere — there's no
+        // gradient from camera-facing to background inside the
+        // disc for OutlinePass's sobel to detect, so billboards
+        // never get inked.
+        return FsOutMrt(vec4<f32>(rgb, life * mask), vec4<f32>(0.5, 0.5, 1.0, 0.0));
       }
     "
   }
@@ -176,8 +217,19 @@ class Renderer3D {
   // shaded pipeline; the PBR shader has a matching field on its
   // MaterialUniforms struct but ignores it, so a single Material
   // can drive either pipeline depending on `shadingModel`.
-  static MAT_UBO_BYTES_    { 80 }
+  static MAT_UBO_BYTES_    { 112 }       // factors(80) + uv_xform vec4 (16) + uv_rot vec4 (16)
   static SHADOW_UBO_BYTES_ { 128 }       // light_vp(64) + model(64) per draw
+
+  // Pre-allocated per-draw UBO slot count. Each individual `draw()`
+  // call reserves one slot for its model + normal_mat upload; the
+  // pool is sized at construction so first-frame draws don't
+  // create + bind 100 buffers under GC pressure. 256 covers a
+  // dense procedural scene; pools grow past this on demand at the
+  // usual lazy-allocation cost (which is fine once the steady-state
+  // peak is reached — the corruption only fires when many
+  // createBuffer + createBindGroup calls land inside one
+  // command-encoder pass).
+  static INITIAL_DRAW_POOL_ { 256 }
 
   // Pipeline-specific WGSL — structs, bindings, and entry points.
   // Composed with the `Shader` factory library that supplies
@@ -225,11 +277,21 @@ class Renderer3D {
         // Toon-shading params. Read by the cel-shaded pipeline only;
         // the PBR shader binds this struct identically but ignores
         // the slot.
-        //   x = band count (>=2; 3 = classic three-tone Ghibli)
+        //   x = band count (>=2; 3 = classic three-tone cel look)
         //   y = rim strength (0 disables; 1 saturates the silhouette)
         //   z = rim width (Fresnel exponent; higher = thinner rim)
         //   w = ambient floor (shadow side minimum brightness 0..1)
         toon:           vec4<f32>,
+        // KHR_texture_transform vec4 #1: xy = uv scale, zw = uv offset.
+        // Applied to in.uv before every textureSample so a single
+        // small tile can repeat across a large mesh without rewriting
+        // mesh UVs. Identity is (1, 1, 0, 0).
+        uv_xform:       vec4<f32>,
+        // KHR_texture_transform vec4 #2: x = cos(rotation),
+        // y = sin(rotation), z/w padding. Rotation is around the UV
+        // origin (0, 0) per the KHR spec — pre-translate via offset
+        // to rotate around a different pivot. Identity is (1, 0, 0, 0).
+        uv_rot:         vec4<f32>,
       };
 
       @group(0) @binding(0) var<uniform> scene: SceneUniforms;
@@ -246,6 +308,22 @@ class Renderer3D {
       @group(2) @binding(4) var occlusion_tex: texture_2d<f32>;
       @group(2) @binding(5) var emissive_tex:  texture_2d<f32>;
       @group(2) @binding(6) var samp:          sampler;
+
+      // KHR_texture_transform helper. Applied to every uv read by
+      // `textureSample` so a single tile can be repeated and rotated
+      // across a mesh without re-authoring UVs. Identity when
+      // `Material.uvScale = (1, 1)`, `uvOffset = (0, 0)`,
+      // `uvRotation = 0` (the Material default).
+      fn apply_uv_xform(uv: vec2<f32>) -> vec2<f32> {
+        let scaled  = uv * mat.uv_xform.xy;
+        let c       = mat.uv_rot.x;
+        let s       = mat.uv_rot.y;
+        let rotated = vec2<f32>(
+          scaled.x * c - scaled.y * s,
+          scaled.x * s + scaled.y * c
+        );
+        return rotated + mat.uv_xform.zw;
+      }
 
       // Shadow attenuation for the primary shadow-casting
       // directional light. Returns 1.0 when shadows are disabled
@@ -300,12 +378,13 @@ class Renderer3D {
 
       // Apply wind-driven sway to a model-local vertex. Bends the
       // mesh in the wind direction proportionally to the vertex's
-      // local-Y (so the base stays put and the tip moves most). A
-      // world-space phase term decorrelates neighbouring instances
-      // so the field doesn't sway in lockstep.
+      // local-Y (so the base stays put and the tip moves most). The
+      // phase advances along the wind direction so neighbouring
+      // blades share a phase and bend together as a rolling gust.
       fn apply_sway(local_pos: vec3<f32>, anchor_world: vec3<f32>, sway: f32) -> vec3<f32> {
         if (sway <= 0.0) { return local_pos; }
-        let phase = anchor_world.x * 0.45 + anchor_world.z * 0.37 + scene.wind.z * 2.6;
+        let on_axis = anchor_world.x * scene.wind.x + anchor_world.z * scene.wind.y;
+        let phase = on_axis * 0.20 - scene.wind.z * 1.6;
         let osc   = sin(phase);
         let bend  = local_pos.y * sway * scene.wind.w * osc * 0.30;
         return vec3<f32>(
@@ -381,13 +460,19 @@ class Renderer3D {
         return c;
       }
 
-      @fragment
-      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+      // PBR lighting computation, extracted from `fs_main` so the
+      // MRT entry point (`fs_main_mrt`, defined at the end of this
+      // module) can reuse the exact same lit value while ALSO
+      // emitting world-space normals into the secondary G-buffer.
+      // WGSL doesn't allow one @fragment entry point to call
+      // another, so the shared logic has to live in a plain
+      // function.
+      fn pbr_compute(in: VsOut) -> vec4<f32> {
         // 1. Albedo: factor × texture. Texture sampled as sRGB
         //    (the shader expects linear input — when the host
         //    creates the texture with `*-srgb` format, the
         //    sampler does the decode; otherwise we'd `srgb_to_linear`).
-        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+        let albedo_sample = textureSample(albedo_tex, samp, apply_uv_xform(in.uv));
         var base_color = mat.albedo_color * albedo_sample;
 
         // 2. Alpha mask: glTF spec says mask = discard below cutoff.
@@ -433,14 +518,14 @@ class Renderer3D {
         }
 
         // 3. Metallic + roughness: factor × MR.b / MR.g per glTF.
-        let mr_sample = textureSample(mr_tex, samp, in.uv);
+        let mr_sample = textureSample(mr_tex, samp, apply_uv_xform(in.uv));
         let metallic  = mat.factors.x * mr_sample.b;
         let roughness = mat.factors.y * mr_sample.g;
 
         // 4. Normal: sample tangent-space xy, build TBN from vertex
         //    tangent when available, otherwise screen-space.
         let N0 = normalize(in.normal);
-        let n_sample = textureSample(normal_tex, samp, in.uv).xy * 2.0 - vec2<f32>(1.0);
+        let n_sample = textureSample(normal_tex, samp, apply_uv_xform(in.uv)).xy * 2.0 - vec2<f32>(1.0);
         let N = surface_normal(N0, in.tangent, in.world, in.uv, n_sample, mat.factors.z);
 
         // 5. View direction.
@@ -508,7 +593,7 @@ class Renderer3D {
         //    F0 mixing; dielectrics scatter it diffusely. Adds the
         //    legacy flat ambient on top so callers that don't set
         //    an environment still get a base fill.
-        let ao_sample = textureSample(occlusion_tex, samp, in.uv).r;
+        let ao_sample = textureSample(occlusion_tex, samp, apply_uv_xform(in.uv)).r;
         let ao = mix(1.0, ao_sample, mat.factors.w);
         let env_n = env_sample(N);
         let R     = reflect(-V, N);
@@ -533,13 +618,20 @@ class Renderer3D {
 
         // 8. Emissive. Added on top — never tonemapped against
         //    indirectly, but the final ACES pass still touches it.
-        let emissive_sample = textureSample(emissive_tex, samp, in.uv).rgb;
+        let emissive_sample = textureSample(emissive_tex, samp, apply_uv_xform(in.uv)).rgb;
         let emissive = mat.emissive_color.rgb * emissive_sample;
 
         // 9. Tonemap + alpha output.
         let hdr = Lo + ambient_term + emissive;
         let ldr = tonemap_aces(hdr);
         return vec4<f32>(ldr, base_color.a);
+      }
+
+      // Single-target PBR entry — used when the renderer is built
+      // without `normalFormat`. Pure delegation to `pbr_compute`.
+      @fragment
+      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+        return pbr_compute(in);
       }
 
       // -- Toon / cel-shaded fragment entry. -------------------
@@ -553,9 +645,10 @@ class Renderer3D {
       // author against. Albedo / emissive texture sampling + alpha-
       // mode handling carry over from the PBR path so one Material
       // can drive either pipeline by flipping `shadingModel`.
-      @fragment
-      fn fs_toon_main(in: VsOut) -> @location(0) vec4<f32> {
-        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+      // Toon lighting computation — same compute / entry split as
+      // `pbr_compute` so the MRT entry can share it.
+      fn toon_compute(in: VsOut) -> vec4<f32> {
+        let albedo_sample = textureSample(albedo_tex, samp, apply_uv_xform(in.uv));
         var base_color = mat.albedo_color * albedo_sample;
         let alpha_mode = mat.alpha.x;
         if (alpha_mode == 1.0) {
@@ -598,9 +691,9 @@ class Renderer3D {
             key_tint = dl.color.rgb;
           }
         }
-        // Cool shadow / warm key two-tone tint — the signature
-        // Ghibli move. Build the two endpoint colours, then mix
-        // between them by the quantised lit amount. This keeps
+        // Cool shadow / warm key two-tone tint — the canonical
+        // cel-shading move. Build the two endpoint colours, then
+        // mix between them by the quantised lit amount. This keeps
         // shadows readable as the material colour (just cooler +
         // dimmer) instead of compound-darkening to near-black.
         let shadow_tint  = scene.ambient.rgb;
@@ -609,19 +702,60 @@ class Renderer3D {
         let lit_amount   = max(step_max, ambient_floor);
         var lit = mix(shadow_color, lit_color, lit_amount);
 
-        // Rim light: Fresnel-driven silhouette highlight, additive.
+        // Rim light: Fresnel-driven silhouette highlight, saturated
+        // blend toward white. At grazing view angles dot(N, V) -> 0
+        // and fresnel -> 1.0; the previous additive form
+        // (lit = lit + vec3(rim)) added 0.25 white across every
+        // upward-facing surface (every grass blade has hardcoded
+        // +Y normals), pushing lit out of LDR range and tripping
+        // Bloom's threshold so the foreground washed to a glowing
+        // cream-yellow haze at low camera pitch. Using mix toward
+        // white clamps the contribution at white and never crosses
+        // the bloom threshold accidentally.
         if (rim_strength > 0.0) {
           let fresnel = 1.0 - max(0.0, dot(N, V));
-          let rim = pow(fresnel, rim_width) * rim_strength;
-          lit = lit + vec3<f32>(rim);
+          let rim_factor = pow(fresnel, rim_width) * rim_strength;
+          lit = mix(lit, vec3<f32>(1.0), rim_factor);
         }
 
         // Emissive carries through so authored self-glow elements
         // still read (lanterns, signage, magic).
-        let toon_emissive_sample = textureSample(emissive_tex, samp, in.uv).rgb;
+        let toon_emissive_sample = textureSample(emissive_tex, samp, apply_uv_xform(in.uv)).rgb;
         lit = lit + mat.emissive_color.rgb * toon_emissive_sample;
 
         return vec4<f32>(lit, base_color.a);
+      }
+
+      // Single-target toon entry.
+      @fragment
+      fn fs_toon_main(in: VsOut) -> @location(0) vec4<f32> {
+        return toon_compute(in);
+      }
+
+      // -- MRT entries. --------------------------------------------
+      //
+      // Used when the renderer is built with `normalFormat` set.
+      // The PostFX chain's OutlinePass (and any other depth+normal
+      // edge-aware effect) samples `@location(1)`. World-space
+      // normals are packed `N * 0.5 + 0.5` into rgba8unorm so the
+      // clear value (0.5, 0.5, 1.0) reads as the +Z unit normal —
+      // anything the scene doesn't write registers as 'no edge'
+      // under depth+normal Sobel.
+      struct FsOutMrt {
+        @location(0) color:  vec4<f32>,
+        @location(1) normal: vec4<f32>,
+      }
+      @fragment
+      fn fs_main_mrt(in: VsOut) -> FsOutMrt {
+        let color = pbr_compute(in);
+        let n = normalize(in.normal) * 0.5 + 0.5;
+        return FsOutMrt(color, vec4<f32>(n, 1.0));
+      }
+      @fragment
+      fn fs_toon_main_mrt(in: VsOut) -> FsOutMrt {
+        let color = toon_compute(in);
+        let n = normalize(in.normal) * 0.5 + 0.5;
+        return FsOutMrt(color, vec4<f32>(n, 1.0));
       }
     "
   }
@@ -686,6 +820,10 @@ class Renderer3D {
         // Toon-shading slot (read by the cel-shaded pipeline; this
         // shader binds the struct identically but ignores it).
         toon:           vec4<f32>,
+        // KHR_texture_transform — xy = scale, zw = offset.
+        uv_xform:       vec4<f32>,
+        // KHR_texture_transform rotation — x = cos, y = sin.
+        uv_rot:         vec4<f32>,
       };
 
       @group(0) @binding(0) var<uniform>            scene: SceneUniforms;
@@ -705,6 +843,18 @@ class Renderer3D {
       @group(2) @binding(4) var                     occlusion_tex: texture_2d<f32>;
       @group(2) @binding(5) var                     emissive_tex:  texture_2d<f32>;
       @group(2) @binding(6) var                     samp:       sampler;
+
+      // KHR_texture_transform helper (see PBR shader for spec).
+      fn apply_uv_xform(uv: vec2<f32>) -> vec2<f32> {
+        let scaled  = uv * mat.uv_xform.xy;
+        let c       = mat.uv_rot.x;
+        let s       = mat.uv_rot.y;
+        let rotated = vec2<f32>(
+          scaled.x * c - scaled.y * s,
+          scaled.x * s + scaled.y * c
+        );
+        return rotated + mat.uv_xform.zw;
+      }
       @group(3) @binding(0) var<storage, read>      joint_matrices: array<mat4x4<f32>>;
 
       struct VsIn {
@@ -743,9 +893,11 @@ class Renderer3D {
         return o;
       }
 
-      @fragment
-      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+      // Skinned PBR lighting — Lambert + ambient + emissive. Same
+      // compute-fn + thin-entry split as the static + instanced
+      // shaders so the MRT entries can share the lit value.
+      fn skinned_pbr_compute(in: VsOut) -> vec4<f32> {
+        let albedo_sample = textureSample(albedo_tex, samp, apply_uv_xform(in.uv));
         let base_color    = mat.albedo_color * albedo_sample;
         let N = normalize(in.normal);
 
@@ -777,6 +929,89 @@ class Renderer3D {
         let ambient  = scene.ambient.rgb * base_color.rgb;
         let emissive = mat.emissive_color.rgb;
         return vec4<f32>(Lo + ambient + emissive, base_color.a);
+      }
+
+      // Skinned toon / cel-shaded lighting — same band-quantised
+      // dominant-directional + two-tone tint + Fresnel rim math
+      // as the static and instanced toon variants. Operates over
+      // the same VsOut shape so skinned characters can mix freely
+      // with cel-shaded static + instanced meshes.
+      fn skinned_toon_compute(in: VsOut) -> vec4<f32> {
+        let albedo_sample = textureSample(albedo_tex, samp, apply_uv_xform(in.uv));
+        var base_color = mat.albedo_color * albedo_sample;
+        let alpha_mode = mat.alpha.x;
+        if (alpha_mode == 1.0) {
+          if (base_color.a < mat.alpha.y) { discard; }
+        }
+
+        let N = normalize(in.normal);
+        let V = normalize(scene.camera_pos.xyz - in.world);
+
+        let bands         = max(mat.toon.x, 2.0);
+        let rim_strength  = mat.toon.y;
+        let rim_width     = max(mat.toon.z, 1.0);
+        let ambient_floor = clamp(mat.toon.w, 0.0, 1.0);
+
+        var step_max = 0.0;
+        var key_tint = vec3<f32>(1.0);
+        let dir_count = u32(scene.counts.x);
+        for (var i: u32 = 0u; i < dir_count; i = i + 1u) {
+          let dl = scene.dir_lights[i];
+          let L = normalize(-dl.dir_intensity.xyz);
+          let n_dot_l = max(dot(N, L), 0.0);
+          let stepped = floor(n_dot_l * bands + 0.5) / bands;
+          if (stepped > step_max) {
+            step_max = stepped;
+            key_tint = dl.color.rgb;
+          }
+        }
+
+        let shadow_tint  = scene.ambient.rgb;
+        let shadow_color = base_color.rgb * shadow_tint;
+        let lit_color    = base_color.rgb * key_tint;
+        let lit_amount   = max(step_max, ambient_floor);
+        var lit = mix(shadow_color, lit_color, lit_amount);
+
+        if (rim_strength > 0.0) {
+          let fresnel = 1.0 - max(0.0, dot(N, V));
+          let rim = pow(fresnel, rim_width) * rim_strength;
+          lit = lit + vec3<f32>(rim);
+        }
+
+        let toon_emissive_sample = textureSample(emissive_tex, samp, apply_uv_xform(in.uv)).rgb;
+        lit = lit + mat.emissive_color.rgb * toon_emissive_sample;
+
+        return vec4<f32>(lit, base_color.a);
+      }
+
+      // Single-target entries — picked when the renderer is built
+      // without `normalFormat`.
+      @fragment
+      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+        return skinned_pbr_compute(in);
+      }
+      @fragment
+      fn fs_toon_main(in: VsOut) -> @location(0) vec4<f32> {
+        return skinned_toon_compute(in);
+      }
+
+      // MRT entries — picked when the renderer is built with
+      // `normalFormat`. Packed world-space normal in @location(1).
+      struct FsOutMrt {
+        @location(0) color:  vec4<f32>,
+        @location(1) normal: vec4<f32>,
+      }
+      @fragment
+      fn fs_main_mrt(in: VsOut) -> FsOutMrt {
+        let color = skinned_pbr_compute(in);
+        let n = normalize(in.normal) * 0.5 + 0.5;
+        return FsOutMrt(color, vec4<f32>(n, 1.0));
+      }
+      @fragment
+      fn fs_toon_main_mrt(in: VsOut) -> FsOutMrt {
+        let color = skinned_toon_compute(in);
+        let n = normalize(in.normal) * 0.5 + 0.5;
+        return FsOutMrt(color, vec4<f32>(n, 1.0));
       }
     "
   }
@@ -816,6 +1051,10 @@ class Renderer3D {
         // Toon-shading slot (read by the cel-shaded pipeline; this
         // shader binds the struct identically but ignores it).
         toon:           vec4<f32>,
+        // KHR_texture_transform — xy = scale, zw = offset.
+        uv_xform:       vec4<f32>,
+        // KHR_texture_transform rotation — x = cos, y = sin.
+        uv_rot:         vec4<f32>,
       };
 
       @group(0) @binding(0) var<uniform> scene: SceneUniforms;
@@ -830,6 +1069,22 @@ class Renderer3D {
       @group(2) @binding(4) var occlusion_tex: texture_2d<f32>;
       @group(2) @binding(5) var emissive_tex:  texture_2d<f32>;
       @group(2) @binding(6) var samp:          sampler;
+
+      // KHR_texture_transform helper. Applied to every uv read by
+      // `textureSample` so a single tile can be repeated and rotated
+      // across a mesh without re-authoring UVs. Identity when
+      // `Material.uvScale = (1, 1)`, `uvOffset = (0, 0)`,
+      // `uvRotation = 0` (the Material default).
+      fn apply_uv_xform(uv: vec2<f32>) -> vec2<f32> {
+        let scaled  = uv * mat.uv_xform.xy;
+        let c       = mat.uv_rot.x;
+        let s       = mat.uv_rot.y;
+        let rotated = vec2<f32>(
+          scaled.x * c - scaled.y * s,
+          scaled.x * s + scaled.y * c
+        );
+        return rotated + mat.uv_xform.zw;
+      }
 
       fn shadow_factor(world_pos: vec3<f32>, N: vec3<f32>, L: vec3<f32>) -> f32 {
         if (scene.counts.w < 0.5) { return 1.0; }
@@ -870,9 +1125,11 @@ class Renderer3D {
         @location(3)       tangent: vec4<f32>,
       };
 
+      // Same coherent-wave sway as the PBR pipeline above.
       fn apply_sway(local_pos: vec3<f32>, anchor_world: vec3<f32>, sway: f32) -> vec3<f32> {
         if (sway <= 0.0) { return local_pos; }
-        let phase = anchor_world.x * 0.45 + anchor_world.z * 0.37 + scene.wind.z * 2.6;
+        let on_axis = anchor_world.x * scene.wind.x + anchor_world.z * scene.wind.y;
+        let phase = on_axis * 0.20 - scene.wind.z * 1.6;
         let osc   = sin(phase);
         let bend  = local_pos.y * sway * scene.wind.w * osc * 0.30;
         return vec3<f32>(
@@ -938,9 +1195,11 @@ class Renderer3D {
         return c;
       }
 
-      @fragment
-      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+      // Instanced PBR lighting computation — same split as the
+      // non-instanced shader so the MRT entry below shares the
+      // exact lit value and just adds a packed-normal write.
+      fn instanced_pbr_compute(in: VsOut) -> vec4<f32> {
+        let albedo_sample = textureSample(albedo_tex, samp, apply_uv_xform(in.uv));
         var base_color = mat.albedo_color * albedo_sample;
         let alpha_mode = mat.alpha.x;
         // Foliage edge damp: see non-instanced PBR for rationale.
@@ -973,12 +1232,12 @@ class Renderer3D {
           base_color = vec4<f32>(base_color.rgb * saturate(1.0 - bleed), base_color.a);
         }
 
-        let mr_sample = textureSample(mr_tex, samp, in.uv);
+        let mr_sample = textureSample(mr_tex, samp, apply_uv_xform(in.uv));
         let metallic  = mat.factors.x * mr_sample.b;
         let roughness = mat.factors.y * mr_sample.g;
 
         let N0 = normalize(in.normal);
-        let n_sample = textureSample(normal_tex, samp, in.uv).xy * 2.0 - vec2<f32>(1.0);
+        let n_sample = textureSample(normal_tex, samp, apply_uv_xform(in.uv)).xy * 2.0 - vec2<f32>(1.0);
         let N = surface_normal(N0, in.tangent, in.world, in.uv, n_sample, mat.factors.z);
 
         let V = normalize(scene.camera_pos.xyz - in.world);
@@ -1018,7 +1277,7 @@ class Renderer3D {
           Lo = Lo + pbr_direct(N, V, L, base_color.rgb, metallic, roughness, radiance);
         }
 
-        let ao_sample = textureSample(occlusion_tex, samp, in.uv).r;
+        let ao_sample = textureSample(occlusion_tex, samp, apply_uv_xform(in.uv)).r;
         let ao = mix(1.0, ao_sample, mat.factors.w);
         // IBL — same shape as the non-instanced PBR shader.
         let env_n = env_sample(N);
@@ -1035,11 +1294,95 @@ class Renderer3D {
         let specular_ibl = kS * env_r;
         let ambient_term = (diffuse_ibl + specular_ibl) * ao
                          + scene.ambient.rgb * base_color.rgb * ao;
-        let emissive_sample = textureSample(emissive_tex, samp, in.uv).rgb;
+        let emissive_sample = textureSample(emissive_tex, samp, apply_uv_xform(in.uv)).rgb;
         let emissive = mat.emissive_color.rgb * emissive_sample;
         let hdr = Lo + ambient_term + emissive;
         let ldr = tonemap_aces(hdr);
         return vec4<f32>(ldr, base_color.a);
+      }
+
+      // Instanced toon / cel-shaded lighting computation — bands
+      // the dominant directional light's dot(N, L), two-tone tint
+      // between scene ambient and the key colour, Fresnel rim.
+      // Same math as the non-instanced `toon_compute` so the
+      // shading is uniform whether a mesh is drawn through `draw`
+      // or `drawMeshInstanced`.
+      fn instanced_toon_compute(in: VsOut) -> vec4<f32> {
+        let albedo_sample = textureSample(albedo_tex, samp, apply_uv_xform(in.uv));
+        var base_color = mat.albedo_color * albedo_sample;
+        let alpha_mode = mat.alpha.x;
+        if (alpha_mode == 1.0) {
+          if (base_color.a < mat.alpha.y) { discard; }
+        }
+
+        let N = normalize(in.normal);
+        let V = normalize(scene.camera_pos.xyz - in.world);
+
+        let bands         = max(mat.toon.x, 2.0);
+        let rim_strength  = mat.toon.y;
+        let rim_width     = max(mat.toon.z, 1.0);
+        let ambient_floor = clamp(mat.toon.w, 0.0, 1.0);
+
+        var step_max = 0.0;
+        var key_tint = vec3<f32>(1.0);
+        let dir_count = u32(scene.counts.x);
+        for (var i: u32 = 0u; i < dir_count; i = i + 1u) {
+          let dl = scene.dir_lights[i];
+          let L = normalize(-dl.dir_intensity.xyz);
+          let n_dot_l = max(dot(N, L), 0.0);
+          let stepped = floor(n_dot_l * bands + 0.5) / bands;
+          if (stepped > step_max) {
+            step_max = stepped;
+            key_tint = dl.color.rgb;
+          }
+        }
+
+        let shadow_tint  = scene.ambient.rgb;
+        let shadow_color = base_color.rgb * shadow_tint;
+        let lit_color    = base_color.rgb * key_tint;
+        let lit_amount   = max(step_max, ambient_floor);
+        var lit = mix(shadow_color, lit_color, lit_amount);
+
+        if (rim_strength > 0.0) {
+          let fresnel = 1.0 - max(0.0, dot(N, V));
+          let rim = pow(fresnel, rim_width) * rim_strength;
+          lit = lit + vec3<f32>(rim);
+        }
+
+        let toon_emissive_sample = textureSample(emissive_tex, samp, apply_uv_xform(in.uv)).rgb;
+        lit = lit + mat.emissive_color.rgb * toon_emissive_sample;
+
+        return vec4<f32>(lit, base_color.a);
+      }
+
+      // Single-target entries — used when the renderer is built
+      // without `normalFormat`.
+      @fragment
+      fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+        return instanced_pbr_compute(in);
+      }
+      @fragment
+      fn fs_toon_main(in: VsOut) -> @location(0) vec4<f32> {
+        return instanced_toon_compute(in);
+      }
+
+      // MRT entries — used when the renderer is built with
+      // `normalFormat`. Packed world-space normal in @location(1).
+      struct FsOutMrt {
+        @location(0) color:  vec4<f32>,
+        @location(1) normal: vec4<f32>,
+      }
+      @fragment
+      fn fs_main_mrt(in: VsOut) -> FsOutMrt {
+        let color = instanced_pbr_compute(in);
+        let n = normalize(in.normal) * 0.5 + 0.5;
+        return FsOutMrt(color, vec4<f32>(n, 1.0));
+      }
+      @fragment
+      fn fs_toon_main_mrt(in: VsOut) -> FsOutMrt {
+        let color = instanced_toon_compute(in);
+        let n = normalize(in.normal) * 0.5 + 0.5;
+        return FsOutMrt(color, vec4<f32>(n, 1.0));
       }
     "
   }
@@ -1118,8 +1461,29 @@ class Renderer3D {
   ///   matches the surface configure (`"bgra8unorm"` etc.).
   /// @param {String} depthFormat. Depth-attachment format, matches
   ///   the depth texture used in the pass descriptor.
+  /// @param {String} normalFormat. Optional secondary normal G-buffer
+  ///   format (typically `"rgba8unorm"`). When supplied, ALL render
+  ///   pipelines (PBR / transparent / toon, instanced PBR /
+  ///   instanced toon, skinned PBR / skinned toon) bind a second
+  ///   colour target and write world-space normals (packed as
+  ///   `N * 0.5 + 0.5`) for edge-aware PostFX like OutlinePass.
+  ///   Must match `PostFX.new(g, { "normalFormat": ... })`. The
+  ///   billboard / particle pipelines stay single-target — they
+  ///   write a neutral (camera-facing) normal placeholder so
+  ///   nothing breaks if a billboard renders while a normal target
+  ///   is bound, but they don't contribute meaningful edges to
+  ///   outline detection (intentional — sprites shouldn't be
+  ///   ink-outlined alongside meshes).
   construct new(device, surfaceFormat, depthFormat) {
-    _device = device
+    init_(device, surfaceFormat, depthFormat, null)
+  }
+  construct new(device, surfaceFormat, depthFormat, normalFormat) {
+    init_(device, surfaceFormat, depthFormat, normalFormat)
+  }
+
+  init_(device, surfaceFormat, depthFormat, normalFormat) {
+    _device       = device
+    _normalFormat = normalFormat
 
     var shader = Shader.module(device, [
       Shader.prelude,
@@ -1169,6 +1533,34 @@ class Renderer3D {
       "bindGroupLayouts": [_sceneBgl, _drawBgl, _materialBgl]
     })
 
+    // MRT-aware entry-point + target selection. When the renderer
+    // is constructed with `normalFormat != null`, the non-instanced
+    // pipelines route to the `_mrt` shader entries (which write
+    // packed world-space normals to `@location(1)`) and declare a
+    // second colour target. Existing single-target builds are
+    // unchanged.
+    var mrt = _normalFormat != null
+    var pbrEntry  = mrt ? "fs_main_mrt"      : "fs_main"
+    var toonEntry = mrt ? "fs_toon_main_mrt" : "fs_toon_main"
+    var transparentBlend = {
+      "color": {
+        "srcFactor": "src-alpha",
+        "dstFactor": "one-minus-src-alpha",
+        "operation": "add"
+      },
+      "alpha": {
+        "srcFactor": "one",
+        "dstFactor": "one-minus-src-alpha",
+        "operation": "add"
+      }
+    }
+    var opaqueTargets = [{ "format": surfaceFormat }]
+    var transparentTargets = [{ "format": surfaceFormat, "blend": transparentBlend }]
+    if (mrt) {
+      opaqueTargets.add({ "format": _normalFormat })
+      transparentTargets.add({ "format": _normalFormat })
+    }
+
     _pipeline = device.createRenderPipeline({
       "layout": _pipelineLayout,
       "vertex": {
@@ -1185,8 +1577,8 @@ class Renderer3D {
         }]
       },
       "fragment": {
-        "module": shader, "entryPoint": "fs_main",
-        "targets": [{ "format": surfaceFormat }]
+        "module": shader, "entryPoint": pbrEntry,
+        "targets": opaqueTargets
       },
       "primitive":    { "topology": "triangle-list", "cullMode": "back" },
       "depthStencil": {
@@ -1227,22 +1619,8 @@ class Renderer3D {
         }]
       },
       "fragment": {
-        "module": shader, "entryPoint": "fs_main",
-        "targets": [{
-          "format": surfaceFormat,
-          "blend": {
-            "color": {
-              "srcFactor": "src-alpha",
-              "dstFactor": "one-minus-src-alpha",
-              "operation": "add"
-            },
-            "alpha": {
-              "srcFactor": "one",
-              "dstFactor": "one-minus-src-alpha",
-              "operation": "add"
-            }
-          }
-        }]
+        "module": shader, "entryPoint": pbrEntry,
+        "targets": transparentTargets
       },
       "primitive":    { "topology": "triangle-list", "cullMode": "back" },
       "depthStencil": {
@@ -1275,8 +1653,8 @@ class Renderer3D {
         }]
       },
       "fragment": {
-        "module": shader, "entryPoint": "fs_toon_main",
-        "targets": [{ "format": surfaceFormat }]
+        "module": shader, "entryPoint": toonEntry,
+        "targets": opaqueTargets
       },
       "primitive":    { "topology": "triangle-list", "cullMode": "back" },
       "depthStencil": {
@@ -1326,8 +1704,8 @@ class Renderer3D {
         }]
       },
       "fragment": {
-        "module": instancedShader, "entryPoint": "fs_main",
-        "targets": [{ "format": surfaceFormat }]
+        "module": instancedShader, "entryPoint": pbrEntry,
+        "targets": opaqueTargets
       },
       "primitive":    { "topology": "triangle-list", "cullMode": "back" },
       "depthStencil": {
@@ -1337,6 +1715,41 @@ class Renderer3D {
         "depthBiasSlopeScale":  1.0
       },
       "label": "renderer3d-instanced-pipeline"
+    })
+
+    // Toon variant of the instanced pipeline. Same VS (per-instance
+    // model matrix + wind sway), same bind groups; differs only in
+    // the fragment entry point — `instanced_toon_compute` lives in
+    // the same shader module as `instanced_pbr_compute`, so we
+    // can swap entries at no extra compile cost. Picked at draw
+    // time when the bound `Material.shadingModel == "toon"`.
+    _toonInstancedPipeline = device.createRenderPipeline({
+      "layout": _instancedPipelineLayout,
+      "vertex": {
+        "module": instancedShader, "entryPoint": "vs_main",
+        "buffers": [{
+          "arrayStride": Renderer3D.FLOATS_PER_VERTEX_ * 4,
+          "stepMode": "vertex",
+          "attributes": [
+            { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
+            { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
+            { "shaderLocation": 2, "offset": 24, "format": "float32x2" },
+            { "shaderLocation": 3, "offset": 32, "format": "float32x4" }
+          ]
+        }]
+      },
+      "fragment": {
+        "module": instancedShader, "entryPoint": toonEntry,
+        "targets": opaqueTargets
+      },
+      "primitive":    { "topology": "triangle-list", "cullMode": "back" },
+      "depthStencil": {
+        "format": depthFormat, "depthWriteEnabled": true,
+        "depthCompare":         "less-equal",
+        "depthBias":            2,
+        "depthBiasSlopeScale":  1.0
+      },
+      "label": "renderer3d-instanced-pipeline-toon"
     })
     // Bind-group cache keyed by instance-storage-buffer id. Avoids
     // re-binding on hot redraws of the same instance set.
@@ -1394,8 +1807,8 @@ class Renderer3D {
         ]
       },
       "fragment": {
-        "module": skinnedShader, "entryPoint": "fs_main",
-        "targets": [{ "format": surfaceFormat }]
+        "module": skinnedShader, "entryPoint": pbrEntry,
+        "targets": opaqueTargets
       },
       "primitive":    { "topology": "triangle-list", "cullMode": "back" },
       "depthStencil": {
@@ -1405,6 +1818,56 @@ class Renderer3D {
         "depthBiasSlopeScale":  1.0
       },
       "label": "renderer3d-skinned-pipeline"
+    })
+
+    // Toon variant of the skinned pipeline. Shares the joint
+    // matrix palette + skinning VS; differs only in the fragment
+    // entry. Picked by `drawSkinned` when
+    // `Material.shadingModel == "toon"`. Same shader module, no
+    // extra compile cost.
+    _toonSkinnedPipeline = device.createRenderPipeline({
+      "layout": _skinnedPipelineLayout,
+      "vertex": {
+        "module": skinnedShader, "entryPoint": "vs_main",
+        "buffers": [
+          {
+            "arrayStride": Renderer3D.FLOATS_PER_VERTEX_ * 4,
+            "stepMode": "vertex",
+            "attributes": [
+              { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
+              { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
+              { "shaderLocation": 2, "offset": 24, "format": "float32x2" },
+              { "shaderLocation": 3, "offset": 32, "format": "float32x4" }
+            ]
+          },
+          {
+            "arrayStride": 16,
+            "stepMode": "vertex",
+            "attributes": [
+              { "shaderLocation": 4, "offset": 0, "format": "uint32x4" }
+            ]
+          },
+          {
+            "arrayStride": 16,
+            "stepMode": "vertex",
+            "attributes": [
+              { "shaderLocation": 5, "offset": 0, "format": "float32x4" }
+            ]
+          }
+        ]
+      },
+      "fragment": {
+        "module": skinnedShader, "entryPoint": toonEntry,
+        "targets": opaqueTargets
+      },
+      "primitive":    { "topology": "triangle-list", "cullMode": "back" },
+      "depthStencil": {
+        "format": depthFormat, "depthWriteEnabled": true,
+        "depthCompare":         "less-equal",
+        "depthBias":            2,
+        "depthBiasSlopeScale":  1.0
+      },
+      "label": "renderer3d-skinned-pipeline-toon"
     })
 
     // ---- Billboard pipeline. Spherical camera-facing quads for
@@ -1434,6 +1897,29 @@ class Renderer3D {
     _billboardPipelineLayout = device.createPipelineLayout({
       "bindGroupLayouts": [_billboardSceneBgl, _billboardInstanceBgl, _billboardMaterialBgl]
     })
+    var billboardEntry = mrt ? "fs_main_mrt" : "fs_main"
+    // Color target uses PREMULTIPLIED alpha so the same pipeline
+    // serves both translucent sprites (rain, smoke, fog) AND
+    // HDR-emissive ones (fireflies, sparks, halos). With the FS
+    // outputting RGB already premultiplied by alpha + mask, the
+    // formula `src.rgb + dst.rgb * (1 - src.a)` produces:
+    //   - translucent overlay for alpha-fading sprites — src.a
+    //     attenuates dst correctly, no "donut against bright
+    //     bloom" failure mode of standard alpha blend
+    //   - bright LDR-clamped centre for emissive sprites — bloom
+    //     extracts the saturated bright pixels and casts the
+    //     visible glow halo through the postFX chain
+    // Pure additive (One, One) would correctly handle emissives
+    // but turn rain drops into glowing white streaks; this single
+    // pipeline keeps both classes of sprite looking right.
+    var billboardTargets = [{ "format": surfaceFormat, "blend": "premultiplied" }]
+    if (mrt) {
+      // Normal target stays alpha-blended against the underlying
+      // surface normal so the disc's soft falloff edges don't
+      // appear as normal discontinuities to OutlinePass-style
+      // edge detection.
+      billboardTargets.add({ "format": _normalFormat, "blend": "alpha" })
+    }
     _billboardPipeline = device.createRenderPipeline({
       "layout": _billboardPipelineLayout,
       "vertex": {
@@ -1441,8 +1927,8 @@ class Renderer3D {
         "buffers": []
       },
       "fragment": {
-        "module": billboardShader, "entryPoint": "fs_main",
-        "targets": [{ "format": surfaceFormat, "blend": "alpha" }]
+        "module": billboardShader, "entryPoint": billboardEntry,
+        "targets": billboardTargets
       },
       "primitive":    { "topology": "triangle-list", "cullMode": "none" },
       "depthStencil": {
@@ -1519,13 +2005,38 @@ class Renderer3D {
     // intervening command-buffer records — all writes to a single
     // UBO collapse to the LAST write when the encoder finally
     // submits. So we can't share one draw UBO across multiple
-    // draws in a frame; each draw needs its own. The pool grows
-    // lazily (first frame creates as many as the scene needs,
-    // subsequent frames reuse) so steady-state per-frame cost
-    // stays at `writeFloats` calls only.
+    // draws in a frame; each draw needs its own.
+    //
+    // Pre-allocated to `Renderer3D.INITIAL_DRAW_POOL_` slots at
+    // construction so per-frame growth is zero in the common case
+    // (scenes that draw ≤ that many individual meshes). Empirically,
+    // doing `createBuffer + createBindGroup` repeatedly during
+    // `draw()` — across ~20+ slots in one frame — interacts badly
+    // with the GC and corrupts the shared `_drawUboFloats` list
+    // (Buffer.writeFloats fails with index-0 not-a-number on the
+    // next upload). Pre-allocating moves all allocator pressure to
+    // setup time, eliminating the hot-path corruption window.
+    // `reserveDrawSlot_` still grows the pool past the pre-allocated
+    // cap if needed; the per-slot cost just isn't paid every frame.
     _drawUboPool       = []   // List of Buffer
     _drawBindGroupPool = []   // List of BindGroup, indexed in lockstep with _drawUboPool
     _drawIndex         = 0
+    var poolPrefill = Renderer3D.INITIAL_DRAW_POOL_
+    var pi = 0
+    while (pi < poolPrefill) {
+      var ubo = device.createBuffer({
+        "size":  Renderer3D.DRAW_UBO_BYTES_,
+        "usage": ["uniform", "copy-dst"],
+        "label": "renderer3d-draw-ubo"
+      })
+      var bg = device.createBindGroup({
+        "layout":  _drawBgl,
+        "entries": [{ "binding": 0, "buffer": ubo, "size": Renderer3D.DRAW_UBO_BYTES_ }]
+      })
+      _drawUboPool.add(ubo)
+      _drawBindGroupPool.add(bg)
+      pi = pi + 1
+    }
 
     // Default sampler — linear filtering, repeat addressing.
     // Materials with point-filtered textures (pixel art) build
@@ -1552,7 +2063,15 @@ class Renderer3D {
     _materialCache = {}     // Material → { "bg": BindGroup, "ubo": Buffer, "rev": Num }
 
     _matUboFloats = []      // packing scratchpad — reused per draw
-    _drawUboFloats = []     // packing scratchpad — reused per draw
+    // `_drawUboFloats` lives on the hottest path in the renderer
+    // (one rebuild + writeFloats per `draw()` / `drawSkinned()` /
+    // `drawMeshInstancedIndirect()`). A plain Wren List triggers
+    // `writeFloats`'s slow per-element walker, and a GC cycle
+    // mid-frame can corrupt index 0 so the validator rejects the
+    // upload ("every element must be a number (index 0)"). A
+    // `Float32Array(32)` takes the typed-array memcpy fast path
+    // and bypasses the validator entirely.
+    _drawUboFloats = Float32Array.new(32)
     _sceneUboFloats = []    // packing scratchpad — reused per beginFrame
 
     _pass    = null
@@ -1992,6 +2511,13 @@ class Renderer3D {
   /// @returns {TextureView}
   shadowMapView_  { _shadowView }
 
+  /// The secondary normal G-buffer format the renderer was built
+  /// with, or `null` when single-target. OutlinePass + other edge-
+  /// aware PostFX consumers read this to verify their texture-
+  /// binding format matches the renderer's MRT setup.
+  /// @returns {String}
+  normalFormat    { _normalFormat }
+
   static numOr_(opts, key, fallback) {
     if (!opts.containsKey(key)) return fallback
     return opts[key]
@@ -2256,9 +2782,8 @@ class Renderer3D {
     // matrix itself doubles as a normal matrix; non-orthonormal
     // models will need `Mat4.inverse(model).transpose` once
     // `Mat4.inverse` is exposed.
-    _drawUboFloats.clear()
-    appendMat4_(_drawUboFloats, model)
-    appendMat4_(_drawUboFloats, model)
+    writeMat4ToScratch_(_drawUboFloats,  0, model)
+    writeMat4ToScratch_(_drawUboFloats, 16, model)
 
     // Pull (or grow) the per-draw UBO slot for this index.
     // Sharing one UBO across draws within a frame collapses
@@ -2327,13 +2852,33 @@ class Renderer3D {
 
     var entry = bindGroupFor_(material)
     var pass = _pass
-    pass.setPipeline(_instancedPipeline)
+    pass.setPipeline(instancedPipelineFor_(material))
     pass.setBindGroup(0, _sceneBindGroup)
     pass.setBindGroup(1, instanceBindGroupFor_(instanceBuffer))
     pass.setBindGroup(2, entry["bg"])
     pass.setVertexBuffer(0, mesh.vertexBuffer)
     pass.setIndexBuffer(mesh.indexBuffer, "uint32")
     pass.drawIndexed(mesh.indexCount, instanceCount)
+  }
+
+  // Pick the right instanced pipeline for `material`. Mirrors the
+  // non-instanced draw() dispatch: toon → `_toonInstancedPipeline`,
+  // anything else → the PBR-instanced pipeline. Transparent
+  // instanced is the PBR-instanced path with the caller's own
+  // sort + alpha-blend material — there's no parallel
+  // `_transparentInstancedPipeline` yet.
+  instancedPipelineFor_(material) {
+    if (material.shadingModel == "toon") return _toonInstancedPipeline
+    return _instancedPipeline
+  }
+
+  // Skinned-mesh dispatch: toon → `_toonSkinnedPipeline`,
+  // anything else → the PBR-skinned pipeline. Mirrors
+  // `instancedPipelineFor_` so `drawSkinned` consumers get
+  // material-driven shading-model selection.
+  skinnedPipelineFor_(material) {
+    if (material.shadingModel == "toon") return _toonSkinnedPipeline
+    return _skinnedPipeline
   }
 
   /// GPU-driven indexed-instanced draw. Identical render setup to
@@ -2365,7 +2910,7 @@ class Renderer3D {
 
     var entry = bindGroupFor_(material)
     var pass = _pass
-    pass.setPipeline(_instancedPipeline)
+    pass.setPipeline(instancedPipelineFor_(material))
     pass.setBindGroup(0, _sceneBindGroup)
     pass.setBindGroup(1, instanceBindGroupFor_(instanceBuffer))
     pass.setBindGroup(2, entry["bg"])
@@ -2399,16 +2944,15 @@ class Renderer3D {
     // Per-draw UBO (model + normal_mat), matching `draw`. Treats
     // the model matrix as its own normal_mat — valid for the
     // orthonormal transforms typical of skinned character roots.
-    _drawUboFloats.clear()
-    appendMat4_(_drawUboFloats, model)
-    appendMat4_(_drawUboFloats, model)
+    writeMat4ToScratch_(_drawUboFloats,  0, model)
+    writeMat4ToScratch_(_drawUboFloats, 16, model)
     var i = reserveDrawSlot_()
     _drawUboPool[i].writeFloats(0, _drawUboFloats)
 
     var skinBg = skin.bindWith(_skinBgl)
     var entry  = bindGroupFor_(material)
     var pass = _pass
-    pass.setPipeline(_skinnedPipeline)
+    pass.setPipeline(skinnedPipelineFor_(material))
     pass.setBindGroup(0, _sceneBindGroup)
     pass.setBindGroup(1, _drawBindGroupPool[i])
     pass.setBindGroup(2, entry["bg"])
@@ -2449,7 +2993,7 @@ class Renderer3D {
     if (!_sceneCommitted) commitScene_()
     var entry = bindGroupFor_(material)
     var pass = _pass
-    pass.setPipeline(_instancedPipeline)
+    pass.setPipeline(instancedPipelineFor_(material))
     pass.setBindGroup(0, _sceneBindGroup)
     pass.setBindGroup(2, entry["bg"])
     var i = 0
@@ -2695,6 +3239,73 @@ class Renderer3D {
     scratch[off + 31] = n[15]
   }
 
+  /// Foliage fast path. Writes one instance directly into
+  /// `scratch[slot]` from `(x, y, z, scale, yawRad)` without
+  /// constructing a Mat4. Same 32-float layout as `writeInstance`
+  /// — model matrix in the first 16, normal matrix in the second.
+  /// The normal matrix drops the uniform scale (vector transforms
+  /// don't need it; the renormalize in the VS would cancel it
+  /// anyway).
+  ///
+  /// Use this for scattered grass / leaf / rock fields where each
+  /// instance is a translation × Y-rotation × uniform scale; the
+  /// allocator-free path keeps a 100k-blade frame in CPU budget.
+  /// For sheared / non-uniform transforms, fall back to
+  /// `writeInstance`.
+  ///
+  /// @param {Float32Array} scratch
+  /// @param {Num} slot
+  /// @param {Num} x
+  /// @param {Num} y
+  /// @param {Num} z
+  /// @param {Num} scale  uniform scale (1.0 = mesh-native size)
+  /// @param {Num} yawRad rotation around the +Y axis (radians)
+  static writeInstanceXYZ(scratch, slot, x, y, z, scale, yawRad) {
+    var off = slot * 32
+    var cy = yawRad.cos
+    var sy = yawRad.sin
+    var sc = scale * cy
+    var ss = scale * sy
+    // Model — column-major in storage (writeInstance comment
+    // explains why). col 0 = (s·cy, 0, -s·sy, 0); col 2 = (s·sy, 0,
+    // s·cy, 0); col 3 = (x, y, z, 1); col 1 = (0, s, 0, 0).
+    scratch[off]      = sc
+    scratch[off + 1]  = 0
+    scratch[off + 2]  = -ss
+    scratch[off + 3]  = 0
+    scratch[off + 4]  = 0
+    scratch[off + 5]  = scale
+    scratch[off + 6]  = 0
+    scratch[off + 7]  = 0
+    scratch[off + 8]  = ss
+    scratch[off + 9]  = 0
+    scratch[off + 10] = sc
+    scratch[off + 11] = 0
+    scratch[off + 12] = x
+    scratch[off + 13] = y
+    scratch[off + 14] = z
+    scratch[off + 15] = 1
+    // Normal matrix — rotation only, scale dropped (the VS
+    // normalizes the result, and uniform scale cancels under
+    // normalize).
+    scratch[off + 16] = cy
+    scratch[off + 17] = 0
+    scratch[off + 18] = -sy
+    scratch[off + 19] = 0
+    scratch[off + 20] = 0
+    scratch[off + 21] = 1
+    scratch[off + 22] = 0
+    scratch[off + 23] = 0
+    scratch[off + 24] = sy
+    scratch[off + 25] = 0
+    scratch[off + 26] = cy
+    scratch[off + 27] = 0
+    scratch[off + 28] = 0
+    scratch[off + 29] = 0
+    scratch[off + 30] = 0
+    scratch[off + 31] = 1
+  }
+
   // Reserve the next free per-draw slot. Grows the parallel
   // pool arrays when the scene's draw count exceeds previous
   // frames'; otherwise just bumps the index. Returns the slot
@@ -2857,6 +3468,48 @@ class Renderer3D {
     _billboardSceneUbo.writeFloats(0, bbf)
   }
 
+  /// Pre-build (or refresh) the per-Material UBO + BindGroup so
+  /// the first draw of `material` in a frame doesn't pay the
+  /// `createBuffer + createBindGroup` cost on the hot path.
+  ///
+  /// Many props with many distinct materials drawn in one frame
+  /// produce enough allocator churn that the GC corrupts the
+  /// shared `_drawUboFloats` list mid-frame ("Buffer.writeFloats:
+  /// every element must be a number (index 0)"). Calling
+  /// `prewarmMaterial(m)` once at setup time keeps draw() pure
+  /// dispatch.
+  ///
+  /// @param {Material} material
+  prewarmMaterial(material) {
+    bindGroupFor_(material)
+  }
+
+  /// Walk every `GltfScene` in `scenes` and pre-warm a UBO +
+  /// BindGroup for every primitive's material. Equivalent to
+  /// calling `prewarmMaterial` for each non-null `prim.material`
+  /// across all the scenes' meshes — just spelled in one call so
+  /// callers don't have to write the nested loop.
+  ///
+  /// @param {List<GltfScene>} scenes
+  prewarmGltfScenes(scenes) {
+    var si = 0
+    while (si < scenes.count) {
+      var meshes = scenes[si].meshes
+      var mi = 0
+      while (mi < meshes.count) {
+        var prims = meshes[mi].primitives
+        var pj = 0
+        while (pj < prims.count) {
+          var prim = prims[pj]
+          if (prim.material != null) bindGroupFor_(prim.material)
+          pj = pj + 1
+        }
+        mi = mi + 1
+      }
+      si = si + 1
+    }
+  }
+
   // Look up (or build) the BindGroup for `material`. The cache
   // stores the GPU resources (bind group + small material UBO) so
   // unchanged materials reuse them across frames. A revision
@@ -2941,6 +3594,29 @@ class Renderer3D {
     out.add(d[7])
     out.add(d[11])
     out.add(d[15])
+  }
+  // Float32Array-targeted variant of `appendMat4_`. Writes the
+  // 16 transposed entries of `m` at `out[off .. off+15]`. Used
+  // by the per-draw UBO scratch (a Float32Array, not a List) so
+  // the upload takes the typed-array memcpy path.
+  writeMat4ToScratch_(out, off, m) {
+    var d = m.data
+    out[off]      = d[0]
+    out[off + 1]  = d[4]
+    out[off + 2]  = d[8]
+    out[off + 3]  = d[12]
+    out[off + 4]  = d[1]
+    out[off + 5]  = d[5]
+    out[off + 6]  = d[9]
+    out[off + 7]  = d[13]
+    out[off + 8]  = d[2]
+    out[off + 9]  = d[6]
+    out[off + 10] = d[10]
+    out[off + 11] = d[14]
+    out[off + 12] = d[3]
+    out[off + 13] = d[7]
+    out[off + 14] = d[11]
+    out[off + 15] = d[15]
   }
   appendZeros_(out, n) {
     var i = 0

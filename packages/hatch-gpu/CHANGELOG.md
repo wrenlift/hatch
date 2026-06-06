@@ -1,5 +1,120 @@
 # Changelog
 
+## 0.3.21 — 2026-06-05
+
+§12.6 of the stylised-shading plan — foliage transform-pack
+helpers + grass-blade primitive. Wind-sway VS already shipped in
+`apply_sway` (instanced shader); this round adds the CPU-side
+ergonomics so a 5k-blade field packs in microseconds, not
+milliseconds.
+
+- `Renderer3D.writeInstanceXYZ(scratch, slot, x, y, z, scale,
+  yawRad)` — foliage fast path. Writes one instance directly into
+  a `Float32Array` slot from translation + Y-rotation + uniform
+  scale; skips the Mat4 construct cycle. Same 32-float layout as
+  `writeInstance`. Normal-matrix half drops the scale (orthonormal
+  rotation only; the VS renormalize cancels uniform scale anyway).
+- `Mesh.grassBlade(device, height, width, segments)` — vertical
+  multi-segment quad strip. Base at y=0, tapers to ~30% width at
+  the tip (natural grass / leaf silhouette). `segments` controls
+  the wind-sway curve smoothness — 4-6 is the sweet spot.
+- Demo: `hatch/examples/game/grass-field` — 5,000 cel-shaded
+  blades, single `drawMeshInstanced`, orbiting camera reads the
+  wind direction as the field bends.
+
+## 0.3.20 — 2026-06-05
+
+§12.5 of the stylised-shading plan — `_toonSkinnedPipeline` + skinned
+MRT entries, plus the billboard pipeline's neutral-normal MRT
+variant.
+
+- New `_toonSkinnedPipeline` — cel-shaded skinned characters
+  share the joint-matrix-palette VS with the PBR-skinned
+  pipeline; differs only in the fragment entry. `drawSkinned`
+  dispatches via a new `skinnedPipelineFor_(material)` helper so
+  the rotor / the_strangler-tier rigs animate in toon when their
+  `Material.shadingModel = "toon"` is flipped, no caller change.
+- `SKINNED_PBR_WGSL_` refactored to the compute-fn + thin-entry
+  pattern: `skinned_pbr_compute` / `skinned_toon_compute` carry
+  the math; four `fs_*` / `fs_*_mrt` entries are 1-line wrappers.
+- Billboard pipeline (`drawBillboardN` particles, sprite billboards)
+  gains an `fs_main_mrt` entry that writes a neutral
+  camera-facing normal `(0.5, 0.5, 1.0)` to `@location(1)`.
+  Bandwidth-cheap placeholder that keeps billboards composable in
+  MRT mode without contributing false silhouettes to OutlinePass.
+- **All Renderer3D pipelines now MRT-aware.** PBR / transparent /
+  toon, instanced PBR / instanced toon, skinned PBR / skinned
+  toon, billboard — every draw path coexists with a bound normal
+  target. §12 stylised-shading trio (toon + outline + instanced) is
+  surface-complete.
+
+## 0.3.19 — 2026-06-05
+
+§12.3 of the stylised-shading plan — toon-instanced pipeline + MRT
+support for the instanced PBR pipeline.
+
+- New `_toonInstancedPipeline` — instanced toon math (band-
+  quantised dominant directional, shadow/key two-tone tint,
+  Fresnel rim) shares the instanced shader module with the PBR
+  variant. Same VS (per-instance model matrix + wind sway), same
+  bind groups, different fragment entry.
+- `INSTANCED_PBR_WGSL_` refactored to the same compute-fn +
+  thin-entry pattern as `PBR_WGSL_`: `instanced_pbr_compute` /
+  `instanced_toon_compute` carry the math; `fs_main` /
+  `fs_toon_main` / `fs_main_mrt` / `fs_toon_main_mrt` are 1-line
+  wrappers. MRT entries pack world-space normals to
+  `@location(1)` identically to the non-instanced path.
+- `drawMeshInstanced`, `drawMeshInstancedIndirect`, and
+  `drawInstancedLOD` all dispatch through a new
+  `instancedPipelineFor_(material)` helper. `Material.shadingModel
+  == "toon"` routes to `_toonInstancedPipeline`; everything else
+  to `_instancedPipeline`. Compatible with §12.2's MRT mode —
+  instanced draws now coexist with a bound normal target.
+
+**Scope remaining for §12 phase:** skinned pipeline + skinned toon
+(§12.5) is the last single-target path; `Renderer3D.drawSkinned`
+will still surface a wgpu validation error if called with a normal
+target bound until that lands.
+
+## 0.3.18 — 2026-06-05
+
+§12.2 of the stylised-shading plan — secondary normal G-buffer attachment.
+
+- `Renderer3D.new(device, surfaceFormat, depthFormat, normalFormat)`
+  4-arg constructor. When `normalFormat` is supplied (typically
+  `"rgba8unorm"`), the non-instanced PBR / transparent / toon
+  pipelines bind a second colour target at `@location(1)` and
+  write packed world-space normals (`N * 0.5 + 0.5`) via new
+  `fs_main_mrt` / `fs_toon_main_mrt` shader entry points.
+- WGSL refactor: `fs_main` body extracted into `pbr_compute`, with
+  thin `fs_main` (single-target) + `fs_main_mrt` (MRT) entries
+  delegating to it. Same split for `fs_toon_main` →
+  `toon_compute` + entries. No behaviour change on the existing
+  single-target path.
+- Pipeline build sites branch on `_normalFormat`: single-target
+  pipelines pick `fs_main` / `fs_toon_main` + `[surface]`; MRT
+  pipelines pick `*_mrt` + `[surface, normal]`. Transparent
+  pipeline preserves its src-alpha blend on `@location(0)` while
+  writing the normal target with default blend (no overdraw on
+  the normal channel — handy: transparents don't smear silhouette
+  edges).
+- New `Renderer3D.normalFormat` getter so OutlinePass (§12.4) can
+  introspect the bound format.
+- Format pick: `rgba8unorm` for the demo / recommended path.
+  ~0.7° normal-encoding error, universally supported including
+  web. RG8 octahedral and RGB10A2 are valid alternatives and the
+  API accepts any wgpu-supported colour format — the consumer is
+  responsible for matching the pipeline + PostFX bindings.
+
+**Scope:** non-instanced pipelines only. `_instancedPipeline` and
+`_skinnedPipeline` stay single-target — calling them while the
+scene pass has a normal attachment surfaces a wgpu validation
+error. §12.3 adds `_toonInstancedPipeline` + instanced MRT;
+§12.5 adds skinned MRT + `_toonSkinnedPipeline`.
+
+New spec: `gpu_renderer3d_mrt.spec.wren` — hardware smoke
+asserting the MRT pipelines compile and instantiate.
+
 ## 0.3.17 — 2026-06-05
 
 Follow-on to the toon-shader landing in 0.3.16:
@@ -14,7 +129,7 @@ Follow-on to the toon-shader landing in 0.3.16:
   and rendered as near-white. Now the band amount stays in [0, 1]
   and tone comes from `mix(shadow_color, lit_color, lit_amount)`
   where shadow tints by `scene.ambient` and lit by the dominant
-  directional's colour — Ghibli's signature cool-shadow /
+  directional's colour — the canonical cool-shadow /
   warm-key two-tone, without compound darkening.
 - Toon-shading demo (`hatch/examples/game/toon-shading`) switched
   to spheres with an orbiting sun so the cel bands sweep across
@@ -29,7 +144,7 @@ Toon / cel shading lands as a first-class `Material` variant.
 - `Material.shadingModel` (`"pbr"` default, `"toon"` opts in) plus
   `bands` / `rimStrength` / `rimWidth` / `ambientFloor` dials.
   Defaults (`bands = 3`, `rim = 0`, `floor = 0.35`) produce a
-  Ghibli-style three-band look with no shadow crush; setters tick
+  three-band cel look with no shadow crush; setters tick
   `revision_` so the renderer rebuild-trigger picks them up.
 - `Renderer3D` builds a second pipeline (`_toonPipeline`) off the
   existing PBR shader module — the shader gains an `fs_toon_main`

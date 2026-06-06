@@ -2745,7 +2745,7 @@ class Mesh {
         var ny = cosPhi
         var nz = sinPhi * sinTh
         // Position = normal × radius — exact unit-sphere normals
-        // for smooth Ghibli-friendly banding.
+        // for smooth cel banding.
         v.add(nx * radius)
         v.add(ny * radius)
         v.add(nz * radius)
@@ -2790,6 +2790,94 @@ class Mesh {
     return Mesh.fromArrays(device, v, indices)
   }
 
+  /// Single grass blade — a vertical quad strip standing on the
+  /// X-Z plane and rising along +Y. `segments` controls how many
+  /// horizontal divisions split the blade vertically; more
+  /// segments → smoother wind-sway curve at the top. Tangents
+  /// point along +X for normal-map compatibility.
+  ///
+  /// Normals are deliberately set to +Y (the field-up direction)
+  /// instead of perpendicular to the blade face. This is the
+  /// canonical stylised-grass trick: the per-instance yaw rotates
+  /// any face-normal away from the light on half the orbit, so
+  /// blade lighting flips light/dark as the camera orbits. Up-
+  /// pointing normals treat each blade as a vertical extrusion of
+  /// the ground surface — the whole field lights uniformly while
+  /// per-blade silhouettes still vary with yaw + sway.
+  ///
+  /// Vertex anchor is the BASE of the blade (y=0) so wind sway
+  /// — which scales with `local_pos.y` — keeps the base planted
+  /// and bends the top.
+  ///
+  /// @param {Device} device
+  /// @param {Num}    height   blade height in world units
+  /// @param {Num}    width    blade width at the base; the tip
+  ///                          tapers to ~30% (the natural grass
+  ///                          / leaf silhouette)
+  /// @param {Num}    segments vertical subdivision count (4–8 is
+  ///                          a good range; 4 stays cheap, 8 is
+  ///                          smoother under heavy wind)
+  static grassBlade(device) { grassBlade(device, 0.6, 0.05, 5) }
+  static grassBlade(device, height) { grassBlade(device, height, 0.05, 5) }
+  static grassBlade(device, height, width) { grassBlade(device, height, width, 5) }
+  static grassBlade(device, height, width, segments) {
+    var segs = (segments < 1) ? 1 : segments
+    var v = []
+    // (segs + 1) rows × 2 columns of vertices. Width tapers
+    // linearly from `width` at the base to `0.3 * width` at the
+    // tip — gives the natural grass / leaf silhouette without
+    // needing a separate "tip" primitive.
+    var i = 0
+    while (i <= segs) {
+      var t = i / segs                // 0 base → 1 tip
+      var y = t * height
+      var halfW = (1 - 0.7 * t) * 0.5 * width
+      // Vertices on a (segs+1) × 2 grid. Order: left, right.
+      v.add(-halfW)
+      v.add(y)
+      v.add(0)
+      v.add(0)
+      v.add(1)               // normal +Y (field-up; see ctor comment)
+      v.add(0)
+      v.add(0)
+      v.add(1 - t)           // uv (left edge, v decreases toward tip)
+      v.add(1)
+      v.add(0)
+      v.add(0)
+      v.add(1)               // tangent +X
+      v.add(halfW)
+      v.add(y)
+      v.add(0)
+      v.add(0)
+      v.add(1)
+      v.add(0)
+      v.add(1)
+      v.add(1 - t)
+      v.add(1)
+      v.add(0)
+      v.add(0)
+      v.add(1)
+      i = i + 1
+    }
+    // Indices: two triangles per segment (segs strips × 2 tris × 3).
+    var indices = []
+    var s = 0
+    while (s < segs) {
+      var bl = s * 2          // bottom-left of this segment
+      var br = s * 2 + 1
+      var tl = (s + 1) * 2
+      var tr = (s + 1) * 2 + 1
+      indices.add(bl)
+      indices.add(br)
+      indices.add(tr)
+      indices.add(bl)
+      indices.add(tr)
+      indices.add(tl)
+      s = s + 1
+    }
+    return Mesh.fromArrays(device, v, indices)
+  }
+
   /// Flat plane on the X-Z axis (Y up), centred on origin.
   /// Vertex layout: pos.xyz + normal.xyz + uv.xy + tangent.xyzw =
   /// 12 floats. Tangent points along +X (the U direction), the
@@ -2802,7 +2890,14 @@ class Mesh {
        h, 0,  h,  0, 1, 0,  1, 1,  1, 0, 0, 1,
       -h, 0,  h,  0, 1, 0,  0, 1,  1, 0, 0, 1
     ]
-    var indices = [0, 1, 2, 0, 2, 3]
+    // CCW-from-above winding so the geometric face direction matches
+    // the per-vertex `+Y` normals — required for the default
+    // `cullMode: back` pipeline to keep the plane visible to a
+    // camera above the ground. The original [0,1,2,0,2,3] order
+    // produced a geometric face pointing `-Y`, which culled the
+    // plane from above and only rendered it when the camera dipped
+    // below y=0 ("ground only shows from the other side" bug).
+    var indices = [0, 2, 1, 0, 3, 2]
     return Mesh.fromArrays(device, v, indices)
   }
 

@@ -4,14 +4,14 @@ entry       = "main"
 description = "Load the_strangler glTF, play its embedded skeletal animation: 102 joints / 4-influences-per-vertex skinning via GPU storage-buffer palette, vertex-shader matrix blend. End-to-end demo of @hatch:gltf skin parsing + @hatch:gpu.SkinPalette + Renderer3D.drawSkinned."
 
 [dependencies]
-"@hatch:game" = "0.3.30"
-"@hatch:gltf"   = "0.1.1"
-"@hatch:gpu"    = "0.3.14"
-"@hatch:assets" = "0.2.6"
-"@hatch:fsm"    = "0.1.2"
-"@hatch:hud"    = "0.1.6"
-"@hatch:image"  = "0.1.8"
-"@hatch:time"   = "0.1.2"
+"@hatch:game"   = { path = "../../../packages/hatch-game",   version = "0.3.37" }
+"@hatch:gltf"   = { path = "../../../packages/hatch-gltf",   version = "0.1.3" }
+"@hatch:gpu"    = { path = "../../../packages/hatch-gpu",    version = "0.3.22" }
+"@hatch:assets" = { path = "../../../packages/hatch-assets", version = "0.2.6" }
+"@hatch:fsm"    = { path = "../../../packages/hatch-fsm",    version = "0.1.2" }
+"@hatch:hud"    = { path = "../../../packages/hatch-hud",    version = "0.1.7" }
+"@hatch:image"  = { path = "../../../packages/hatch-image",  version = "0.1.9" }
+"@hatch:time"   = { path = "../../../packages/hatch-time",   version = "0.1.2" }
 
 [spec-dependencies]
 "@hatch:test"   = "0.2.1"
