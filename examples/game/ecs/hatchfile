@@ -3,9 +3,7 @@ version     = "0.1.0"
 entry       = "main"
 description = "ECS-driven asteroid field. Position + Velocity + Sprite components, two systems (motion + wrap), batched render. Showcases @hatch:ecs composing with @hatch:game."
 
-# @hatch:gpu comes transitively through @hatch:game; declaring it
-# again here trips the resolver's cycle detector.
 [dependencies]
-"@hatch:game" = "0.3.30"
-"@hatch:ecs"   = "0.2.5"
-"@hatch:image" = "0.1.8"
+"@hatch:game"  = { path = "../../../packages/hatch-game",  version = "0.3.37" }
+"@hatch:ecs"   = { path = "../../../packages/hatch-ecs",   version = "0.2.5" }
+"@hatch:image" = { path = "../../../packages/hatch-image", version = "0.1.9" }
