@@ -1016,6 +1016,210 @@ class Renderer3D {
     "
   }
 
+  // Skinned + instanced TOON shader. Combines skinning (joint
+  // palette blend via JOINTS_0/WEIGHTS_0 vertex attrs + group(3)
+  // skin BGL) with per-instance model+normal_mat+tint pulled
+  // from a storage buffer indexed by @builtin(instance_index).
+  // Single drawSkinnedInstanced call dispatches N posed instances
+  // at distinct world transforms + emissive tints, replacing N
+  // drawSkinned calls. Only the toon-MRT variant exists today
+  // (butterflies cel-shade against the rest of nature-garden via
+  // a normalFormat-equipped Renderer3D); PBR + non-MRT entries
+  // can be added later.
+  static SKINNED_INSTANCED_TOON_WGSL_ {
+    return "
+      struct DirLight {
+        dir_intensity: vec4<f32>,
+        color:         vec4<f32>,
+      };
+      struct PointLight {
+        pos_range:       vec4<f32>,
+        color_intensity: vec4<f32>,
+      };
+      struct SpotLight {
+        pos_range:       vec4<f32>,
+        color_intensity: vec4<f32>,
+        dir_inner:       vec4<f32>,
+        outer_cos:       vec4<f32>,
+      };
+      struct SceneUniforms {
+        vp:            mat4x4<f32>,
+        camera_pos:    vec4<f32>,
+        ambient:       vec4<f32>,
+        counts:        vec4<f32>,
+        light_vp:      mat4x4<f32>,
+        shadow_params: vec4<f32>,
+        wind:          vec4<f32>,
+        env_top:       vec4<f32>,
+        env_horizon:   vec4<f32>,
+        env_bottom:    vec4<f32>,
+        dir_lights:    array<DirLight,   4>,
+        point_lights:  array<PointLight, 8>,
+        spot_lights:   array<SpotLight,  4>,
+      };
+      // Per-instance data: model + normal_mat + tint. 144 bytes
+      // per instance, packed as 9 vec4s into the storage buffer.
+      // The vertex shader indexes into `instances[inst]` for each
+      // dispatched primitive instance.
+      struct SkinnedInstance {
+        model:      mat4x4<f32>,
+        normal_mat: mat4x4<f32>,
+        tint:       vec4<f32>,
+      };
+      struct MaterialUniforms {
+        albedo_color:   vec4<f32>,
+        emissive_color: vec4<f32>,
+        factors:        vec4<f32>,
+        alpha:          vec4<f32>,
+        toon:           vec4<f32>,
+        uv_xform:       vec4<f32>,
+        uv_rot:         vec4<f32>,
+      };
+
+      @group(0) @binding(0) var<uniform>            scene: SceneUniforms;
+      @group(0) @binding(1) var                     shadow_tex:  texture_depth_2d;
+      @group(0) @binding(2) var                     shadow_samp: sampler_comparison;
+      @group(1) @binding(0) var<storage, read>      instances: array<SkinnedInstance>;
+      @group(2) @binding(0) var<uniform>            mat:        MaterialUniforms;
+      @group(2) @binding(1) var                     albedo_tex: texture_2d<f32>;
+      @group(2) @binding(2) var                     mr_tex:     texture_2d<f32>;
+      @group(2) @binding(3) var                     normal_tex: texture_2d<f32>;
+      @group(2) @binding(4) var                     occlusion_tex: texture_2d<f32>;
+      @group(2) @binding(5) var                     emissive_tex:  texture_2d<f32>;
+      @group(2) @binding(6) var                     samp:       sampler;
+      @group(3) @binding(0) var<storage, read>      joint_matrices: array<mat4x4<f32>>;
+
+      fn apply_uv_xform(uv: vec2<f32>) -> vec2<f32> {
+        let scaled  = uv * mat.uv_xform.xy;
+        let c       = mat.uv_rot.x;
+        let s       = mat.uv_rot.y;
+        let rotated = vec2<f32>(
+          scaled.x * c - scaled.y * s,
+          scaled.x * s + scaled.y * c
+        );
+        return rotated + mat.uv_xform.zw;
+      }
+
+      struct VsIn {
+        @location(0) pos:     vec3<f32>,
+        @location(1) normal:  vec3<f32>,
+        @location(2) uv:      vec2<f32>,
+        @location(3) tangent: vec4<f32>,
+        @location(4) joints:  vec4<u32>,
+        @location(5) weights: vec4<f32>,
+      };
+      struct VsOut {
+        @builtin(position)                   clip:   vec4<f32>,
+        @location(0)                         world:  vec3<f32>,
+        @location(1)                         normal: vec3<f32>,
+        @location(2)                         uv:     vec2<f32>,
+        // `flat` interpolation — tint is constant per instance,
+        // no need to interpolate across triangle vertices.
+        // Location 4 (not 3) avoids any chance of clashing with
+        // VsIn's @location(3) tangent slot.
+        @location(4) @interpolate(flat)      tint:   vec4<f32>,
+      };
+
+      @vertex
+      fn vs_main(in: VsIn, @builtin(instance_index) inst: u32) -> VsOut {
+        let M_skin = in.weights.x * joint_matrices[in.joints.x]
+                   + in.weights.y * joint_matrices[in.joints.y]
+                   + in.weights.z * joint_matrices[in.joints.z]
+                   + in.weights.w * joint_matrices[in.joints.w];
+        let inst_model      = instances[inst].model;
+        let inst_normal_mat = instances[inst].normal_mat;
+        let skinned_pos     = (M_skin * vec4<f32>(in.pos, 1.0)).xyz;
+        let skinned_normal  = normalize((M_skin * vec4<f32>(in.normal, 0.0)).xyz);
+        let world_pos       = inst_model * vec4<f32>(skinned_pos, 1.0);
+        let world_norm      = (inst_normal_mat * vec4<f32>(skinned_normal, 0.0)).xyz;
+        var o: VsOut;
+        o.clip   = scene.vp * world_pos;
+        o.world  = world_pos.xyz;
+        o.normal = world_norm;
+        o.uv     = in.uv;
+        o.tint   = instances[inst].tint;
+        return o;
+      }
+
+      // Toon lighting — same shape as skinned_toon_compute but
+      // the emissive multiplier comes from the per-instance tint
+      // (passed via VsOut.tint) instead of the shared material's
+      // emissive_color uniform. Keeps every other knob (bands,
+      // rim, ambient_floor) sourced from the material.
+      fn skinned_inst_toon_compute(in: VsOut) -> vec4<f32> {
+        let albedo_sample = textureSample(albedo_tex, samp, apply_uv_xform(in.uv));
+        var base_color = mat.albedo_color * albedo_sample;
+        let alpha_mode = mat.alpha.x;
+        if (alpha_mode == 1.0) {
+          if (base_color.a < mat.alpha.y) { discard; }
+        }
+        let N = normalize(in.normal);
+        let V = normalize(scene.camera_pos.xyz - in.world);
+        let bands         = max(mat.toon.x, 2.0);
+        let rim_strength  = mat.toon.y;
+        let rim_width     = max(mat.toon.z, 1.0);
+        let ambient_floor = clamp(mat.toon.w, 0.0, 1.0);
+        var step_max = 0.0;
+        var key_tint = vec3<f32>(1.0);
+        let dir_count = u32(scene.counts.x);
+        for (var i: u32 = 0u; i < dir_count; i = i + 1u) {
+          let dl = scene.dir_lights[i];
+          let L = normalize(-dl.dir_intensity.xyz);
+          let n_dot_l = max(dot(N, L), 0.0);
+          let stepped = floor(n_dot_l * bands + 0.5) / bands;
+          if (stepped > step_max) {
+            step_max = stepped;
+            key_tint = dl.color.rgb;
+          }
+        }
+        let shadow_tint  = scene.ambient.rgb;
+        let shadow_color = base_color.rgb * shadow_tint;
+        let lit_color    = base_color.rgb * key_tint;
+        let lit_amount   = max(step_max, ambient_floor);
+        var lit = mix(shadow_color, lit_color, lit_amount);
+        if (rim_strength > 0.0) {
+          let fresnel = 1.0 - max(0.0, dot(N, V));
+          let rim = pow(fresnel, rim_width) * rim_strength;
+          lit = lit + vec3<f32>(rim);
+        }
+        // Per-instance tint provides the COLOUR of the emissive
+        // glow; the texture provides the SHAPE (which pixels
+        // glow + how strongly). Using channel-wise multiply
+        // here makes every butterfly inherit the texture's hue —
+        // for a wing texture that's predominantly blue, no tint
+        // would survive past the texture's blue bias. Collapsing
+        // the sample to its luma + multiplying by tint gives
+        // each instance its own glow colour while keeping the
+        // detail pattern of the wing texture.
+        let emiss = textureSample(emissive_tex, samp, apply_uv_xform(in.uv)).rgb;
+        let emiss_mask = max(max(emiss.r, emiss.g), emiss.b);
+        // Tint should DOMINATE the wing colour, not just nudge
+        // the texture's native blue. Knock the base-colour
+        // contribution down to a 25% shadow + emiss_mask
+        // wrapper, and rebuild the surface from the tint
+        // directly. Each instance's tint provides the hue;
+        // the mask provides the detail pattern.
+        lit = lit * 0.25 + in.tint.rgb * emiss_mask * 1.8;
+        return vec4<f32>(lit, base_color.a);
+      }
+
+      struct FsOutMrt {
+        @location(0) color:  vec4<f32>,
+        @location(1) normal: vec4<f32>,
+      }
+      @fragment
+      fn fs_toon_main_mrt(in: VsOut) -> FsOutMrt {
+        let color = skinned_inst_toon_compute(in);
+        let n = normalize(in.normal) * 0.5 + 0.5;
+        return FsOutMrt(color, vec4<f32>(n, 1.0));
+      }
+      @fragment
+      fn fs_toon_main(in: VsOut) -> @location(0) vec4<f32> {
+        return skinned_inst_toon_compute(in);
+      }
+    "
+  }
+
   static INSTANCED_PBR_WGSL_ {
     return "
       struct SceneUniforms {
@@ -1868,6 +2072,67 @@ class Renderer3D {
         "depthBiasSlopeScale":  1.0
       },
       "label": "renderer3d-skinned-pipeline-toon"
+    })
+
+    // ---- Skinned + instanced TOON pipeline. Same skinning VS
+    // shape as the non-instanced skinned path (vertex VBO +
+    // joints VBO + weights VBO + joint-palette SSBO at @group(3))
+    // PLUS a per-instance SSBO at @group(1) holding model +
+    // normal_mat + tint per instance. One drawSkinnedInstanced
+    // dispatches N posed instances at distinct transforms +
+    // emissive tints, collapsing what would otherwise be N
+    // drawSkinned calls into one.
+    _skinnedInstancedPipelineLayout = device.createPipelineLayout({
+      "bindGroupLayouts": [_sceneBgl, _instancedBgl, _materialBgl, _skinBgl]
+    })
+    var skinnedInstancedShader = device.createShaderModule({
+      "code":  Renderer3D.SKINNED_INSTANCED_TOON_WGSL_,
+      "label": "renderer3d-skinned-instanced-shader"
+    })
+    _toonSkinnedInstancedPipeline = device.createRenderPipeline({
+      "layout": _skinnedInstancedPipelineLayout,
+      "vertex": {
+        "module": skinnedInstancedShader, "entryPoint": "vs_main",
+        "buffers": [
+          {
+            "arrayStride": Renderer3D.FLOATS_PER_VERTEX_ * 4,
+            "stepMode": "vertex",
+            "attributes": [
+              { "shaderLocation": 0, "offset": 0,  "format": "float32x3" },
+              { "shaderLocation": 1, "offset": 12, "format": "float32x3" },
+              { "shaderLocation": 2, "offset": 24, "format": "float32x2" },
+              { "shaderLocation": 3, "offset": 32, "format": "float32x4" }
+            ]
+          },
+          {
+            "arrayStride": 16,
+            "stepMode": "vertex",
+            "attributes": [
+              { "shaderLocation": 4, "offset": 0, "format": "uint32x4" }
+            ]
+          },
+          {
+            "arrayStride": 16,
+            "stepMode": "vertex",
+            "attributes": [
+              { "shaderLocation": 5, "offset": 0, "format": "float32x4" }
+            ]
+          }
+        ]
+      },
+      "fragment": {
+        "module": skinnedInstancedShader,
+        "entryPoint": _normalFormat == null ? "fs_toon_main" : "fs_toon_main_mrt",
+        "targets": opaqueTargets
+      },
+      "primitive":    { "topology": "triangle-list", "cullMode": "back" },
+      "depthStencil": {
+        "format": depthFormat, "depthWriteEnabled": true,
+        "depthCompare":         "less-equal",
+        "depthBias":            2,
+        "depthBiasSlopeScale":  1.0
+      },
+      "label": "renderer3d-skinned-instanced-pipeline-toon"
     })
 
     // ---- Billboard pipeline. Spherical camera-facing quads for
@@ -2962,6 +3227,106 @@ class Renderer3D {
     pass.setVertexBuffer(2, mesh.weightsBuffer)
     pass.setIndexBuffer(mesh.indexBuffer, "uint32")
     pass.drawIndexed(mesh.indexCount)
+  }
+
+  /// Skinned + instanced toon draw. ONE GPU dispatch renders N
+  /// posed instances of `mesh` at distinct world transforms +
+  /// emissive tints by indexing into `instanceBuffer` from the
+  /// vertex shader's `@builtin(instance_index)`.
+  ///
+  /// Bind groups:
+  ///   - @group(0): scene
+  ///   - @group(1): per-instance SSBO (model + normal_mat + tint
+  ///                per instance, 144 bytes / 36 floats / 9 vec4
+  ///                stride)
+  ///   - @group(2): material
+  ///   - @group(3): joint-matrix palette (shared across all
+  ///                instances in this dispatch)
+  ///
+  /// The caller is responsible for keeping the skin palette
+  /// up-to-date each frame via `skin.update(matrices)` and for
+  /// packing per-instance data into `instanceBuffer` via the
+  /// `Renderer3D.writeSkinnedInstance(scratch, slot, model,
+  /// normalMat, tint)` helper.
+  ///
+  /// Currently toon-shading + MRT only (the variant nature-garden
+  /// uses); PBR + non-MRT support will land alongside the first
+  /// PBR consumer.
+  ///
+  /// @param {Mesh}        mesh
+  /// @param {Material}    material        toon-shading model required
+  /// @param {SkinPalette} skin
+  /// @param {Buffer}      instanceBuffer  storage buffer with
+  ///                                      `count × 144 B` of per-
+  ///                                      instance data
+  /// @param {Num}         count           number of instances to dispatch
+  drawSkinnedInstanced(mesh, material, skin, instanceBuffer, count) {
+    if (_pass == null) Fiber.abort("Renderer3D.drawSkinnedInstanced: call beginFrame first.")
+    if (count <= 0) return
+    if (mesh.jointsBuffer == null || mesh.weightsBuffer == null) {
+      Fiber.abort("Renderer3D.drawSkinnedInstanced: mesh has no jointsBuffer / weightsBuffer.")
+    }
+    if (!_sceneCommitted) commitScene_()
+
+    var skinBg = skin.bindWith(_skinBgl)
+    var entry  = bindGroupFor_(material)
+    var pass   = _pass
+    pass.setPipeline(_toonSkinnedInstancedPipeline)
+    pass.setBindGroup(0, _sceneBindGroup)
+    pass.setBindGroup(1, instanceBindGroupFor_(instanceBuffer))
+    pass.setBindGroup(2, entry["bg"])
+    pass.setBindGroup(3, skinBg)
+    pass.setVertexBuffer(0, mesh.vertexBuffer)
+    pass.setVertexBuffer(1, mesh.jointsBuffer)
+    pass.setVertexBuffer(2, mesh.weightsBuffer)
+    pass.setIndexBuffer(mesh.indexBuffer, "uint32")
+    pass.drawIndexed(mesh.indexCount, count)
+  }
+
+  /// Pack one instance's data into `scratch` at `slot`. Slot
+  /// stride is 36 floats (model 16 + normal_mat 16 + tint 4).
+  /// Caller pre-allocates `Float32Array.new(maxInstances × 36)`
+  /// and uses this helper to fill it before uploading via
+  /// `instanceBuffer.writeFloats(0, scratch)`.
+  ///
+  /// `normalMat` should be the inverse-transpose of `model` for
+  /// correct lit normals; for orthonormal model matrices it can
+  /// be the model itself.
+  ///
+  /// @param {Float32Array} scratch
+  /// @param {Num}          slot       0-based instance index
+  /// @param {Mat4}         model
+  /// @param {Mat4}         normalMat
+  /// @param {Vec4}         tint       xyz = emissive RGB multiplier
+  static writeSkinnedInstance(scratch, slot, model, normalMat, tint) {
+    var off = slot * 36
+    var md = model.data
+    var nd = normalMat.data
+    // Mat4 row-major data → column-major storage (WGSL convention)
+    var c = 0
+    while (c < 4) {
+      var r = 0
+      while (r < 4) {
+        scratch[off + c * 4 + r] = md[r * 4 + c]
+        r = r + 1
+      }
+      c = c + 1
+    }
+    off = off + 16
+    c = 0
+    while (c < 4) {
+      var r = 0
+      while (r < 4) {
+        scratch[off + c * 4 + r] = nd[r * 4 + c]
+        r = r + 1
+      }
+      c = c + 1
+    }
+    off = off + 16
+    scratch[off + 0] = tint.x
+    scratch[off + 1] = tint.y
+    scratch[off + 2] = tint.z
+    scratch[off + 3] = tint.w
   }
 
   /// Multi-LOD instanced draw. Issues one `drawIndexed` per LOD

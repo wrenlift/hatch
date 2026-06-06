@@ -18,9 +18,10 @@
 // downstream. Grass blades use a single instanced draw, which
 // is safe at the 50k-instance scale.
 
-import "@hatch:game"   for Game, Foliage, Actions, PostFX, GpuParticleSystem3D, Particles
-import "@hatch:gpu"    for Renderer3D, Camera3D, Mesh, Material
-import "@hatch:math"   for Vec2, Vec3, Vec4, Mat4
+import "@hatch:game"   for Game, Foliage, Actions, PostFX, GpuParticleSystem3D, Particles, Transform, GlobalTransform, TransformPropagation
+import "@hatch:ecs"    for World
+import "@hatch:gpu"    for Renderer3D, Camera3D, Mesh, Material, SkinPalette
+import "@hatch:math"   for Vec2, Vec3, Vec4, Mat4, Quat
 import "@hatch:gltf"   for Gltf
 import "@hatch:assets" for Assets
 import "@hatch:image"  for Image
@@ -412,6 +413,170 @@ class NatureGarden is Game {
     Particles.register(_fireflies2)
     Particles.register(_fireflies3)
     Particles.register(_fireflies4)
+
+    // ----- Butterflies: ONE glTF load + ECS World + ONE
+    // shared SkinPalette + N per-instance flight transforms.
+    //
+    // Multi-load was tripping a gc::trace_object barrier hole in
+    // the runtime; shared-scene sidesteps that. The mesh is
+    // skinned (53 joints), so to get actual wing-flap geometry
+    // deformation we need an ECS World driving GlobalTransform
+    // for each joint + a SkinPalette feeding drawSkinned. All
+    // butterflies flap in sync because they share the palette —
+    // visually reads as a synchronised swarm.
+    _butterflyWorld = World.new()
+    _butterflyScene = Gltf.fromAssetsDir(g.device, db, "animated_butterfly/scene.gltf")
+    toonify(_butterflyScene)
+    // Neutralise toonify's 2.4× albedo lift (asset is LDR-correct
+    // Sketchfab, not the dark Quaternius HDR range) + push the
+    // emissive multiplier well past the 0.78 bloom threshold so
+    // the wings cast a visible glow halo through the postFX chain.
+    for (gltfMesh in _butterflyScene.meshes) {
+      for (prim in gltfMesh.primitives) {
+        var mat = prim.material
+        if (mat != null && mat.emissiveTexture != null) {
+          mat.albedoColor = Vec4.new(1.0, 1.0, 1.0, 1.0)
+          mat.emissiveColor = Vec4.new(4.0, 5.0, 7.0, 1.0)
+        }
+      }
+    }
+    _butterflyScene.spawnInto(_butterflyWorld)
+
+    // Animation: prefer "Flying", fall back to first clip.
+    _butterflyAnim = null
+    for (a in _butterflyScene.animations) {
+      if (a.name == "Flying") {
+        _butterflyAnim = a
+        break
+      }
+    }
+    if (_butterflyAnim == null && _butterflyScene.animations.count > 0) {
+      _butterflyAnim = _butterflyScene.animations[0]
+    }
+    // PHASE GROUPS — 4 shared SkinPalettes, each driven by a
+    // distinct phase offset of the "Flying" clip. Every
+    // butterfly is assigned a group via (idx % 4); within a
+    // group all butterflies flap in sync, across groups they
+    // flap at distinguishable rhythms. This drops the per-
+    // frame CPU cost (applyTo + TransformPropagation + palette
+    // compose) from 32× to 4× while preserving visible
+    // wing-rhythm variety across the swarm.
+    _butterflyGroupCount = 3
+    _butterflyPalettes = []
+    _butterflyScratches = []
+    if (_butterflyScene.skins.count > 0) {
+      var skin = _butterflyScene.skins[0]
+      var gi = 0
+      while (gi < _butterflyGroupCount) {
+        _butterflyPalettes.add(SkinPalette.new(g.device, skin.jointCount))
+        _butterflyScratches.add(Float32Array.new(skin.jointCount * 16))
+        gi = gi + 1
+      }
+    }
+    // Pre-compute the row-major form of every inverse-bind
+    // matrix so composeButterflyPalette_ doesn't allocate a
+    // fresh Mat4 (and write 16 floats) for every joint × every
+    // frame.
+    _butterflyIbmCache = []
+    if (_butterflyScene.skins.count > 0) {
+      var skin = _butterflyScene.skins[0]
+      var ibm = skin.inverseBindMatrices
+      var k = 0
+      while (k < skin.jointCount) {
+        _butterflyIbmCache.add(NatureGarden.colMajorToRowMajor_(ibm, k * 16))
+        k = k + 1
+      }
+    }
+    _butterflyGroupTimes = []
+    var gtIdx = 0
+    while (gtIdx < _butterflyGroupCount) {
+      _butterflyGroupTimes.add(gtIdx * 0.7)   // phase-shift each group
+      gtIdx = gtIdx + 1
+    }
+    // Three rhythm bands — slow gliders, mid pace, fast movers.
+    // Top/bottom ratio is 2× and the middle band ties the swarm
+    // together so it reads as one population with variation
+    // rather than two distinct cohorts.
+    _butterflyGroupSpeeds = [0.70, 1.00, 1.40]
+
+    // Collect EVERY skinned primitive (wings + body + any other
+    // mesh the asset ships). The new drawSkinnedInstanced path
+    // reads emissive tint per-instance from the SSBO, so all
+    // butterflies share the original materials — per-butterfly
+    // hue comes from the per-instance vec4 in the SSBO, not from
+    // mat.emissive_color. Body primitives still draw correctly
+    // because their materials have no emissiveTexture, so the
+    // tint multiplies a near-zero emissive sample and contributes
+    // nothing — they keep their dark Material.001 look.
+    _butterflyPrims = []
+    for (gltfMesh in _butterflyScene.meshes) {
+      for (prim in gltfMesh.primitives) {
+        var hasGeom  = prim.mesh != null && prim.material != null
+        var isSkin   = hasGeom && prim.mesh.jointsBuffer != null && prim.mesh.weightsBuffer != null
+        if (isSkin) _butterflyPrims.add(prim)
+      }
+    }
+
+    // Per-group instance buffer + Float32Array scratch. Each
+    // entry packs model(16f) + normal_mat(16f) + tint(4f) = 36
+    // floats = 144 B. 32 butterflies × 144 B = 4.6 KB per group.
+    _butterflyInstanceBuffers = []
+    _butterflyInstanceScratch = []
+    _butterflyGroupCounts = []
+    var gpi = 0
+    while (gpi < _butterflyGroupCount) {
+      var buf = g.device.createBuffer({
+        "size":  32 * 144,
+        "usage": ["storage", "copy-dst"],
+        "label": "butterfly-instances-group-%(gpi)"
+      })
+      _butterflyInstanceBuffers.add(buf)
+      _butterflyInstanceScratch.add(Float32Array.new(32 * 36))
+      _butterflyGroupCounts.add(0)
+      gpi = gpi + 1
+    }
+
+    _butterflies = []
+    var bfCount = 32
+    var bfi = 0
+    while (bfi < bfCount) {
+      // Initial group is a placeholder — overwritten below by
+      // the speed-sorted assignment.
+      _butterflies.add(Butterfly.new(_butterflyScene, bfi, 0))
+      bfi = bfi + 1
+    }
+    // Hand-rolled selection sort by pathSpeed (ascending) — Wren
+    // List doesn't ship with a stable in-place sort and we only
+    // sort 32 elements once at setup, so the O(n²) is fine.
+    var totalBf = _butterflies.count
+    var spi = 0
+    while (spi < totalBf - 1) {
+      var minIdx = spi
+      var spj = spi + 1
+      while (spj < totalBf) {
+        if (_butterflies[spj].pathSpeed < _butterflies[minIdx].pathSpeed) {
+          minIdx = spj
+        }
+        spj = spj + 1
+      }
+      if (minIdx != spi) {
+        var tmp = _butterflies[spi]
+        _butterflies[spi] = _butterflies[minIdx]
+        _butterflies[minIdx] = tmp
+      }
+      spi = spi + 1
+    }
+    // Bin sorted butterflies into phase groups — slow half flaps
+    // slow (group 0 = 0.9×), fast half flaps fast (group 1 = 1.2×).
+    var perGroup = (totalBf / _butterflyGroupCount).ceil
+    var sbi = 0
+    while (sbi < totalBf) {
+      var grp = (sbi / perGroup).floor
+      if (grp >= _butterflyGroupCount) grp = _butterflyGroupCount - 1
+      _butterflies[sbi].group = grp
+      sbi = sbi + 1
+    }
+    Fiber.yield()
 
     // Painted sky backdrop. Three-band gradient — pale cyan at
     // zenith, warm cream at the horizon. `falloff = 1.4` gives
@@ -1545,6 +1710,62 @@ class NatureGarden is Game {
     }
   }
 
+  // Pack `jointWorld_k × inverseBindMatrix_k` for the supplied
+  // group's scratch buffer + upload to the GPU. Joint world
+  // matrices come from the per-joint GlobalTransform after
+  // TransformPropagation has run. IBM row matrices are cached
+  // at setup_ time so no Mat4 is allocated in the hot loop.
+  composeButterflyGroupPalette_(gi) {
+    var skin = _butterflyScene.skins[0]
+    var scratch = _butterflyScratches[gi]
+    var jointCount = skin.jointCount
+    var k = 0
+    while (k < jointCount) {
+      var jointEntity = _butterflyScene.nodeEntityMap[skin.joints[k]]
+      var jointWorld = Mat4.identity
+      if (jointEntity != null) {
+        var gt = _butterflyWorld.get(jointEntity, GlobalTransform)
+        if (gt != null) jointWorld = gt.matrix
+      }
+      var skinMat = jointWorld * _butterflyIbmCache[k]
+      NatureGarden.packMat4ColMajor_(scratch, k * 16, skinMat)
+      k = k + 1
+    }
+    _butterflyPalettes[gi].update(scratch)
+  }
+
+  // Column-major → row-major helpers, copied from
+  // skeletal-animation-demo so we don't drag a dependency in.
+  static colMajorToRowMajor_(floats, offset) {
+    var m = Mat4.new()
+    var c = 0
+    while (c < 4) {
+      var r = 0
+      while (r < 4) {
+        m.set(r, c, floats[offset + c * 4 + r])
+        r = r + 1
+      }
+      c = c + 1
+    }
+    return m
+  }
+
+  static packMat4ColMajor_(out, offset, m) {
+    // Mat4 has no `get(r, c)`; the raw row-major float buffer is
+    // exposed as `m.data`. Index it as `r * 4 + c` to fetch the
+    // (r, c) element.
+    var d = m.data
+    var c = 0
+    while (c < 4) {
+      var r = 0
+      while (r < 4) {
+        out[offset + c * 4 + r] = d[r * 4 + c]
+        r = r + 1
+      }
+      c = c + 1
+    }
+  }
+
   drawShadowScene(scene, xform) {
     var meshes = scene.meshes
     var mi = 0
@@ -1661,6 +1882,14 @@ class NatureGarden is Game {
     // out.
     if (_distance <   4) _distance =   4
     if (_distance > 120) _distance = 120
+
+    // Advance each butterfly's flight Lissajous + the shared
+    // animation. All butterflies share the wing-flap pose (one
+    // ECS World + one SkinPalette), which reads as a synchronised
+    // swarm; positions / yaws are per-instance.
+    if (_butterflies != null) {
+      for (bf in _butterflies) bf.update(dt)
+    }
   }
 
   draw(g) {
@@ -1716,6 +1945,72 @@ class NatureGarden is Game {
       sk = sk + 1
     }
 
+    // Butterflies — ONE shared skinned scene, ONE SkinPalette,
+    // N drawSkinned issues with different per-instance model
+    // matrices. The "Flying" animation drove joint Transforms
+    // in update_; TransformPropagation lifts those to per-joint
+    // GlobalTransforms; the palette = jointWorld × inverseBind
+    // for every joint; the vertex shader then deforms the wing
+    // mesh in place and the per-instance model matrix flies it
+    // along its Lissajous curve.
+    if (_butterflies != null && _butterflyAnim != null && _butterflyPrims.count > 0) {
+      // Compose one shared palette per phase group + pack each
+      // butterfly's per-instance data into its group's SSBO.
+      // Then issue ONE drawSkinnedInstanced per group: N posed
+      // butterflies at distinct transforms + emissive tints in
+      // a single GPU dispatch, instead of N drawSkinned calls.
+      var dur = _butterflyAnim.duration
+      var dtFrame = g.dt
+
+      // Reset per-group instance counters.
+      var gri = 0
+      while (gri < _butterflyGroupCount) {
+        _butterflyGroupCounts[gri] = 0
+        gri = gri + 1
+      }
+      // Pack each butterfly into its group's scratch buffer at
+      // the next free slot. The instance index within a group is
+      // implicit (counter increments as we go).
+      for (bf in _butterflies) {
+        var g2 = bf.group
+        var slot = _butterflyGroupCounts[g2]
+        var model = bf.flightMatrix
+        // Wings are scaled uniformly so model is orthonormal —
+        // pass model itself as the normal_mat (works for any
+        // rigid + uniform-scale transform).
+        Renderer3D.writeSkinnedInstance(_butterflyInstanceScratch[g2], slot, model, model, bf.tint)
+        _butterflyGroupCounts[g2] = slot + 1
+      }
+
+      // Compose palettes + upload instance buffers + dispatch.
+      var gi = 0
+      while (gi < _butterflyGroupCount) {
+        _butterflyGroupTimes[gi] = _butterflyGroupTimes[gi] + dtFrame * _butterflyGroupSpeeds[gi]
+        var t = _butterflyGroupTimes[gi]
+        var tLooped = dur > 0 ? (t - dur * (t / dur).floor) : 0
+        _butterflyAnim.applyTo(_butterflyScene, _butterflyWorld, tLooped)
+        TransformPropagation.run(_butterflyWorld)
+        composeButterflyGroupPalette_(gi)
+        var count = _butterflyGroupCounts[gi]
+        if (count > 0) {
+          _butterflyInstanceBuffers[gi].writeFloats(0, _butterflyInstanceScratch[gi])
+          // One drawSkinnedInstanced per primitive (wings + body
+          // + ...) per group. With 2 primitives and 2 groups,
+          // total = 4 GPU dispatches/frame for 32 fully-rendered
+          // butterflies. Was 64 drawSkinned calls.
+          for (prim in _butterflyPrims) {
+            _renderer3d.drawSkinnedInstanced(
+              prim.mesh,
+              prim.material,
+              _butterflyPalettes[gi],
+              _butterflyInstanceBuffers[gi],
+              count)
+          }
+        }
+        gi = gi + 1
+      }
+    }
+
     // Fireflies — four perimeter emitters (compass points around
     // the disc). Compute dispatches run the WGSL integrate against
     // each system's storage buffer; drawBillboardN renders all
@@ -1746,6 +2041,223 @@ class NatureGarden is Game {
       System.print("FPS %(_fpsEma.floor)")
     }
   }
+}
+
+/// One animated butterfly instance. Owns a private GltfScene
+/// (so its materials + Transform tree are independent from every
+/// other butterfly's), a Lissajous-style flight path, a wing-flap
+/// animation timer with its own speed, and one emissive colour
+/// from a curated HDR palette so each butterfly blooms in a
+/// different hue.
+class Butterfly {
+  /// HDR-but-hue-preserving emissive tint palette. Each entry
+  /// has at least ONE channel ≤ 0.6 so when the post-clamp LDR
+  /// write happens (Bgra8Unorm color attachment), the dimmer
+  /// channel survives and the perceived hue stays distinct.
+  /// Each entry's brightest channel is ≥ 1.6 so the spark
+  /// halos through bloom (threshold 0.78). Cycled by instance
+  /// index for variety.
+  static palette_ {
+    return [
+      [0.40, 1.40, 2.00, 1.0],  // cyan-blue
+      [2.00, 1.80, 0.40, 1.0],  // gold
+      [2.00, 0.50, 1.40, 1.0],  // pink
+      [0.40, 2.00, 1.20, 1.0],  // mint
+      [1.40, 0.40, 2.00, 1.0],  // violet
+      [2.00, 0.90, 0.40, 1.0],  // coral
+      [0.40, 1.20, 1.80, 1.0],  // ice-blue
+      [0.50, 1.80, 1.40, 1.0]   // teal
+    ]
+  }
+
+  /// Field-by-field Material clone. The renderer's Material has
+  /// no built-in copy method; this gathers every public setter
+  /// from gpu_material.wren so each butterfly carries its own
+  /// material instance (and can override emissiveColor without
+  /// affecting the rest of the swarm).
+  static cloneMaterial_(src) {
+    var c = Material.new()
+    c.albedoColor             = src.albedoColor
+    c.albedoTexture           = src.albedoTexture
+    c.metallicFactor          = src.metallicFactor
+    c.roughnessFactor         = src.roughnessFactor
+    c.metallicRoughnessTexture = src.metallicRoughnessTexture
+    c.normalTexture           = src.normalTexture
+    c.normalScale             = src.normalScale
+    c.occlusionTexture        = src.occlusionTexture
+    c.occlusionStrength       = src.occlusionStrength
+    c.emissiveColor           = src.emissiveColor
+    c.emissiveTexture         = src.emissiveTexture
+    c.alphaMode               = src.alphaMode
+    c.alphaCutoff             = src.alphaCutoff
+    c.doubleSided             = src.doubleSided
+    c.sway                    = src.sway
+    c.shadingModel            = src.shadingModel
+    c.bands                   = src.bands
+    c.rimStrength             = src.rimStrength
+    c.rimWidth                = src.rimWidth
+    c.ambientFloor            = src.ambientFloor
+    c.uvScale                 = src.uvScale
+    c.uvOffset                = src.uvOffset
+    c.uvRotation              = src.uvRotation
+    return c
+  }
+
+  /// Per-instance flight parameters only. The scene + animation +
+  /// SkinPalette live on NatureGarden and are shared across every
+  /// Butterfly instance.
+  ///
+  /// @param {GltfScene} scene  the shared butterfly scene
+  /// @param {Num}       idx    instance index — drives the RNG seed
+  ///                           AND picks an emissive tint from
+  ///                           the 8-hue palette (one tint per
+  ///                           butterfly, set per-instance in the
+  ///                           SSBO)
+  /// @param {Num}       group  phase-group index (0..N-1)
+  construct new(scene, idx, group) {
+    _scene = scene
+    _group = group
+    // Pick a palette tint per index. The drawSkinnedInstanced
+    // path reads this from the per-instance SSBO, so 32
+    // butterflies can carry 32 distinct emissive hues without
+    // adding any Material clones.
+    var palette = Butterfly.palette_
+    var tint    = palette[idx % palette.count]
+    _tint = Vec4.new(tint[0], tint[1], tint[2], tint[3])
+
+    // EIGHT cluster centres distributed across the off-path
+    // grass band. Path serpentines x = 4·sin(0.18·z) with
+    // pathHalfWidth=1.6, so |x| ≥ 5 sits safely over grass at
+    // any z. Indices 0..3 populate cluster 0, 4..7 cluster 1,
+    // ..., 28..31 cluster 7 — 4 butterflies per cluster reads
+    // as a real meadow patch and eight patches around the disc
+    // reads as a populated garden no matter which way the
+    // camera pans.
+    var clusters = [
+      [ -7.0, 3.0,   5.0],   // cluster 0: left-front near
+      [  6.5, 2.7,  -3.0],   // cluster 1: right-mid
+      [ -9.0, 2.8,  -7.5],   // cluster 2: left-back
+      [  8.0, 3.0,   8.5],   // cluster 3: right-front far
+      [ -5.5, 2.4,  11.5],   // cluster 4: left-far
+      [  7.0, 2.5,  12.0],   // cluster 5: right-far
+      [-10.0, 3.0,   1.0],   // cluster 6: left-side
+      [  9.0, 2.9, -10.0]    // cluster 7: right-back
+    ]
+    var cluster = clusters[(idx / 4).floor % clusters.count]
+    _cx = cluster[0]
+    _cy = cluster[1]
+    _cz = cluster[2]
+
+    // Deterministic per-butterfly RNG. Numerical Recipes LCG;
+    // seeding off `(idx + 1) * <large prime>` keeps each member
+    // of a cluster on its own orbit so they don't overlap.
+    var s = (idx + 1) * 1103515245 + 12345
+    if (s < 0) s = -s
+
+    // Lissajous amplitudes — wide enough (1.8..3.0 m horizontal,
+    // 0.6..1.1 m vertical) that 8 butterflies sharing one
+    // cluster centre still spread across a ~6 m bubble.
+    // Combined with per-instance phase offsets, the swarm reads
+    // as a populated meadow patch rather than 8 butterflies
+    // overlapping at one point.
+    s = (s * 1103515245 + 12345) % 2147483648
+    _ax = 1.8 + s / 2147483648.0 * 1.2
+    s = (s * 1103515245 + 12345) % 2147483648
+    _ay = 0.6 + s / 2147483648.0 * 0.5
+    s = (s * 1103515245 + 12345) % 2147483648
+    _az = 1.8 + s / 2147483648.0 * 1.2
+
+    // Frequencies (rad/s) — slow enough that each butterfly
+    // traces a graceful loop rather than zipping. Per-axis
+    // randomisation prevents the path from collapsing onto a
+    // line or a flat ellipse.
+    s = (s * 1103515245 + 12345) % 2147483648
+    _fx = 0.30 + s / 2147483648.0 * 0.45
+    s = (s * 1103515245 + 12345) % 2147483648
+    _fy = 0.55 + s / 2147483648.0 * 0.70
+    s = (s * 1103515245 + 12345) % 2147483648
+    _fz = 0.30 + s / 2147483648.0 * 0.45
+
+    // Phase offsets — keeps the swarm out of sync.
+    s = (s * 1103515245 + 12345) % 2147483648
+    _px = s / 2147483648.0 * 6.2831853
+    s = (s * 1103515245 + 12345) % 2147483648
+    _py = s / 2147483648.0 * 6.2831853
+    s = (s * 1103515245 + 12345) % 2147483648
+    _pz = s / 2147483648.0 * 6.2831853
+
+    // Path clock starts at a random offset so two butterflies
+    // can't both happen to start at the same point.
+    s = (s * 1103515245 + 12345) % 2147483648
+    _pathTime = s / 2147483648.0 * 100.0
+
+    // Per-instance Wings material is now caller-provided (8
+    // shared clones reused across the swarm), so no per-spawn
+    // material cloning here.
+
+    // Approximate path speed = sum of (amplitude × frequency) on
+    // each axis. NatureGarden sorts butterflies on this and bins
+    // them into phase groups so the fast-moving ones flap faster
+    // (matching real butterfly physics where wing-flap rate
+    // correlates with airspeed).
+    _pathSpeed = _ax * _fx + _ay * _fy + _az * _fz
+
+    // Scale — the source glTF butterfly is ~2.5 m across at unit
+    // scale; 0.10 brings it to ~25 cm wingspan which reads as a
+    // fantasy-scale butterfly (real-world large butterflies are
+    // ~15 cm, the extra size sells the bloom halo at orbit
+    // distance without looking comical).
+    _scale = 0.10
+
+    // Initial position + heading so the first frame doesn't
+    // snap.
+    _pos = flightPos_(_pathTime)
+    _prevPos = _pos
+    _yaw = 0
+  }
+
+  flightPos_(t) {
+    return Vec3.new(
+      _cx + _ax * (t * _fx + _px).sin,
+      _cy + _ay * (t * _fy + _py).sin,
+      _cz + _az * (t * _fz + _pz).sin
+    )
+  }
+
+  update(dt) {
+    _pathTime = _pathTime + dt
+    _prevPos = _pos
+    _pos = flightPos_(_pathTime)
+    var dirX = _pos.x - _prevPos.x
+    var dirZ = _pos.z - _prevPos.z
+    if (dirX * dirX + dirZ * dirZ > 0.000001) {
+      _yaw = dirX.atan(dirZ)
+    }
+  }
+
+  /// Composed per-instance model matrix — translation × yaw × scale.
+  /// NatureGarden packs this + the butterfly's tint into the
+  /// per-instance SSBO via Renderer3D.writeSkinnedInstance, then
+  /// one drawSkinnedInstanced renders every butterfly in the group.
+  flightMatrix {
+    return Mat4.translation(_pos.x, _pos.y, _pos.z) *
+           Mat4.rotationY(_yaw) *
+           Mat4.scale(_scale, _scale, _scale)
+  }
+
+  /// Phase-group assignment. NatureGarden composes one shared
+  /// SkinPalette per group; every instance in this group draws
+  /// in the same skinned instance buffer batch.
+  group   { _group }
+  group=(v) { _group = v }
+  /// Approximate path speed in m/s — used to bin butterflies
+  /// into phase groups so fast-moving ones flap faster.
+  pathSpeed { _pathSpeed }
+  /// Per-instance emissive tint (xyz = HDR RGB multiplier). Packed
+  /// into the per-instance SSBO each frame so the GPU multiplies
+  /// the wing texture by it; that's how 32 butterflies carry 32
+  /// distinct glow hues from a single material.
+  tint  { _tint  }
 }
 
 Game.run(NatureGarden)
