@@ -23,7 +23,7 @@ import "./gpu_shader"   for Shader
 ///   renderer rebuilds this once per `beginFrame`.
 /// - Group 1 (per-draw): model + normal matrix. Rebuilt per
 ///   `draw` call.
-/// - Group 2 (material): 64-byte material uniform + 5 textures
+/// - Group 2 (material): 112-byte material uniform + 5 textures
 ///   (albedo / metallic-roughness / normal / occlusion / emissive)
 ///   + 1 sampler. Cached per-Material; the cache reuses the
 ///   group while the material's `revision_` is unchanged and
@@ -149,7 +149,16 @@ class Renderer3D {
 
       @fragment
       fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-        return textureSample(tex, samp, in.uv) * in.color;
+        let tex_s = textureSample(tex, samp, in.uv);
+        // Premultiplied-additive: RGB is gated by tex.a (disc
+        // falloff for old constant-RGB discs) AND tex.rgb (for
+        // discs that bake falloff into RGB), AND in.color.a
+        // (lifetime fade). Under additive blend the spark fades
+        // out at end-of-life and reads as a circular halo.
+        let life = in.color.a;
+        let mask = tex_s.a;
+        let rgb  = tex_s.rgb * in.color.rgb * life * mask;
+        return vec4<f32>(rgb, life * mask);
       }
 
       // MRT entry — used when the renderer is built with
@@ -164,8 +173,23 @@ class Renderer3D {
       }
       @fragment
       fn fs_main_mrt(in: VsOut) -> FsOutMrt {
-        let color = textureSample(tex, samp, in.uv) * in.color;
-        return FsOutMrt(color, vec4<f32>(0.5, 0.5, 1.0, 1.0));
+        let tex_s = textureSample(tex, samp, in.uv);
+        // Premultiplied-additive output: RGB is gated by both
+        // tex.a (disc falloff) and in.color.a (lifetime fade),
+        // so under additive blend the spark cleanly fades out at
+        // end-of-life instead of persisting at full brightness.
+        // Disc texture also encodes falloff in RGB, so the spark
+        // reads as a soft circular halo rather than a square
+        // bright quad.
+        let life = in.color.a;
+        let mask = tex_s.a;
+        let rgb  = tex_s.rgb * in.color.rgb * life * mask;
+        // Normal MRT alpha is HARD-ZERO so the alpha-blended
+        // normal target preserves `dst` everywhere — there's no
+        // gradient from camera-facing to background inside the
+        // disc for OutlinePass's sobel to detect, so billboards
+        // never get inked.
+        return FsOutMrt(vec4<f32>(rgb, life * mask), vec4<f32>(0.5, 0.5, 1.0, 0.0));
       }
     "
   }
@@ -192,8 +216,19 @@ class Renderer3D {
   // shaded pipeline; the PBR shader has a matching field on its
   // MaterialUniforms struct but ignores it, so a single Material
   // can drive either pipeline depending on `shadingModel`.
-  static MAT_UBO_BYTES_    { 80 }
+  static MAT_UBO_BYTES_    { 112 }       // factors(80) + uv_xform vec4 (16) + uv_rot vec4 (16)
   static SHADOW_UBO_BYTES_ { 128 }       // light_vp(64) + model(64) per draw
+
+  // Pre-allocated per-draw UBO slot count. Each individual `draw()`
+  // call reserves one slot for its model + normal_mat upload; the
+  // pool is sized at construction so first-frame draws don't
+  // create + bind 100 buffers under GC pressure. 256 covers a
+  // dense procedural scene; pools grow past this on demand at the
+  // usual lazy-allocation cost (which is fine once the steady-state
+  // peak is reached — the corruption only fires when many
+  // createBuffer + createBindGroup calls land inside one
+  // command-encoder pass).
+  static INITIAL_DRAW_POOL_ { 256 }
 
   // Pipeline-specific WGSL — structs, bindings, and entry points.
   // Composed with the `Shader` factory library that supplies
@@ -246,6 +281,16 @@ class Renderer3D {
         //   z = rim width (Fresnel exponent; higher = thinner rim)
         //   w = ambient floor (shadow side minimum brightness 0..1)
         toon:           vec4<f32>,
+        // KHR_texture_transform vec4 #1: xy = uv scale, zw = uv offset.
+        // Applied to in.uv before every textureSample so a single
+        // small tile can repeat across a large mesh without rewriting
+        // mesh UVs. Identity is (1, 1, 0, 0).
+        uv_xform:       vec4<f32>,
+        // KHR_texture_transform vec4 #2: x = cos(rotation),
+        // y = sin(rotation), z/w padding. Rotation is around the UV
+        // origin (0, 0) per the KHR spec — pre-translate via offset
+        // to rotate around a different pivot. Identity is (1, 0, 0, 0).
+        uv_rot:         vec4<f32>,
       };
 
       @group(0) @binding(0) var<uniform> scene: SceneUniforms;
@@ -262,6 +307,22 @@ class Renderer3D {
       @group(2) @binding(4) var occlusion_tex: texture_2d<f32>;
       @group(2) @binding(5) var emissive_tex:  texture_2d<f32>;
       @group(2) @binding(6) var samp:          sampler;
+
+      // KHR_texture_transform helper. Applied to every uv read by
+      // `textureSample` so a single tile can be repeated and rotated
+      // across a mesh without re-authoring UVs. Identity when
+      // `Material.uvScale = (1, 1)`, `uvOffset = (0, 0)`,
+      // `uvRotation = 0` (the Material default).
+      fn apply_uv_xform(uv: vec2<f32>) -> vec2<f32> {
+        let scaled  = uv * mat.uv_xform.xy;
+        let c       = mat.uv_rot.x;
+        let s       = mat.uv_rot.y;
+        let rotated = vec2<f32>(
+          scaled.x * c - scaled.y * s,
+          scaled.x * s + scaled.y * c
+        );
+        return rotated + mat.uv_xform.zw;
+      }
 
       // Shadow attenuation for the primary shadow-casting
       // directional light. Returns 1.0 when shadows are disabled
@@ -316,12 +377,13 @@ class Renderer3D {
 
       // Apply wind-driven sway to a model-local vertex. Bends the
       // mesh in the wind direction proportionally to the vertex's
-      // local-Y (so the base stays put and the tip moves most). A
-      // world-space phase term decorrelates neighbouring instances
-      // so the field doesn't sway in lockstep.
+      // local-Y (so the base stays put and the tip moves most). The
+      // phase advances along the wind direction so neighbouring
+      // blades share a phase and bend together as a rolling gust.
       fn apply_sway(local_pos: vec3<f32>, anchor_world: vec3<f32>, sway: f32) -> vec3<f32> {
         if (sway <= 0.0) { return local_pos; }
-        let phase = anchor_world.x * 0.45 + anchor_world.z * 0.37 + scene.wind.z * 2.6;
+        let on_axis = anchor_world.x * scene.wind.x + anchor_world.z * scene.wind.y;
+        let phase = on_axis * 0.20 - scene.wind.z * 1.6;
         let osc   = sin(phase);
         let bend  = local_pos.y * sway * scene.wind.w * osc * 0.30;
         return vec3<f32>(
@@ -409,7 +471,7 @@ class Renderer3D {
         //    (the shader expects linear input — when the host
         //    creates the texture with `*-srgb` format, the
         //    sampler does the decode; otherwise we'd `srgb_to_linear`).
-        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+        let albedo_sample = textureSample(albedo_tex, samp, apply_uv_xform(in.uv));
         var base_color = mat.albedo_color * albedo_sample;
 
         // 2. Alpha mask: glTF spec says mask = discard below cutoff.
@@ -455,14 +517,14 @@ class Renderer3D {
         }
 
         // 3. Metallic + roughness: factor × MR.b / MR.g per glTF.
-        let mr_sample = textureSample(mr_tex, samp, in.uv);
+        let mr_sample = textureSample(mr_tex, samp, apply_uv_xform(in.uv));
         let metallic  = mat.factors.x * mr_sample.b;
         let roughness = mat.factors.y * mr_sample.g;
 
         // 4. Normal: sample tangent-space xy, build TBN from vertex
         //    tangent when available, otherwise screen-space.
         let N0 = normalize(in.normal);
-        let n_sample = textureSample(normal_tex, samp, in.uv).xy * 2.0 - vec2<f32>(1.0);
+        let n_sample = textureSample(normal_tex, samp, apply_uv_xform(in.uv)).xy * 2.0 - vec2<f32>(1.0);
         let N = surface_normal(N0, in.tangent, in.world, in.uv, n_sample, mat.factors.z);
 
         // 5. View direction.
@@ -530,7 +592,7 @@ class Renderer3D {
         //    F0 mixing; dielectrics scatter it diffusely. Adds the
         //    legacy flat ambient on top so callers that don't set
         //    an environment still get a base fill.
-        let ao_sample = textureSample(occlusion_tex, samp, in.uv).r;
+        let ao_sample = textureSample(occlusion_tex, samp, apply_uv_xform(in.uv)).r;
         let ao = mix(1.0, ao_sample, mat.factors.w);
         let env_n = env_sample(N);
         let R     = reflect(-V, N);
@@ -555,7 +617,7 @@ class Renderer3D {
 
         // 8. Emissive. Added on top — never tonemapped against
         //    indirectly, but the final ACES pass still touches it.
-        let emissive_sample = textureSample(emissive_tex, samp, in.uv).rgb;
+        let emissive_sample = textureSample(emissive_tex, samp, apply_uv_xform(in.uv)).rgb;
         let emissive = mat.emissive_color.rgb * emissive_sample;
 
         // 9. Tonemap + alpha output.
@@ -585,7 +647,7 @@ class Renderer3D {
       // Toon lighting computation — same compute / entry split as
       // `pbr_compute` so the MRT entry can share it.
       fn toon_compute(in: VsOut) -> vec4<f32> {
-        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+        let albedo_sample = textureSample(albedo_tex, samp, apply_uv_xform(in.uv));
         var base_color = mat.albedo_color * albedo_sample;
         let alpha_mode = mat.alpha.x;
         if (alpha_mode == 1.0) {
@@ -639,16 +701,25 @@ class Renderer3D {
         let lit_amount   = max(step_max, ambient_floor);
         var lit = mix(shadow_color, lit_color, lit_amount);
 
-        // Rim light: Fresnel-driven silhouette highlight, additive.
+        // Rim light: Fresnel-driven silhouette highlight, saturated
+        // blend toward white. At grazing view angles dot(N, V) -> 0
+        // and fresnel -> 1.0; the previous additive form
+        // (lit = lit + vec3(rim)) added 0.25 white across every
+        // upward-facing surface (every grass blade has hardcoded
+        // +Y normals), pushing lit out of LDR range and tripping
+        // Bloom's threshold so the foreground washed to a glowing
+        // cream-yellow haze at low camera pitch. Using mix toward
+        // white clamps the contribution at white and never crosses
+        // the bloom threshold accidentally.
         if (rim_strength > 0.0) {
           let fresnel = 1.0 - max(0.0, dot(N, V));
-          let rim = pow(fresnel, rim_width) * rim_strength;
-          lit = lit + vec3<f32>(rim);
+          let rim_factor = pow(fresnel, rim_width) * rim_strength;
+          lit = mix(lit, vec3<f32>(1.0), rim_factor);
         }
 
         // Emissive carries through so authored self-glow elements
         // still read (lanterns, signage, magic).
-        let toon_emissive_sample = textureSample(emissive_tex, samp, in.uv).rgb;
+        let toon_emissive_sample = textureSample(emissive_tex, samp, apply_uv_xform(in.uv)).rgb;
         lit = lit + mat.emissive_color.rgb * toon_emissive_sample;
 
         return vec4<f32>(lit, base_color.a);
@@ -748,6 +819,10 @@ class Renderer3D {
         // Toon-shading slot (read by the cel-shaded pipeline; this
         // shader binds the struct identically but ignores it).
         toon:           vec4<f32>,
+        // KHR_texture_transform — xy = scale, zw = offset.
+        uv_xform:       vec4<f32>,
+        // KHR_texture_transform rotation — x = cos, y = sin.
+        uv_rot:         vec4<f32>,
       };
 
       @group(0) @binding(0) var<uniform>            scene: SceneUniforms;
@@ -767,6 +842,18 @@ class Renderer3D {
       @group(2) @binding(4) var                     occlusion_tex: texture_2d<f32>;
       @group(2) @binding(5) var                     emissive_tex:  texture_2d<f32>;
       @group(2) @binding(6) var                     samp:       sampler;
+
+      // KHR_texture_transform helper (see PBR shader for spec).
+      fn apply_uv_xform(uv: vec2<f32>) -> vec2<f32> {
+        let scaled  = uv * mat.uv_xform.xy;
+        let c       = mat.uv_rot.x;
+        let s       = mat.uv_rot.y;
+        let rotated = vec2<f32>(
+          scaled.x * c - scaled.y * s,
+          scaled.x * s + scaled.y * c
+        );
+        return rotated + mat.uv_xform.zw;
+      }
       @group(3) @binding(0) var<storage, read>      joint_matrices: array<mat4x4<f32>>;
 
       struct VsIn {
@@ -809,7 +896,7 @@ class Renderer3D {
       // compute-fn + thin-entry split as the static + instanced
       // shaders so the MRT entries can share the lit value.
       fn skinned_pbr_compute(in: VsOut) -> vec4<f32> {
-        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+        let albedo_sample = textureSample(albedo_tex, samp, apply_uv_xform(in.uv));
         let base_color    = mat.albedo_color * albedo_sample;
         let N = normalize(in.normal);
 
@@ -849,7 +936,7 @@ class Renderer3D {
       // the same VsOut shape so skinned characters can mix freely
       // with cel-shaded static + instanced meshes.
       fn skinned_toon_compute(in: VsOut) -> vec4<f32> {
-        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+        let albedo_sample = textureSample(albedo_tex, samp, apply_uv_xform(in.uv));
         var base_color = mat.albedo_color * albedo_sample;
         let alpha_mode = mat.alpha.x;
         if (alpha_mode == 1.0) {
@@ -890,7 +977,7 @@ class Renderer3D {
           lit = lit + vec3<f32>(rim);
         }
 
-        let toon_emissive_sample = textureSample(emissive_tex, samp, in.uv).rgb;
+        let toon_emissive_sample = textureSample(emissive_tex, samp, apply_uv_xform(in.uv)).rgb;
         lit = lit + mat.emissive_color.rgb * toon_emissive_sample;
 
         return vec4<f32>(lit, base_color.a);
@@ -963,6 +1050,10 @@ class Renderer3D {
         // Toon-shading slot (read by the cel-shaded pipeline; this
         // shader binds the struct identically but ignores it).
         toon:           vec4<f32>,
+        // KHR_texture_transform — xy = scale, zw = offset.
+        uv_xform:       vec4<f32>,
+        // KHR_texture_transform rotation — x = cos, y = sin.
+        uv_rot:         vec4<f32>,
       };
 
       @group(0) @binding(0) var<uniform> scene: SceneUniforms;
@@ -977,6 +1068,22 @@ class Renderer3D {
       @group(2) @binding(4) var occlusion_tex: texture_2d<f32>;
       @group(2) @binding(5) var emissive_tex:  texture_2d<f32>;
       @group(2) @binding(6) var samp:          sampler;
+
+      // KHR_texture_transform helper. Applied to every uv read by
+      // `textureSample` so a single tile can be repeated and rotated
+      // across a mesh without re-authoring UVs. Identity when
+      // `Material.uvScale = (1, 1)`, `uvOffset = (0, 0)`,
+      // `uvRotation = 0` (the Material default).
+      fn apply_uv_xform(uv: vec2<f32>) -> vec2<f32> {
+        let scaled  = uv * mat.uv_xform.xy;
+        let c       = mat.uv_rot.x;
+        let s       = mat.uv_rot.y;
+        let rotated = vec2<f32>(
+          scaled.x * c - scaled.y * s,
+          scaled.x * s + scaled.y * c
+        );
+        return rotated + mat.uv_xform.zw;
+      }
 
       fn shadow_factor(world_pos: vec3<f32>, N: vec3<f32>, L: vec3<f32>) -> f32 {
         if (scene.counts.w < 0.5) { return 1.0; }
@@ -1017,9 +1124,11 @@ class Renderer3D {
         @location(3)       tangent: vec4<f32>,
       };
 
+      // Same coherent-wave sway as the PBR pipeline above.
       fn apply_sway(local_pos: vec3<f32>, anchor_world: vec3<f32>, sway: f32) -> vec3<f32> {
         if (sway <= 0.0) { return local_pos; }
-        let phase = anchor_world.x * 0.45 + anchor_world.z * 0.37 + scene.wind.z * 2.6;
+        let on_axis = anchor_world.x * scene.wind.x + anchor_world.z * scene.wind.y;
+        let phase = on_axis * 0.20 - scene.wind.z * 1.6;
         let osc   = sin(phase);
         let bend  = local_pos.y * sway * scene.wind.w * osc * 0.30;
         return vec3<f32>(
@@ -1089,7 +1198,7 @@ class Renderer3D {
       // non-instanced shader so the MRT entry below shares the
       // exact lit value and just adds a packed-normal write.
       fn instanced_pbr_compute(in: VsOut) -> vec4<f32> {
-        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+        let albedo_sample = textureSample(albedo_tex, samp, apply_uv_xform(in.uv));
         var base_color = mat.albedo_color * albedo_sample;
         let alpha_mode = mat.alpha.x;
         // Foliage edge damp: see non-instanced PBR for rationale.
@@ -1122,12 +1231,12 @@ class Renderer3D {
           base_color = vec4<f32>(base_color.rgb * saturate(1.0 - bleed), base_color.a);
         }
 
-        let mr_sample = textureSample(mr_tex, samp, in.uv);
+        let mr_sample = textureSample(mr_tex, samp, apply_uv_xform(in.uv));
         let metallic  = mat.factors.x * mr_sample.b;
         let roughness = mat.factors.y * mr_sample.g;
 
         let N0 = normalize(in.normal);
-        let n_sample = textureSample(normal_tex, samp, in.uv).xy * 2.0 - vec2<f32>(1.0);
+        let n_sample = textureSample(normal_tex, samp, apply_uv_xform(in.uv)).xy * 2.0 - vec2<f32>(1.0);
         let N = surface_normal(N0, in.tangent, in.world, in.uv, n_sample, mat.factors.z);
 
         let V = normalize(scene.camera_pos.xyz - in.world);
@@ -1167,7 +1276,7 @@ class Renderer3D {
           Lo = Lo + pbr_direct(N, V, L, base_color.rgb, metallic, roughness, radiance);
         }
 
-        let ao_sample = textureSample(occlusion_tex, samp, in.uv).r;
+        let ao_sample = textureSample(occlusion_tex, samp, apply_uv_xform(in.uv)).r;
         let ao = mix(1.0, ao_sample, mat.factors.w);
         // IBL — same shape as the non-instanced PBR shader.
         let env_n = env_sample(N);
@@ -1184,7 +1293,7 @@ class Renderer3D {
         let specular_ibl = kS * env_r;
         let ambient_term = (diffuse_ibl + specular_ibl) * ao
                          + scene.ambient.rgb * base_color.rgb * ao;
-        let emissive_sample = textureSample(emissive_tex, samp, in.uv).rgb;
+        let emissive_sample = textureSample(emissive_tex, samp, apply_uv_xform(in.uv)).rgb;
         let emissive = mat.emissive_color.rgb * emissive_sample;
         let hdr = Lo + ambient_term + emissive;
         let ldr = tonemap_aces(hdr);
@@ -1198,7 +1307,7 @@ class Renderer3D {
       // shading is uniform whether a mesh is drawn through `draw`
       // or `drawMeshInstanced`.
       fn instanced_toon_compute(in: VsOut) -> vec4<f32> {
-        let albedo_sample = textureSample(albedo_tex, samp, in.uv);
+        let albedo_sample = textureSample(albedo_tex, samp, apply_uv_xform(in.uv));
         var base_color = mat.albedo_color * albedo_sample;
         let alpha_mode = mat.alpha.x;
         if (alpha_mode == 1.0) {
@@ -1239,7 +1348,7 @@ class Renderer3D {
           lit = lit + vec3<f32>(rim);
         }
 
-        let toon_emissive_sample = textureSample(emissive_tex, samp, in.uv).rgb;
+        let toon_emissive_sample = textureSample(emissive_tex, samp, apply_uv_xform(in.uv)).rgb;
         lit = lit + mat.emissive_color.rgb * toon_emissive_sample;
 
         return vec4<f32>(lit, base_color.a);
@@ -1788,12 +1897,22 @@ class Renderer3D {
       "bindGroupLayouts": [_billboardSceneBgl, _billboardInstanceBgl, _billboardMaterialBgl]
     })
     var billboardEntry = mrt ? "fs_main_mrt" : "fs_main"
-    var billboardTargets = [{ "format": surfaceFormat, "blend": "alpha" }]
+    // Color target uses ADDITIVE blend so HDR-emissive sprites
+    // (fireflies, sparks, halos) ADD their brightness on top of
+    // the background instead of alpha-blending into it. With
+    // alpha-blend a clamped (>1) src and a near-bright dst produce
+    // similar luma at the spark center and at the surrounding
+    // bloomed grass, so the spark reads as a "dark donut" against
+    // a brighter bloom halo. Additive lets the center always peak
+    // at the clamp ceiling regardless of background luma, which
+    // is the canonical emissive blend for glowing point sources.
+    var billboardTargets = [{ "format": surfaceFormat, "blend": "additive" }]
     if (mrt) {
-      // Normal target written as a neutral camera-facing
-      // placeholder; no alpha blend (we don't want sprites to
-      // smear silhouette normals into the underlying mesh).
-      billboardTargets.add({ "format": _normalFormat })
+      // Normal target stays alpha-blended against the underlying
+      // surface normal so the disc's soft falloff edges don't
+      // appear as normal discontinuities to OutlinePass-style
+      // edge detection.
+      billboardTargets.add({ "format": _normalFormat, "blend": "alpha" })
     }
     _billboardPipeline = device.createRenderPipeline({
       "layout": _billboardPipelineLayout,
@@ -1880,13 +1999,38 @@ class Renderer3D {
     // intervening command-buffer records — all writes to a single
     // UBO collapse to the LAST write when the encoder finally
     // submits. So we can't share one draw UBO across multiple
-    // draws in a frame; each draw needs its own. The pool grows
-    // lazily (first frame creates as many as the scene needs,
-    // subsequent frames reuse) so steady-state per-frame cost
-    // stays at `writeFloats` calls only.
+    // draws in a frame; each draw needs its own.
+    //
+    // Pre-allocated to `Renderer3D.INITIAL_DRAW_POOL_` slots at
+    // construction so per-frame growth is zero in the common case
+    // (scenes that draw ≤ that many individual meshes). Empirically,
+    // doing `createBuffer + createBindGroup` repeatedly during
+    // `draw()` — across ~20+ slots in one frame — interacts badly
+    // with the GC and corrupts the shared `_drawUboFloats` list
+    // (Buffer.writeFloats fails with index-0 not-a-number on the
+    // next upload). Pre-allocating moves all allocator pressure to
+    // setup time, eliminating the hot-path corruption window.
+    // `reserveDrawSlot_` still grows the pool past the pre-allocated
+    // cap if needed; the per-slot cost just isn't paid every frame.
     _drawUboPool       = []   // List of Buffer
     _drawBindGroupPool = []   // List of BindGroup, indexed in lockstep with _drawUboPool
     _drawIndex         = 0
+    var poolPrefill = Renderer3D.INITIAL_DRAW_POOL_
+    var pi = 0
+    while (pi < poolPrefill) {
+      var ubo = device.createBuffer({
+        "size":  Renderer3D.DRAW_UBO_BYTES_,
+        "usage": ["uniform", "copy-dst"],
+        "label": "renderer3d-draw-ubo"
+      })
+      var bg = device.createBindGroup({
+        "layout":  _drawBgl,
+        "entries": [{ "binding": 0, "buffer": ubo, "size": Renderer3D.DRAW_UBO_BYTES_ }]
+      })
+      _drawUboPool.add(ubo)
+      _drawBindGroupPool.add(bg)
+      pi = pi + 1
+    }
 
     // Default sampler — linear filtering, repeat addressing.
     // Materials with point-filtered textures (pixel art) build
@@ -1913,7 +2057,15 @@ class Renderer3D {
     _materialCache = {}     // Material → { "bg": BindGroup, "ubo": Buffer, "rev": Num }
 
     _matUboFloats = []      // packing scratchpad — reused per draw
-    _drawUboFloats = []     // packing scratchpad — reused per draw
+    // `_drawUboFloats` lives on the hottest path in the renderer
+    // (one rebuild + writeFloats per `draw()` / `drawSkinned()` /
+    // `drawMeshInstancedIndirect()`). A plain Wren List triggers
+    // `writeFloats`'s slow per-element walker, and a GC cycle
+    // mid-frame can corrupt index 0 so the validator rejects the
+    // upload ("every element must be a number (index 0)"). A
+    // `Float32Array(32)` takes the typed-array memcpy fast path
+    // and bypasses the validator entirely.
+    _drawUboFloats = Float32Array.new(32)
     _sceneUboFloats = []    // packing scratchpad — reused per beginFrame
 
     _pass    = null
@@ -2624,9 +2776,8 @@ class Renderer3D {
     // matrix itself doubles as a normal matrix; non-orthonormal
     // models will need `Mat4.inverse(model).transpose` once
     // `Mat4.inverse` is exposed.
-    _drawUboFloats.clear()
-    appendMat4_(_drawUboFloats, model)
-    appendMat4_(_drawUboFloats, model)
+    writeMat4ToScratch_(_drawUboFloats,  0, model)
+    writeMat4ToScratch_(_drawUboFloats, 16, model)
 
     // Pull (or grow) the per-draw UBO slot for this index.
     // Sharing one UBO across draws within a frame collapses
@@ -2787,9 +2938,8 @@ class Renderer3D {
     // Per-draw UBO (model + normal_mat), matching `draw`. Treats
     // the model matrix as its own normal_mat — valid for the
     // orthonormal transforms typical of skinned character roots.
-    _drawUboFloats.clear()
-    appendMat4_(_drawUboFloats, model)
-    appendMat4_(_drawUboFloats, model)
+    writeMat4ToScratch_(_drawUboFloats,  0, model)
+    writeMat4ToScratch_(_drawUboFloats, 16, model)
     var i = reserveDrawSlot_()
     _drawUboPool[i].writeFloats(0, _drawUboFloats)
 
@@ -3312,6 +3462,48 @@ class Renderer3D {
     _billboardSceneUbo.writeFloats(0, bbf)
   }
 
+  /// Pre-build (or refresh) the per-Material UBO + BindGroup so
+  /// the first draw of `material` in a frame doesn't pay the
+  /// `createBuffer + createBindGroup` cost on the hot path.
+  ///
+  /// Many props with many distinct materials drawn in one frame
+  /// produce enough allocator churn that the GC corrupts the
+  /// shared `_drawUboFloats` list mid-frame ("Buffer.writeFloats:
+  /// every element must be a number (index 0)"). Calling
+  /// `prewarmMaterial(m)` once at setup time keeps draw() pure
+  /// dispatch.
+  ///
+  /// @param {Material} material
+  prewarmMaterial(material) {
+    bindGroupFor_(material)
+  }
+
+  /// Walk every `GltfScene` in `scenes` and pre-warm a UBO +
+  /// BindGroup for every primitive's material. Equivalent to
+  /// calling `prewarmMaterial` for each non-null `prim.material`
+  /// across all the scenes' meshes — just spelled in one call so
+  /// callers don't have to write the nested loop.
+  ///
+  /// @param {List<GltfScene>} scenes
+  prewarmGltfScenes(scenes) {
+    var si = 0
+    while (si < scenes.count) {
+      var meshes = scenes[si].meshes
+      var mi = 0
+      while (mi < meshes.count) {
+        var prims = meshes[mi].primitives
+        var pj = 0
+        while (pj < prims.count) {
+          var prim = prims[pj]
+          if (prim.material != null) bindGroupFor_(prim.material)
+          pj = pj + 1
+        }
+        mi = mi + 1
+      }
+      si = si + 1
+    }
+  }
+
   // Look up (or build) the BindGroup for `material`. The cache
   // stores the GPU resources (bind group + small material UBO) so
   // unchanged materials reuse them across frames. A revision
@@ -3396,6 +3588,29 @@ class Renderer3D {
     out.add(d[7])
     out.add(d[11])
     out.add(d[15])
+  }
+  // Float32Array-targeted variant of `appendMat4_`. Writes the
+  // 16 transposed entries of `m` at `out[off .. off+15]`. Used
+  // by the per-draw UBO scratch (a Float32Array, not a List) so
+  // the upload takes the typed-array memcpy path.
+  writeMat4ToScratch_(out, off, m) {
+    var d = m.data
+    out[off]      = d[0]
+    out[off + 1]  = d[4]
+    out[off + 2]  = d[8]
+    out[off + 3]  = d[12]
+    out[off + 4]  = d[1]
+    out[off + 5]  = d[5]
+    out[off + 6]  = d[9]
+    out[off + 7]  = d[13]
+    out[off + 8]  = d[2]
+    out[off + 9]  = d[6]
+    out[off + 10] = d[10]
+    out[off + 11] = d[14]
+    out[off + 12] = d[3]
+    out[off + 13] = d[7]
+    out[off + 14] = d[11]
+    out[off + 15] = d[15]
   }
   appendZeros_(out, n) {
     var i = 0

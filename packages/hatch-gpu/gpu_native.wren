@@ -2794,10 +2794,16 @@ class Mesh {
   /// X-Z plane and rising along +Y. `segments` controls how many
   /// horizontal divisions split the blade vertically; more
   /// segments → smoother wind-sway curve at the top. Tangents
-  /// point along +X for normal-map compatibility; normals face
-  /// the camera-canonical +Z direction (the instanced VS doesn't
-  /// rotate normals further — the per-instance yaw + sway in
-  /// `apply_sway` handles motion).
+  /// point along +X for normal-map compatibility.
+  ///
+  /// Normals are deliberately set to +Y (the field-up direction)
+  /// instead of perpendicular to the blade face. This is the
+  /// canonical stylised-grass trick: the per-instance yaw rotates
+  /// any face-normal away from the light on half the orbit, so
+  /// blade lighting flips light/dark as the camera orbits. Up-
+  /// pointing normals treat each blade as a vertical extrusion of
+  /// the ground surface — the whole field lights uniformly while
+  /// per-blade silhouettes still vary with yaw + sway.
   ///
   /// Vertex anchor is the BASE of the blade (y=0) so wind sway
   /// — which scales with `local_pos.y` — keeps the base planted
@@ -2831,8 +2837,8 @@ class Mesh {
       v.add(y)
       v.add(0)
       v.add(0)
+      v.add(1)               // normal +Y (field-up; see ctor comment)
       v.add(0)
-      v.add(1)               // normal facing +Z
       v.add(0)
       v.add(1 - t)           // uv (left edge, v decreases toward tip)
       v.add(1)
@@ -2843,8 +2849,8 @@ class Mesh {
       v.add(y)
       v.add(0)
       v.add(0)
-      v.add(0)
       v.add(1)
+      v.add(0)
       v.add(1)
       v.add(1 - t)
       v.add(1)
@@ -2884,7 +2890,14 @@ class Mesh {
        h, 0,  h,  0, 1, 0,  1, 1,  1, 0, 0, 1,
       -h, 0,  h,  0, 1, 0,  0, 1,  1, 0, 0, 1
     ]
-    var indices = [0, 1, 2, 0, 2, 3]
+    // CCW-from-above winding so the geometric face direction matches
+    // the per-vertex `+Y` normals — required for the default
+    // `cullMode: back` pipeline to keep the plane visible to a
+    // camera above the ground. The original [0,1,2,0,2,3] order
+    // produced a geometric face pointing `-Y`, which culled the
+    // plane from above and only rendered it when the camera dipped
+    // below y=0 ("ground only shows from the other side" bug).
+    var indices = [0, 2, 1, 0, 3, 2]
     return Mesh.fromArrays(device, v, indices)
   }
 

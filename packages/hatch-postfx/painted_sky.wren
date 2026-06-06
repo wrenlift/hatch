@@ -23,12 +23,21 @@ class SkyPass is PostPass {
   /// | `falloff` | `Num`  | `1.2` | Gradient exponent — `<1` softens the transition (more atmospheric), `>1` sharpens it. |
   ///
   /// @param {Map} opts
-  construct new(opts) { init_(opts) }
-  /// Build with defaults.
-  construct new()     { init_({}) }
-
-  init_(opts) {
+  construct new(opts) {
     super()
+    init_(opts)
+  }
+  /// Build with defaults.
+  construct new() {
+    super()
+    init_({})
+  }
+
+  // `super()` lives in the constructors above — Wren resolves
+  // `super(...)` in a method body as `super.method_name(...)`,
+  // and `PostPass.init_` doesn't exist, so calling `super()` from
+  // here would fault at install time.
+  init_(opts) {
     _zenith  = opts.containsKey("zenith")  ? opts["zenith"]  : [0.55, 0.75, 0.92, 1.0]
     _horizon = opts.containsKey("horizon") ? opts["horizon"] : [0.92, 0.85, 0.72, 1.0]
     _falloff = opts.containsKey("falloff") ? opts["falloff"] : 1.2

@@ -13,7 +13,7 @@ changelog   = "CHANGELOG.md"
 # publishing (or before the workspace path stops being valid for
 # whoever else is loading this manifest).
 [dependencies]
-"@hatch:game" = "0.3.30"
+"@hatch:game" = { path = "../hatch-game", version = "0.3.37" }
 
 [spec-dependencies]
 "@hatch:test"   = "0.2.1"
