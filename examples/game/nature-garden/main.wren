@@ -593,17 +593,13 @@ class NatureGarden is Game {
 
   // Procedural soft-disc texture for the firefly billboards.
   // Hard 1×1 pixels render every particle as a tiny square; a
-  // 64×64 gaussian falloff makes each spark a soft glow that
-  // the Bloom postFX smears into a painted halo.
-  //
-  // Encoding: the gaussian falloff lives in RGB (not just alpha)
-  // because the billboards use ADDITIVE blend — under additive
-  // the alpha channel doesn't gate the colour contribution, so a
-  // constant-RGB texture would add a SQUARE bright quad. With
-  // the falloff baked into RGB, only the centre pixels add
-  // significant brightness and the result reads as a circular
-  // halo. Alpha is held at 255 so the upstream particle alpha
-  // (lifetime fade) still works.
+  // 64×64 gaussian falloff in the alpha channel makes each spark
+  // a soft glow that the Bloom postFX smears into a painted halo.
+  // RGB is held at 255 so the multiplied output colour is the
+  // HDR amber from the particle system; the FS in @hatch:gpu's
+  // renderer3d treats tex.a as the source coverage under
+  // premultiplied blend, so a small alpha at the edge produces
+  // a soft circular halo without erasing dst.
   makeDiscTexture_(device, size) {
     var bytes = []
     var half = size / 2.0
@@ -616,11 +612,11 @@ class NatureGarden is Game {
         var d  = (dx * dx + dy * dy).sqrt / half
         if (d > 1) d = 1
         var fall = 1 - d
-        var g    = (fall * fall * 255).floor
-        bytes.add(g)
-        bytes.add(g)
-        bytes.add(g)
+        var a    = (fall * fall * 255).floor
         bytes.add(255)
+        bytes.add(255)
+        bytes.add(255)
+        bytes.add(a)
         x = x + 1
       }
       y = y + 1

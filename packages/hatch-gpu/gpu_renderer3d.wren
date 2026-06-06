@@ -174,13 +174,14 @@ class Renderer3D {
       @fragment
       fn fs_main_mrt(in: VsOut) -> FsOutMrt {
         let tex_s = textureSample(tex, samp, in.uv);
-        // Premultiplied-additive output: RGB is gated by both
-        // tex.a (disc falloff) and in.color.a (lifetime fade),
-        // so under additive blend the spark cleanly fades out at
-        // end-of-life instead of persisting at full brightness.
-        // Disc texture also encodes falloff in RGB, so the spark
-        // reads as a soft circular halo rather than a square
-        // bright quad.
+        // Premultiplied-alpha output under the premultiplied
+        // blend pipeline: RGB is gated by tex.a (disc falloff)
+        // AND in.color.a (lifetime fade) so the spark is a soft
+        // circle that cleanly fades out at end-of-life. The
+        // output alpha matches the same gate, so at the disc
+        // edge / end-of-life the blend formula
+        // `src + dst*(1 - src.a)` collapses to `dst` and the
+        // background is preserved instead of erased to black.
         let life = in.color.a;
         let mask = tex_s.a;
         let rgb  = tex_s.rgb * in.color.rgb * life * mask;
