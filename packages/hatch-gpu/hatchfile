@@ -39,7 +39,7 @@ repo      = "https://github.com/wrenlift/WrenLift.git"
 # wlift_gpu_encoder_copy_buffer_to_buffer. The Wren wrappers in
 # gpu_native.wren / gpu_web.wren depend on these exports being
 # present in the cdylib.
-rev   = "7566533e544a91c291796d6c9f92a6bca133f5b4"
+rev   = "4de25643b8cabb6ce0e9b7223bf0b893c9157a38"
 crate     = "wlift_gpu"
 # Wasm-only companion cdylib used when the bundle runs in a
 # browser. Built from the same `repo`/`rev`; produces

@@ -14,7 +14,7 @@ repo      = "https://github.com/wrenlift/WrenLift.git"
 # to the `wlift_abi` opaque-VM C shim — no more `wren_lift` Rust
 # internals in the cdylib. Future host bumps only need a rev
 # bump here when the `wlift_plugin_*` C surface grows.
-rev   = "7ff1310d5037bbc3af32dcc0bdf74f387590fac1"
+rev   = "4de25643b8cabb6ce0e9b7223bf0b893c9157a38"
 crate     = "wlift_window"
 # Wasm-only companion cdylib for the browser path; produces
 # `wlift_window_web.wasm` matching the `wasm = …` entry below.

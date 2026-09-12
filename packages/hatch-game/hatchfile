@@ -19,7 +19,7 @@ repo  = "https://github.com/wrenlift/WrenLift.git"
 # Pin to the wren_lift rev that introduced the wlift_particles
 # plugin. Bump when the plugin's `wlift_particles_*` C surface adds
 # new entries the Wren-side wrapper needs.
-rev   = "1166fdedb0ec723a8b915d90e1d6d40ad1f936cb"
+rev   = "4de25643b8cabb6ce0e9b7223bf0b893c9157a38"
 crate = "wlift_particles"
 
 [native_libs.wlift_particles]
