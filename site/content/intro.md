@@ -49,4 +49,5 @@ You write Wren. The hatchfile declares dependencies. `hatch run` builds + execut
 - [The hatchfile](/guides/hatchfile): schema reference for every field.
 - [CLI cheatsheet](/guides/cli): every `hatch <command>` invocation, what it does.
 - [Authoring docs](/guides/authoring): how to write `///` comments that show up nicely on this site.
+- [Concurrency](/guides/concurrency): fibers, threads and isolates. What each one does, when control moves, and what memory it can see.
 - [Packages](/docs): browse the registry; click any package for its README + auto-generated API reference.

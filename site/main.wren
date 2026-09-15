@@ -203,7 +203,8 @@ var GUIDES = {
   "install":   { "title": "Install & setup", "file": "content/install.md",   "published": "2026-04-01", "updated": "2026-05-03" },
   "hatchfile": { "title": "The hatchfile",   "file": "content/hatchfile.md", "published": "2026-04-01", "updated": "2026-05-03" },
   "cli":       { "title": "CLI cheatsheet",  "file": "content/cli.md",       "published": "2026-04-01", "updated": "2026-05-03" },
-  "authoring": { "title": "Authoring docs",  "file": "content/authoring.md", "published": "2026-04-01", "updated": "2026-05-03" }
+  "authoring": { "title": "Authoring docs",  "file": "content/authoring.md", "published": "2026-04-01", "updated": "2026-05-03" },
+  "concurrency": { "title": "Concurrency",   "file": "content/concurrency.md", "published": "2026-09-14", "updated": "2026-09-14" }
 }
 
 app.get("/guides/:slug") {|req|
@@ -635,7 +636,7 @@ app.get("/sitemap.xml") {|req|
     lines.add("  <url><loc>https://hatch.wrenlift.com" + path + "</loc><changefreq>daily</changefreq></url>")
   }
   // Guides + blog posts are weekly-stable.
-  for (slug in ["intro", "install", "hatchfile", "cli", "authoring"]) {
+  for (slug in ["intro", "install", "hatchfile", "cli", "authoring", "concurrency"]) {
     lines.add("  <url><loc>https://hatch.wrenlift.com/guides/" + slug + "</loc><changefreq>weekly</changefreq></url>")
   }
   for (b in BLOGS) {
