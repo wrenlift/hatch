@@ -11,7 +11,7 @@ WrenLift has three ways to run more than one thing at once. A `Fiber` is a corou
 | A data race is | impossible | possible; you guard against it | impossible |
 | Underneath | a coroutine with a stack of its own | a fiber on a worker's scheduler | a VM per thread |
 
-One rule connects them: **a `Thread` is a `Fiber` that runs on another OS thread.** Every task in the pool is a real `Fiber`. `Thread.current` returns it, and `Thread.yield()` is its `yield`. The difference is that a `Thread` runs at the same time as the code that made it. A plain `Fiber` never does. That is why it gets its own name.
+One rule connects them: **a `Thread` is a `Fiber` that runs on another OS thread.** Every task in the pool is a real `Fiber`, and `Thread.yield()` is its `yield`. The difference is that a `Thread` runs at the same time as the code that made it. A plain `Fiber` never does. That is why it gets its own name.
 
 ## Fibers: coroutines
 
@@ -60,10 +60,10 @@ This is the shape a server wants: one task per connection, `idle` between polls,
 import "thread" for Thread, Mutex, Lock, Deque
 ```
 
-`Thread.create(fn)` runs `fn` as a task on a worker thread. The workers start on the first call, one per hardware thread. Each new task goes to the worker with the least work. The task shares the heap with the caller. The lists, maps and objects it reaches are the caller's own, not copies. This is the model for CPU-bound work that wants every core:
+`Thread.create(fn)` runs `fn` as a task on a worker thread and returns its handle. The workers start on the first call, one per hardware thread. Each new task goes to the worker with the least work. The task shares the heap with the caller. The lists, maps and objects it reaches are the caller's own, not copies. This is the model for CPU-bound work that wants every core:
 
 ```wren
-import "thread" for Thread, Lock, Deque
+import "thread" for Thread, Deque
 
 class Fib {
   static of(n) {
@@ -73,20 +73,19 @@ class Fib {
 }
 
 var results = Deque.new()
-var done = Lock.new()
+var workers = []
 for (i in 0...8) {
-  Thread.create {
-    results.add(Fib.of(30))
-    done.release()
-  }
+  workers.add(Thread.create { results.add(Fib.of(30)) })
 }
-for (i in 0...8) done.wait()   // eight units, one per task
+for (t in workers) t.join()
 var total = 0
 while (results.count > 0) total = total + results.pop(false)
 System.print(total)
 ```
 
-Three things wait for a task:
+The handle waits for the task: `join()` parks until it ends, `join(ms)` gives up after `ms` and returns false, `isDone` says whether it has ended, and `error` holds the abort it ended with, or null. `Thread.current` is the handle of the running task, or null outside one.
+
+Three things let tasks wait for each other:
 
 - `Mutex` — `acquire()`, `tryAcquire()`, `release()`. Not reentrant. When it is released, the task that waited longest takes it.
 - `Lock` — a counting lock. `release()` adds one unit. `wait()` takes one, or waits until there is one. `wait(ms)` gives up after `ms` and returns false. It starts at zero, so it works as a done signal or a semaphore.
@@ -123,7 +122,7 @@ Threads share memory, so the rules are the ones Go programmers know:
 
 - **Two tasks writing the same list or map at the same time is a race.** The runtime does not catch it. Put a `Mutex` around shared structures, or give each task its own and merge at the end. A `Deque` is safe to share, which is what the examples do.
 - **A fiber runs on the thread that made it.** Calling a fiber that another task created is an error. Make fibers inside the task that will drive them.
-- **When a task aborts, it ends quietly.** Nothing is printed. Catch what you care about inside the task and report it through a `Deque`.
+- **When a task aborts, it ends quietly.** Nothing is printed; the handle's `error` holds it after `join`.
 - **At module top level, a wait runs your own scheduler.** `done.wait()` in the examples runs any `Fiber.spawn` tasks on the main thread while it waits. `Fiber.sleep` works the same way there.
 - Module variables, static fields and object fields are single-word writes. They never tear. Between threads, you see the writes in whatever order they landed.
 
