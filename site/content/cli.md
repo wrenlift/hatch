@@ -289,10 +289,6 @@ wlift --step-limit 0 main.wren
 
 Maximum interpreter steps before aborting. The default is 1B (interpreter) / 10B (tiered), enough for ~10-30 minutes of polling-loop instructions. Pass `0` to disable entirely. Recommended for long-running servers.
 
-## `--gc {generational,arena,marksweep}`
-
-GC strategy. Generational nursery + old-gen mark-sweep is the default and the right choice for almost everything. `arena` is allocate-only / free-on-drop, best for short-lived scripts and benchmarks. `marksweep` is non-generational; useful for differential testing.
-
 ## Other flags
 
 `--dump-tokens`, `--dump-ast`, `--dump-mir`, `--dump-opt`, `--dump-asm`, `--no-opt`, `--gc-stats`, `--tree-shake-stats`, `--opt-threshold`. Compiler-internals introspection, useful when you're debugging a regression, not for daily use.
