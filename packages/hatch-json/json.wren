@@ -392,9 +392,8 @@ class Parser_ {
       if (_i < _n && (_b[_i] == 43 || _b[_i] == 45)) _i = _i + 1  // "+" / "-"
       while (_i < _n && isDigitByte_(_b[_i])) _i = _i + 1
     }
-    var slice = _b.utf8Slice(start, _i - start)
-    var n = Num.fromString(slice)
-    if (n == null) Fiber.abort("JSON: invalid number %(slice)")
+    var n = _b.parseF64(start, _i - start)
+    if (n == null) Fiber.abort("JSON: invalid number %(_b.utf8Slice(start, _i - start))")
     return n
   }
 

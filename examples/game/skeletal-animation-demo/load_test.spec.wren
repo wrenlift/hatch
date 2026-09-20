@@ -1,6 +1,7 @@
 import "@hatch:gltf"   for Gltf
 import "@hatch:assets" for Assets
 import "@hatch:gpu"    for Gpu
+import "@hatch:ecs"    for World
 import "@hatch:test"   for Test
 import "@hatch:assert" for Expect
 
@@ -24,6 +25,16 @@ Test.describe("the_strangler load") {
       }
     }
     Expect.that(foundSkinned).toBe(true)
+  }
+
+  Test.it("spawns into a world repeatedly with every node intact") {
+    var device = Gpu.requestDevice()
+    var db = Assets.open("assets")
+    var scene = Gltf.fromAssetsDir(device, db, "the_strangler/scene.gltf")
+    for (i in 0...40) scene.spawnInto(World.new())
+    var nulls = 0
+    for (n in scene.nodes) if (n == null) nulls = nulls + 1
+    Expect.that(nulls).toBe(0)
   }
 }
 
