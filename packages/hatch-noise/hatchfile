@@ -11,6 +11,8 @@ native_search_paths = ["libs"]
 [plugin_source]
 repo  = "https://github.com/wrenlift/WrenLift.git"
 crate = "wlift_noise"
+# Also built as a wasm32-wasip1 side module for wasm AOT programs.
+wasi_crate = "wlift_noise"
 # Bumped when the cdylib grows new `wlift_noise_*` exports — the
 # Wren wrappers in noise.wren depend on those symbols being
 # present at dlopen time.
@@ -25,6 +27,7 @@ rev   = "4de25643b8cabb6ce0e9b7223bf0b893c9157a38"
 "linux-x86_64"   = "libs/linux-x86_64/libwlift_noise.so"
 "linux-arm64"    = "libs/linux-arm64/libwlift_noise.so"
 "windows-x86_64" = "libs/windows-x86_64/wlift_noise.dll"
+"wasm32-wasip1"  = "libs/wasm32-wasip1/wlift_noise.wasm"
 macos            = "libs/libwlift_noise.dylib"
 linux            = "libs/libwlift_noise.so"
 windows          = "libs/wlift_noise.dll"

@@ -10,6 +10,8 @@ name: Publish plugin-backed package
 #   repo  = "https://github.com/wrenlift/WrenLift.git"
 #   rev   = "cbf2e1c..."
 #   crate = "wlift_foo"          # cargo package name in `repo`
+#   wasi_crate = "wlift_foo"     # optional: also build it as a
+#                                # wasm32-wasip1 side module
 #
 # The artifact basename also comes from the crate name
 # (`libwlift_foo.dylib` / `libwlift_foo.so` / `wlift_foo.dll`).
@@ -47,6 +49,7 @@ jobs:
       rev:        ${{ steps.out.outputs.rev }}
       crate:      ${{ steps.out.outputs.crate }}
       web_crate:  ${{ steps.out.outputs.web_crate }}
+      wasi_crate: ${{ steps.out.outputs.wasi_crate }}
       has_plugin: ${{ steps.out.outputs.has_plugin }}
     steps:
       - uses: actions/checkout@v4
@@ -98,6 +101,11 @@ jobs:
           # don't ship a web target leave this unset; the
           # `build-web` job is then skipped.
           web_crate=$(awk -F'"' '/^web_crate *=/ {print $2; exit}' "$hatchfile")
+          # Optional: the crate to build as a wasm32-wasip1 side
+          # module, loaded beside a wasm AOT program by its host.
+          # Usually the native crate itself; `build-side-module`
+          # is skipped when unset.
+          wasi_crate=$(awk -F'"' '/^wasi_crate *=/ {print $2; exit}' "$hatchfile")
 
           if [ -z "$repo" ] || [ -z "$rev" ] || [ -z "$crate" ]; then
             echo "::error::hatchfile $hatchfile missing [plugin_source] repo / rev / crate" && exit 1
@@ -109,6 +117,7 @@ jobs:
           echo "rev=$rev"             >> "$GITHUB_OUTPUT"
           echo "crate=$crate"         >> "$GITHUB_OUTPUT"
           echo "web_crate=$web_crate" >> "$GITHUB_OUTPUT"
+          echo "wasi_crate=$wasi_crate" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------
   # Build: one matrix entry per target triple. Artifact naming is
@@ -326,21 +335,93 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------
+  # Build (side module): the crate as a dylink.0 side module for
+  # wasm32-wasip1, which shares a wasm AOT program's memory and
+  # table. Skipped unless the hatchfile sets `wasi_crate`. Staged
+  # into `libs/wasm32-wasip1/`, which the hatchfile's
+  # `"wasm32-wasip1"` native_libs key names.
+  # ---------------------------------------------------------------
+  build-side-module:
+    name: Build wasm32-wasip1 side module (${{ needs.resolve.outputs.wasi_crate }})
+    needs: resolve
+    if: needs.resolve.outputs.has_plugin == 'true' && needs.resolve.outputs.wasi_crate != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: hatch
+
+      - name: Check out upstream plugin source
+        shell: bash
+        run: |
+          set -eu
+          git clone --filter=blob:none \
+                    "${{ needs.resolve.outputs.repo }}" source
+          git -C source checkout "${{ needs.resolve.outputs.rev }}"
+
+      # A side module is position-independent, and the shipped std
+      # is not: -Z build-std rebuilds it, which needs nightly and
+      # rust-src.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-wasip1
+          components: rust-src
+
+      - name: Install the WASI SDK (for C dependencies)
+        shell: bash
+        run: |
+          set -eu
+          curl -sSL "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz" \
+            | sudo tar -xzC /opt
+          {
+            echo "WASI_SYSROOT=/opt/wasi-sdk-33.0-x86_64-linux/share/wasi-sysroot"
+            echo "CC_wasm32_wasip1=/opt/wasi-sdk-33.0-x86_64-linux/bin/clang"
+          } >> "$GITHUB_ENV"
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            source/target
+          key: plugin-${{ needs.resolve.outputs.wasi_crate }}-${{ needs.resolve.outputs.rev }}-wasm32-wasip1-side
+
+      - name: Build side module
+        shell: bash
+        run: |
+          set -eu
+          hatch/scripts/build-side-module.sh source \
+            "${{ needs.resolve.outputs.wasi_crate }}" \
+            "hatch/packages/${{ needs.resolve.outputs.package }}" dist
+          ls -la dist/
+
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm32-wasip1
+          path: dist/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------
   # Publish: drop the per-platform dylibs into the package's libs/
   # dir, run hatch publish, and (on tag push) archive them as a
   # versioned release so historical publishes stay auditable.
   # ---------------------------------------------------------------
   publish:
     name: Bundle + publish
-    needs: [resolve, build, build-web]
-    # `build-web` is skipped for native-only plugins; that's
-    # fine, we just need it to either succeed or be skipped.
-    # `always()` lets the publish job run despite a skip.
+    needs: [resolve, build, build-web, build-side-module]
+    # `build-web` and `build-side-module` are skipped for plugins
+    # that don't opt in; that's fine, we just need each to either
+    # succeed or be skipped. `always()` lets the publish job run
+    # despite a skip.
     if: |
       always()
       && needs.resolve.outputs.has_plugin == 'true'
       && needs.build.result == 'success'
       && (needs.build-web.result == 'success' || needs.build-web.result == 'skipped')
+      && (needs.build-side-module.result == 'success' || needs.build-side-module.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
