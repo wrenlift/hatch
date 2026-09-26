@@ -388,13 +388,19 @@ jobs:
             source/target
           key: plugin-${{ needs.resolve.outputs.wasi_crate }}-${{ needs.resolve.outputs.rev }}-wasm32-wasip1-side
 
+      # `hatch plugin build` drives cargo and the link. Installed from
+      # WrenLift's main branch until a release carries the command.
+      - name: Install hatch
+        run: cargo install --git https://github.com/wrenlift/WrenLift --locked --bin hatch wren_lift
+
       - name: Build side module
         shell: bash
         run: |
           set -eu
-          hatch/scripts/build-side-module.sh source \
-            "${{ needs.resolve.outputs.wasi_crate }}" \
-            "hatch/packages/${{ needs.resolve.outputs.package }}" dist
+          pkg="hatch/packages/${{ needs.resolve.outputs.package }}"
+          hatch plugin build "$pkg" --target wasm32-wasip1 --source source
+          mkdir -p dist
+          cp "$pkg"/libs/wasm32-wasip1/*.wasm dist/
           ls -la dist/
 
       - name: Upload as workflow artifact
